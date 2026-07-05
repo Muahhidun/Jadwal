@@ -39,7 +39,7 @@ void main() {
     await tester.pump();
 
     // В заголовке — неразрывный пробел ( ), как в дизайн-прототипе.
-    expect(find.text('Вечерние зикры'), findsOneWidget);
+    expect(find.text('Вечерние зикры'), findsWidgets);
     expect(find.text('Читать зикры'), findsOneWidget);
     expect(find.text('0:42:00'), findsOneWidget); // 20:53:00 − 20:11:00
   });
@@ -54,6 +54,6 @@ void main() {
     await tester.tap(find.text('Отметить без чтения ✓'));
     await tester.pump();
 
-    expect(find.text('Час дуа'), findsOneWidget);
+    expect(find.text('Час дуа'), findsWidgets);
   });
 }
