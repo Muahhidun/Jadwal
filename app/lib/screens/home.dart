@@ -67,7 +67,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final app = AppScope.of(context);
     final schedule = ScheduleScope.of(context);
     final s = S.of(app.lang);
-    final c = jColorsOf(context);
+    // Художественный фон ночной → главный/день всегда со светлым текстом,
+    // независимо от темы приложения. Сменные фоны придут в настройки позже.
+    const c = JColors.dark;
     final now = schedule.now();
     final t = schedule.timesFor(app.city, now);
     final nowSec = now.hour * 3600 + now.minute * 60 + now.second;
@@ -90,32 +92,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   children: [
                     SceneBackground(progress: p, screenHeight: h),
                     if (t != null) ...[
-                      _HomeLayer(
-                        p: p,
-                        s: s,
-                        c: c,
-                        app: app,
-                        t: t,
-                        nowMin: nowMin,
-                        nowSec: nowSec,
-                        h: h,
-                        schedule: schedule,
-                        onCity: () => CityPicker.open(context),
-                        onReader: _openReader,
-                        onToggleDate: () => app.dateGregorian = !app.dateGregorian,
-                        onExpand: () => _p.animateTo(1, curve: Curves.easeOutCubic),
+                      Positioned.fill(
+                        child: _HomeLayer(
+                          p: p,
+                          s: s,
+                          c: c,
+                          app: app,
+                          t: t,
+                          nowMin: nowMin,
+                          nowSec: nowSec,
+                          h: h,
+                          schedule: schedule,
+                          onCity: () => CityPicker.open(context),
+                          onReader: _openReader,
+                          onToggleDate: () => app.dateGregorian = !app.dateGregorian,
+                          onExpand: () => _p.animateTo(1, curve: Curves.easeOutCubic),
+                        ),
                       ),
-                      _DayLayer(
-                        p: p,
-                        s: s,
-                        c: c,
-                        app: app,
-                        t: t,
-                        nowMin: nowMin,
-                        h: h,
-                        onReader: _openReader,
-                        onCollapse: () => _p.animateTo(0, curve: Curves.easeOutCubic),
-                        onToggleDate: () => app.dateGregorian = !app.dateGregorian,
+                      Positioned.fill(
+                        child: _DayLayer(
+                          p: p,
+                          s: s,
+                          c: c,
+                          app: app,
+                          t: t,
+                          nowMin: nowMin,
+                          h: h,
+                          schedule: schedule,
+                          onReader: _openReader,
+                          onCollapse: () => _p.animateTo(0, curve: Curves.easeOutCubic),
+                          onToggleDate: () => app.dateGregorian = !app.dateGregorian,
+                        ),
                       ),
                       // Общие элементы поверх: таймер и сетка времён.
                       _HeroTimer(p: p, s: s, c: c, t: t, nowSec: nowSec, h: h, schedule: schedule, app: app),
@@ -156,8 +163,8 @@ class _HeroTimer extends StatelessWidget {
   Widget build(BuildContext context) {
     final nowMin = nowSec ~/ 60;
     final (caption, timer, _) = heroTimer(s, t, nowSec, nowMin, schedule, app);
-    final top = lerpDouble(h * 0.36, h * 0.085, p)!;
-    final size = lerpDouble(64.0, 46.0, p)!;
+    final top = lerpDouble(h * 0.36, h * 0.125, p)!;
+    final size = lerpDouble(64.0, 44.0, p)!;
     return Positioned(
       left: 0,
       right: 0,
@@ -491,10 +498,11 @@ class _HomeLayer extends StatelessWidget {
               Container(
                   width: 36,
                   height: 4,
-                  decoration:
-                      BoxDecoration(color: c.hair, borderRadius: BorderRadius.circular(2))),
+                  decoration: BoxDecoration(
+                      color: c.sub.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 8),
-              Text(s.swipe, style: JType.ui(11, color: c.faint)),
+              Text(s.swipe, style: JType.ui(11, color: c.sub)),
             ],
           ),
         ),
@@ -557,6 +565,7 @@ class _DayLayer extends StatelessWidget {
     required this.t,
     required this.nowMin,
     required this.h,
+    required this.schedule,
     required this.onReader,
     required this.onCollapse,
     required this.onToggleDate,
@@ -567,6 +576,7 @@ class _DayLayer extends StatelessWidget {
   final AppState app;
   final DayTimes t;
   final int nowMin;
+  final ScheduleService schedule;
   final void Function(String) onReader;
   final VoidCallback onCollapse, onToggleDate;
 
@@ -583,23 +593,62 @@ class _DayLayer extends StatelessWidget {
         child: SafeArea(
           child: Stack(
             children: [
-              // Хэндл + «свайп вниз — назад» сверху дня.
+              // Подложка под контент дня — читаемость светлого текста на фоне.
               Positioned(
                 left: 0,
                 right: 0,
+                top: h * 0.38,
+                bottom: 0,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        c.bg.withValues(alpha: 0.0),
+                        c.bg.withValues(alpha: 0.82),
+                        c.bg.withValues(alpha: 0.92),
+                      ],
+                      stops: const [0.0, 0.14, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+              // Хват + строка даты сверху дня (тап по хвату — назад).
+              Positioned(
+                left: 28,
+                right: 28,
                 top: 8,
-                child: GestureDetector(
-                  onTap: onCollapse,
-                  behavior: HitTestBehavior.opaque,
-                  child: Column(children: [
-                    Container(
-                        width: 36,
-                        height: 4,
-                        decoration: BoxDecoration(
-                            color: c.hair, borderRadius: BorderRadius.circular(2))),
-                    const SizedBox(height: 6),
-                    Text(s.swipeBack, style: JType.ui(11, color: c.faint)),
-                  ]),
+                child: Column(
+                  children: [
+                    GestureDetector(
+                      onTap: onCollapse,
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                              color: c.sub.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(2))),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(children: [
+                          Icon(Icons.place_outlined, size: 13, color: c.sub),
+                          const SizedBox(width: 3),
+                          Text(app.city.name, style: JType.ui(12.5, color: c.sub)),
+                        ]),
+                        GestureDetector(
+                          onTap: onToggleDate,
+                          behavior: HitTestBehavior.opaque,
+                          child: Text(dateLine(s, schedule.now(), app.dateGregorian),
+                              style: JType.ui(12.5, color: c.sub)),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
               Positioned(
@@ -685,8 +734,8 @@ class _DayLayer extends StatelessWidget {
     );
   }
 
-  static String _monthCaps(S s, AppState app) =>
-      dateLine(s, DateTime.now(), app.dateGregorian).split(' ').last.toUpperCase();
+  String _monthCaps(S s, AppState app) =>
+      dateLine(s, schedule.now(), app.dateGregorian).split(' ').last.toUpperCase();
 }
 
 // ── Общие мелкие виджеты и утилиты ───────────────────────────────────────────

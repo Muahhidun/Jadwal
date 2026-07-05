@@ -148,18 +148,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           color: JPaper.button,
                           borderRadius: BorderRadius.circular(100),
                         ),
-                        child: Row(
+                        child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
                           children: [
-                            Text('${countLabel(z.repeat, app.lang)}  ',
-                                style: JType.ui(11,
+                            Text(countLabel(z.repeat, app.lang),
+                                style: JType.ui(10.5,
                                     w: FontWeight.w400,
                                     color: JPaper.bg.withValues(alpha: .6))),
+                            const SizedBox(height: 1),
                             Text(last ? s.finishBtn : s.nextBtn,
-                                style:
-                                    JType.ui(15, w: FontWeight.w700, color: JPaper.bg)),
+                                style: JType.ui(15, w: FontWeight.w700, color: JPaper.bg)),
                           ],
                         ),
                       ),

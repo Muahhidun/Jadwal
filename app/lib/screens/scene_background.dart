@@ -39,14 +39,14 @@ class _ScenePainter extends CustomPainter {
       end: Alignment.bottomCenter,
       colors: const [
         Color(0xFF0B1512), // глубокая ночь
-        Color(0xFF101C18),
-        Color(0xFF14251E),
-        Color(0xFF1E2A22), // предрассвет
-        Color(0xFF3A3320), // тёплый переход
-        Color(0xFF6E5326), // золотой горизонт
-        Color(0xFF201A10), // земля под горизонтом
+        Color(0xFF0F1B16),
+        Color(0xFF14201B),
+        Color(0xFF1A241D), // предрассвет
+        Color(0xFF2A2A1C), // тёплый переход (приглушён)
+        Color(0xFF3E351F), // сдержанный золотой горизонт
+        Color(0xFF181409), // земля под горизонтом
       ],
-      stops: const [0.0, 0.18, 0.34, 0.5, 0.66, 0.82, 1.0],
+      stops: const [0.0, 0.2, 0.38, 0.54, 0.7, 0.86, 1.0],
     );
     canvas.drawRect(rect, Paint()..shader = grad.createShader(rect));
 
@@ -70,17 +70,29 @@ class _ScenePainter extends CustomPainter {
     canvas.drawCircle(Offset(moonC.dx + 11, moonC.dy - 6), moonR,
         Paint()..color = const Color(0xFF0F1B16));
 
-    // Мягкое золотое свечение у горизонта (~0.82h).
-    final glowRect = Rect.fromLTRB(0, h * 0.72, size.width, h * 0.92);
+    // Мягкое золотое свечение у горизонта (~0.86h), сдержанное.
+    final glowRect = Rect.fromLTRB(0, h * 0.76, size.width, h * 0.94);
     final glow = RadialGradient(
       center: Alignment.center,
       radius: 0.9,
       colors: [
-        const Color(0xFFE8BC6A).withValues(alpha: 0.35),
+        const Color(0xFFE8BC6A).withValues(alpha: 0.18),
         const Color(0xFFE8BC6A).withValues(alpha: 0.0),
       ],
     );
     canvas.drawRect(glowRect, Paint()..shader = glow.createShader(glowRect));
+
+    // Затемнение у самого верха — читаемость шапки (город/дата) на звёздах.
+    final topRect = Rect.fromLTRB(0, 0, size.width, h * 0.09);
+    final topScrim = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        const Color(0xFF000000).withValues(alpha: 0.35),
+        const Color(0xFF000000).withValues(alpha: 0.0),
+      ],
+    );
+    canvas.drawRect(topRect, Paint()..shader = topScrim.createShader(topRect));
   }
 
   @override
