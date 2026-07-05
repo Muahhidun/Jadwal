@@ -148,10 +148,19 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           color: JPaper.button,
                           borderRadius: BorderRadius.circular(100),
                         ),
-                        child: Center(
-                          child: Text(last ? s.finishBtn : s.nextBtn,
-                              style:
-                                  JType.ui(15, w: FontWeight.w700, color: JPaper.bg)),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Text('${countLabel(z.repeat, app.lang)}  ',
+                                style: JType.ui(11,
+                                    w: FontWeight.w400,
+                                    color: JPaper.bg.withValues(alpha: .6))),
+                            Text(last ? s.finishBtn : s.nextBtn,
+                                style:
+                                    JType.ui(15, w: FontWeight.w700, color: JPaper.bg)),
+                          ],
                         ),
                       ),
                     ),
@@ -166,17 +175,29 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 }
 
+/// Короткая метка повторов: ru «1 раз / 3 раза / 5 раз», kz «N рет».
+String countLabel(int repeat, String lang) {
+  if (lang == 'kz') return '$repeat рет';
+  final mod100 = repeat % 100;
+  final mod10 = repeat % 10;
+  final String word;
+  if (mod100 >= 11 && mod100 <= 14) {
+    word = 'раз';
+  } else if (mod10 == 1) {
+    word = 'раз';
+  } else if (mod10 >= 2 && mod10 <= 4) {
+    word = 'раза';
+  } else {
+    word = 'раз';
+  }
+  return '$repeat $word';
+}
+
 class _ZikrBody extends StatelessWidget {
   const _ZikrBody({required this.z, required this.s, required this.lang});
   final Zikr z;
   final S s;
   final String lang;
-
-  String _repeatLabel() {
-    if (lang == 'kz') return s.repeatTimes.replaceFirst('{n}', '${z.repeat}');
-    final word = z.repeat >= 5 ? 'РАЗ' : 'РАЗА';
-    return 'ПРОИЗНОСИТСЯ ${z.repeat} $word';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -190,20 +211,6 @@ class _ZikrBody extends StatelessWidget {
             textDirection: TextDirection.rtl,
             style: JType.arabic(26)),
         const SizedBox(height: 18),
-        if (z.repeat > 1) ...[
-          Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                border: Border.all(color: JPaper.accent),
-                borderRadius: BorderRadius.circular(100),
-              ),
-              child: Text(_repeatLabel(),
-                  style: JType.caption(JPaper.accent, size: 10)),
-            ),
-          ),
-          const SizedBox(height: 18),
-        ],
         if (z.translit != null) ...[
           Text(z.translit!,
               textAlign: TextAlign.center,

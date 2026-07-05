@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../data/app_state.dart';
 import '../i18n/strings.dart';
 import '../prayer/city.dart';
+import '../prayer/geo.dart';
 import '../theme/tokens.dart';
 import 'home.dart';
 
@@ -28,8 +29,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           app.lang = lang;
           next();
         }),
-      1 => _CityStep(s: s, c: c, onPick: (i) {
-          app.city = i;
+      1 => _CityStep(s: s, c: c, onPick: (city) {
+          app.setCity(city);
           Future.delayed(const Duration(milliseconds: 250), next);
         }),
       2 => _NotifStep(s: s, c: c, onNext: next),
@@ -87,14 +88,62 @@ class _LangStep extends StatelessWidget {
   }
 }
 
-class _CityStep extends StatelessWidget {
+class _CityStep extends StatefulWidget {
   const _CityStep({required this.s, required this.c, required this.onPick});
   final S s;
   final JColors c;
-  final void Function(int) onPick;
+  final void Function(City) onPick;
+
+  @override
+  State<_CityStep> createState() => _CityStepState();
+}
+
+class _CityStepState extends State<_CityStep> {
+  final _ctrl = TextEditingController();
+  List<City> _results = const [];
+  bool _detecting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search(String q) async {
+    final r = await CityRepository.search(q);
+    if (mounted) setState(() => _results = r);
+  }
+
+  Future<void> _detect() async {
+    setState(() {
+      _detecting = true;
+      _error = null;
+    });
+    final kz = widget.s == S.kz;
+    try {
+      final city = await Geo.detectCity();
+      if (!mounted) return;
+      if (city == null) {
+        setState(() {
+          _detecting = false;
+          _error = kz
+              ? 'Анықтау мүмкін болмады. Тізімнен таңдаңыз.'
+              : 'Не удалось определить. Выберите из списка.';
+        });
+        return;
+      }
+      widget.onPick(city);
+    } catch (_) {
+      if (mounted) setState(() => _detecting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final s = widget.s;
+    final c = widget.c;
+    final list = _ctrl.text.isEmpty ? kMajorCities : _results;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
       child: Column(
@@ -105,18 +154,49 @@ class _CityStep extends StatelessWidget {
           Text(s.cityTitle, style: JType.ui(30, w: FontWeight.w800, color: c.ink)),
           const SizedBox(height: 8),
           Text(s.citySub, style: JType.ui(14, color: c.sub, h: 1.5)),
-          const SizedBox(height: 24),
-          _OutlineButton(label: s.geo, color: c.gold, onTap: () => onPick(0)),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
+          _OutlineButton(
+              label: _detecting ? '…' : s.geo, color: c.gold, onTap: _detect),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(_error!, style: JType.ui(12, color: c.red)),
+          ],
+          const SizedBox(height: 14),
+          TextField(
+            controller: _ctrl,
+            onChanged: _search,
+            style: JType.ui(16, color: c.ink),
+            cursorColor: c.gold,
+            decoration: InputDecoration(
+              hintText: s == S.kz ? 'Қала іздеу…' : 'Поиск города…',
+              hintStyle: JType.ui(15, color: c.faint),
+              prefixIcon: Icon(Icons.search, color: c.faint, size: 20),
+              isDense: true,
+              enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: c.hair)),
+              focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: c.gold)),
+            ),
+          ),
+          const SizedBox(height: 8),
           Expanded(
             child: ListView.separated(
-              itemCount: kCities.length,
+              itemCount: list.length,
               separatorBuilder: (_, _) => Divider(color: c.hair, height: 1),
               itemBuilder: (_, i) => InkWell(
-                onTap: () => onPick(i),
+                onTap: () => widget.onPick(list[i]),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Text(kCities[i].name, style: JType.ui(16, color: c.ink)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(list[i].name, style: JType.ui(16, color: c.ink)),
+                      if (list[i].region.isNotEmpty && list[i].region != list[i].name)
+                        Text(list[i].region, style: JType.ui(12, color: c.faint)),
+                    ],
+                  ),
                 ),
               ),
             ),

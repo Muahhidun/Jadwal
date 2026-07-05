@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../prayer/city.dart';
 
 /// Глобальное состояние: язык, тема, город, онбординг, дневные отметки.
 /// Хранится локально (shared_preferences) — без сервера и аккаунтов.
@@ -13,13 +14,30 @@ class AppState extends ChangeNotifier {
 
   String get lang => _prefs.getString('lang') ?? 'ru';
   String get theme => _prefs.getString('theme') ?? 'dark';
-  int get city => _prefs.getInt('city') ?? 0;
   bool get onboardingDone => _prefs.getBool('onboardingDone') ?? false;
+
+  /// Показывать дату по григорианскому календарю вместо хиджры (тап по дате).
+  bool get dateGregorian => _prefs.getBool('dateGregorian') ?? false;
+
+  /// Выбранный город (любой из справочника ДУМК). По умолчанию — Алматы.
+  City get city => City(
+        _prefs.getString('cityName') ?? kDefaultCity.name,
+        _prefs.getDouble('cityLat') ?? kDefaultCity.lat,
+        _prefs.getDouble('cityLng') ?? kDefaultCity.lng,
+        region: _prefs.getString('cityRegion') ?? kDefaultCity.region,
+      );
 
   set lang(String v) => _set(() => _prefs.setString('lang', v));
   set theme(String v) => _set(() => _prefs.setString('theme', v));
-  set city(int v) => _set(() => _prefs.setInt('city', v));
   set onboardingDone(bool v) => _set(() => _prefs.setBool('onboardingDone', v));
+  set dateGregorian(bool v) => _set(() => _prefs.setBool('dateGregorian', v));
+
+  void setCity(City c) => _set(() {
+        _prefs.setString('cityName', c.name);
+        _prefs.setDouble('cityLat', c.lat);
+        _prefs.setDouble('cityLng', c.lng);
+        _prefs.setString('cityRegion', c.region);
+      });
 
   /// Отметки за день: ключи morning / kahf / evening / dua.
   /// Хранятся с датой, чтобы в полночь начинался чистый день.

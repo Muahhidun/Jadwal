@@ -68,6 +68,7 @@ flutter:
 
   assets:
     - assets/data/adhkar.json
+    - assets/data/cities.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

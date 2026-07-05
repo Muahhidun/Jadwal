@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jadwal/data/app_state.dart';
 import 'package:jadwal/main.dart';
+import 'package:jadwal/prayer/city.dart';
 import 'package:jadwal/prayer/schedule_service.dart';
 
 /// Фиксированный день из дизайн-прототипа: пятница 03.07.2026, 20:11, Алматы.
@@ -11,7 +12,7 @@ Future<ScheduleService> demoSchedule() async {
   final prefs = await SharedPreferences.getInstance();
   final service =
       ScheduleService(prefs, now: () => DateTime(2026, 7, 3, 20, 11));
-  service.preload(0, 2026, {
+  service.preload(kDefaultCity, 2026, {
     '2026-07-03': [185, 298, 779, 1074, 1253, 1358],
     '2026-07-04': [186, 299, 779, 1074, 1253, 1357],
   });
@@ -40,7 +41,7 @@ void main() {
     // В заголовке — неразрывный пробел ( ), как в дизайн-прототипе.
     expect(find.text('Вечерние зикры'), findsOneWidget);
     expect(find.text('Читать зикры'), findsOneWidget);
-    expect(find.text('0:42'), findsOneWidget); // 20:53 − 20:11
+    expect(find.text('0:42:00'), findsOneWidget); // 20:53:00 − 20:11:00
   });
 
   testWidgets('после отметки вечерних появляется час дуа (пятница)',

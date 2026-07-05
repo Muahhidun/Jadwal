@@ -27,6 +27,15 @@ class DayTimes {
     if (minutes < 0) minutes = 0;
     return '${minutes ~/ 60}:${(minutes % 60).toString().padLeft(2, '0')}';
   }
+
+  /// Ч:ММ:СС — для живого таймера до/после молитвы.
+  static String fmtHMS(int seconds) {
+    if (seconds < 0) seconds = 0;
+    final h = seconds ~/ 3600;
+    final m = (seconds % 3600) ~/ 60;
+    final s = seconds % 60;
+    return '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
 }
 
 /// Запасной астрономический расчёт (adhan). Метод — Muslim World League,

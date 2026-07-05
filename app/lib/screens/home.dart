@@ -3,17 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:hijri/hijri_calendar.dart';
 import '../data/app_state.dart';
 import '../i18n/strings.dart';
-import '../prayer/city.dart';
 import '../prayer/schedule.dart';
 import '../prayer/schedule_service.dart';
 import '../prayer/windows.dart';
 import '../theme/tokens.dart';
+import 'city_picker.dart';
 import 'day.dart';
 import 'reader.dart';
 
 /// Главный экран «одно дело» (README §2): показывает ровно одну актуальную
 /// вещь — открытое окно поклонения или таймер до следующей молитвы.
-/// Времена — реальные (ДУМК/расчёт), таймер живой.
+/// Времена — реальные (ДУМК/расчёт), таймер живой (посекундно).
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -27,8 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Обновление раз в 20 секунд достаточно для минутного таймера.
-    _ticker = Timer.periodic(const Duration(seconds: 20), (_) {
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
   }
@@ -67,19 +66,21 @@ class _HomeScreenState extends State<HomeScreen> {
     final now = schedule.now();
     final t = schedule.timesFor(app.city, now);
     final nowMin = now.hour * 60 + now.minute;
+    final nowSec = now.hour * 3600 + now.minute * 60 + now.second;
 
     Widget center;
     if (t == null) {
       center = CircularProgressIndicator(color: c.gold);
     } else {
       final w = currentWindow(t, nowMin, (id) => app.isDone(id.name));
+      String toPrayer(Prayer p) => DayTimes.fmtHMS(t.times[p]! * 60 - nowSec);
       center = switch (w?.id) {
         TaskId.morning => _WindowCard(
             c: c,
             caption: s.windowOpen,
             title: s.morningTitle,
             sub: s.morningSub,
-            timer: DayTimes.fmtDuration(w!.end - nowMin),
+            timer: toPrayer(Prayer.sunrise),
             timerCaption: s.toPrayerCaps[Prayer.sunrise.index],
             buttonLabel: s.read,
             onButton: () => _openReader(context, 'morning'),
@@ -91,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
             caption: s.windowOpen,
             title: s.kahfTitle,
             sub: s.kahfSub,
-            timer: DayTimes.fmtDuration(w!.end - nowMin),
+            timer: toPrayer(Prayer.dhuhr),
             timerCaption: s.toPrayerCaps[Prayer.dhuhr.index],
             buttonLabel: s.markKahf,
             onButton: () => app.markDone(TaskId.kahf.name),
@@ -101,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
             caption: s.windowOpen,
             title: s.eveningTitle,
             sub: s.eveningSub,
-            timer: DayTimes.fmtDuration(w!.end - nowMin),
+            timer: toPrayer(Prayer.maghrib),
             timerCaption: s.toPrayerCaps[Prayer.maghrib.index],
             buttonLabel: s.read,
             onButton: () => _openReader(context, 'evening'),
@@ -113,12 +114,12 @@ class _HomeScreenState extends State<HomeScreen> {
             caption: s.windowOpen,
             title: s.duaTitle,
             sub: s.duaSub,
-            timer: DayTimes.fmtDuration(w!.end - nowMin),
+            timer: toPrayer(Prayer.maghrib),
             timerCaption: s.toPrayerCaps[Prayer.maghrib.index],
             buttonLabel: s.markDua,
             onButton: () => app.markDone(TaskId.dua.name),
           ),
-        null => _StatusCenter(s: s, c: c, schedule: schedule, t: t, nowMin: nowMin),
+        null => _StatusCenter(s: s, c: c, schedule: schedule, t: t, nowSec: nowSec),
       };
     }
 
@@ -138,8 +139,24 @@ class _HomeScreenState extends State<HomeScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(kCities[app.city].name, style: JType.ui(12, color: c.faint)),
-                    Text(dateLine(s, now), style: JType.ui(12, color: c.faint)),
+                    GestureDetector(
+                      onTap: () => CityPicker.open(context),
+                      behavior: HitTestBehavior.opaque,
+                      child: Row(
+                        children: [
+                          Icon(Icons.place_outlined, size: 14, color: c.faint),
+                          const SizedBox(width: 3),
+                          Text(app.city.name, style: JType.ui(12, color: c.faint)),
+                          Icon(Icons.keyboard_arrow_down, size: 14, color: c.faint),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => app.dateGregorian = !app.dateGregorian,
+                      behavior: HitTestBehavior.opaque,
+                      child: Text(dateLine(s, now, app.dateGregorian),
+                          style: JType.ui(12, color: c.faint)),
+                    ),
                   ],
                 ),
                 Expanded(child: Center(child: center)),
@@ -156,10 +173,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// «Пятница · 19 мухаррама» — день недели + дата по хиджре.
-String dateLine(S s, DateTime now) {
+const _hijriMonthsRu = [
+  'мухаррама', 'сафара', 'раби аль-авваля', 'раби ас-сани', 'джумада аль-уля',
+  'джумада ас-сани', 'раджаба', 'шаабана', 'рамадана', 'шавваля', 'зуль-каады',
+  'зуль-хиджжи'
+];
+const _gregMonthsRu = [
+  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа',
+  'сентября', 'октября', 'ноября', 'декабря'
+];
+const _gregMonthsKz = [
+  'қаңтар', 'ақпан', 'наурыз', 'сәуір', 'мамыр', 'маусым', 'шілде', 'тамыз',
+  'қыркүйек', 'қазан', 'қараша', 'желтоқсан'
+];
+
+/// «Пятница · 19 мухаррама» (хиджра) или «Пятница · 5 июля» (григорианский).
+String dateLine(S s, DateTime now, bool gregorian) {
+  final wd = s.weekdays[now.weekday - 1];
+  if (gregorian) {
+    final months = s == S.kz ? _gregMonthsKz : _gregMonthsRu;
+    return '$wd · ${now.day} ${months[now.month - 1]}';
+  }
   final h = HijriCalendar.fromDate(now);
-  return '${s.weekdays[now.weekday - 1]} · ${h.hDay} ${s.hijriMonths[h.hMonth - 1]}';
+  final months = s == S.kz ? s.hijriMonths : _hijriMonthsRu;
+  return '$wd · ${h.hDay} ${months[h.hMonth - 1]}';
 }
 
 /// Цвета по актуальной теме (учитывает «системную»).
@@ -210,7 +247,7 @@ class _WindowCard extends StatelessWidget {
               textAlign: TextAlign.center, style: JType.ui(14, color: c.sub, h: 1.4)),
         ),
         const SizedBox(height: 28),
-        Text(timer, style: JType.timer(64, c.ink)),
+        Text(timer, style: JType.timer(56, c.ink)),
         Text(timerCaption.toLowerCase(), style: JType.ui(13, color: c.faint)),
         const SizedBox(height: 28),
         GestureDetector(
@@ -245,23 +282,25 @@ class _StatusCenter extends StatelessWidget {
       required this.c,
       required this.schedule,
       required this.t,
-      required this.nowMin});
+      required this.nowSec});
   final S s;
   final JColors c;
   final ScheduleService schedule;
   final DayTimes t;
-  final int nowMin;
+  final int nowSec;
 
   @override
   Widget build(BuildContext context) {
-    final done = allDone(t, (id) => AppScope.of(context).isDone(id.name));
+    final app = AppScope.of(context);
+    final nowMin = nowSec ~/ 60;
+    final done = allDone(t, (id) => app.isDone(id.name));
 
     // Режим «после азана»: удобно идущим в мечеть (джамаат через 10–20 мин).
     final called = justCalledPrayer(t, nowMin);
     final String caption, timer, subLine;
     if (called != null) {
       caption = s.afterAzanCaps[called.index];
-      timer = DayTimes.fmtDuration(nowMin - t.times[called]!);
+      timer = DayTimes.fmtHMS(nowSec - t.times[called]! * 60);
       final next = nextPrayer(t, nowMin);
       subLine = next == null
           ? ''
@@ -270,18 +309,17 @@ class _StatusCenter extends StatelessWidget {
       final next = nextPrayer(t, nowMin);
       if (next != null) {
         caption = s.toPrayerCaps[next.index];
-        timer = DayTimes.fmtDuration(t.times[next]! - nowMin);
+        timer = DayTimes.fmtHMS(t.times[next]! * 60 - nowSec);
         subLine = s.atTpl
             .replaceFirst('{p}', s.prayers[next.index])
             .replaceFirst('{t}', t.fmt(next));
       } else {
         // Иша прошла — считаем до завтрашнего Фаджра.
-        final app = AppScope.of(context);
-        final tomorrow = schedule.timesFor(
-            app.city, schedule.now().add(const Duration(days: 1)));
+        final tomorrow =
+            schedule.timesFor(app.city, schedule.now().add(const Duration(days: 1)));
         final fajr = tomorrow?.times[Prayer.fajr] ?? 0;
         caption = s.toPrayerCaps[Prayer.fajr.index];
-        timer = DayTimes.fmtDuration(24 * 60 - nowMin + fajr);
+        timer = DayTimes.fmtHMS(24 * 3600 - nowSec + fajr * 60);
         subLine = tomorrow == null
             ? ''
             : s.atTpl
@@ -307,7 +345,7 @@ class _StatusCenter extends StatelessWidget {
         ],
         Text(caption, style: JType.caption(c.gold)),
         const SizedBox(height: 6),
-        Text(timer, style: JType.timer(72, c.ink)),
+        Text(timer, style: JType.timer(64, c.ink)),
         Text(subLine, style: JType.ui(13, color: c.faint)),
         const SizedBox(height: 30),
         PrayerGrid(s: s, c: c, t: t, nowMin: nowMin, columns: 3),

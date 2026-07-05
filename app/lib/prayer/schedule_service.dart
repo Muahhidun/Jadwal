@@ -7,9 +7,8 @@ import 'schedule.dart';
 
 /// Источник времён молитв для UI.
 ///
-/// Порядок: кеш на устройстве → API ДУМК (год за один запрос) →
-/// астрономический расчёт (офлайн-запас). Какой источник в работе,
-/// видно в [source] — покажем в настройках для прозрачности.
+/// Порядок: кеш на устройстве → API ДУМК (год за один запрос по координатам) →
+/// астрономический расчёт (офлайн-запас). Какой источник в работе — в [source].
 class ScheduleService extends ChangeNotifier {
   ScheduleService(this._prefs, {DateTime Function()? now})
       : _now = now ?? DateTime.now;
@@ -18,60 +17,61 @@ class ScheduleService extends ChangeNotifier {
   final DateTime Function() _now;
 
   Map<String, List<int>>? _year;
-  int _loadedCity = -1;
+  String _loadedKey = '';
   int _loadedYear = -1;
   String source = '';
   bool _loading = false;
 
-  static String _key(int city, int year) => 'pt:$city:$year';
+  /// Ключ кеша по координатам (5 знаков ≈ метровая точность).
+  static String cityKey(double lat, double lng) =>
+      '${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}';
+  static String _prefsKey(String ck, int year) => 'pt:$ck:$year';
   static String _dateKey(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   DateTime now() => _now();
 
-  /// Времена на дату. null — данные ещё грузятся (подпишитесь на notify).
-  DayTimes? timesFor(int cityIndex, DateTime date) {
-    _ensure(cityIndex, date.year);
+  /// Времена на дату для города. Пока год не загружен — мгновенный
+  /// астрономический расчёт, чтобы UI не ждал сеть; после ответа ДУМК уточнится.
+  DayTimes? timesFor(City city, DateTime date) {
+    final ck = cityKey(city.lat, city.lng);
+    _ensure(city, date.year);
     final y = _year;
-    if (y == null || _loadedCity != cityIndex || _loadedYear != date.year) {
-      // Пока год не загружен — мгновенный астрономический расчёт,
-      // чтобы UI не ждал сеть; после загрузки таблиц ДУМК уточнится.
-      return calculateDayTimes(kCities[cityIndex], date);
+    if (y == null || _loadedKey != ck || _loadedYear != date.year) {
+      return calculateDayTimes(city, date);
     }
     final t = y[_dateKey(date)];
-    if (t == null) return calculateDayTimes(kCities[cityIndex], date);
+    if (t == null) return calculateDayTimes(city, date);
     return DayTimes(date: DateTime(date.year, date.month, date.day), times: {
       for (final (i, p) in Prayer.values.indexed) p: t[i],
     });
   }
 
-  Future<void> _ensure(int cityIndex, int year) async {
-    if (_loading || (_loadedCity == cityIndex && _loadedYear == year)) return;
+  Future<void> _ensure(City city, int year) async {
+    final ck = cityKey(city.lat, city.lng);
+    if (_loading || (_loadedKey == ck && _loadedYear == year)) return;
     _loading = true;
     try {
-      final cached = _prefs.getString(_key(cityIndex, year));
+      final cached = _prefs.getString(_prefsKey(ck, year));
       if (cached != null) {
-        _apply(cityIndex, year, cached, 'ДУМК (кеш)');
+        _apply(ck, year, cached, 'ДУМК (кеш)');
         return;
       }
-      final city = kCities[cityIndex];
       final data = await MuftyatApi.fetchYear(city.lat, city.lng, year);
-      final encoded = jsonEncode(data.map((k, v) => MapEntry(k, v)));
-      await _prefs.setString(_key(cityIndex, year), encoded);
-      _apply(cityIndex, year, encoded, 'ДУМК');
+      final encoded = jsonEncode(data);
+      await _prefs.setString(_prefsKey(ck, year), encoded);
+      _apply(ck, year, encoded, 'ДУМК');
     } catch (_) {
-      // Сети нет и кеша нет — остаёмся на расчёте; попробуем снова
-      // при следующем обращении.
       source = 'астрономический расчёт';
     } finally {
       _loading = false;
     }
   }
 
-  void _apply(int city, int year, String encoded, String src) {
+  void _apply(String ck, int year, String encoded, String src) {
     final raw = jsonDecode(encoded) as Map<String, dynamic>;
     _year = raw.map((k, v) => MapEntry(k, (v as List).cast<int>()));
-    _loadedCity = city;
+    _loadedKey = ck;
     _loadedYear = year;
     source = src;
     notifyListeners();
@@ -79,9 +79,9 @@ class ScheduleService extends ChangeNotifier {
 
   /// Для тестов: подложить данные без сети.
   @visibleForTesting
-  void preload(int city, int year, Map<String, List<int>> data, {String src = 'test'}) {
+  void preload(City city, int year, Map<String, List<int>> data, {String src = 'test'}) {
     _year = data;
-    _loadedCity = city;
+    _loadedKey = cityKey(city.lat, city.lng);
     _loadedYear = year;
     source = src;
   }

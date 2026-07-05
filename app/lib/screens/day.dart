@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../data/app_state.dart';
 import '../i18n/strings.dart';
-import '../prayer/city.dart';
 import '../prayer/schedule.dart';
 import '../prayer/schedule_service.dart';
 import '../prayer/windows.dart';
@@ -67,8 +66,13 @@ class DayScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(dateLine(s, now), style: JType.ui(13, color: c.sub)),
-                    Text(kCities[app.city].name, style: JType.ui(13, color: c.faint)),
+                    GestureDetector(
+                      onTap: () => app.dateGregorian = !app.dateGregorian,
+                      behavior: HitTestBehavior.opaque,
+                      child: Text(dateLine(s, now, app.dateGregorian),
+                          style: JType.ui(13, color: c.sub)),
+                    ),
+                    Text(app.city.name, style: JType.ui(13, color: c.faint)),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -120,7 +124,7 @@ class DayScreen extends StatelessWidget {
                       c: c,
                       onTap: () => app.markDone(TaskId.dua.name)),
                 const SizedBox(height: 24),
-                Text(_hijriMonthCaps(s, now), style: JType.caption(c.faint)),
+                Text(_monthCaps(s, now, app.dateGregorian), style: JType.caption(c.faint)),
                 const SizedBox(height: 12),
                 _Notebook(c: c),
                 const SizedBox(height: 10),
@@ -168,11 +172,8 @@ class DayScreen extends StatelessWidget {
       Navigator.of(context).push(MaterialPageRoute(
           fullscreenDialog: true, builder: (_) => ReaderScreen(collectionId: id)));
 
-  static String _hijriMonthCaps(S s, DateTime now) {
-    final line = dateLine(s, now); // «Пятница · 19 мухаррама»
-    final month = line.split(' ').last.toUpperCase();
-    return month;
-  }
+  static String _monthCaps(S s, DateTime now, bool gregorian) =>
+      dateLine(s, now, gregorian).split(' ').last.toUpperCase();
 }
 
 class _TimesRow extends StatelessWidget {
