@@ -1,17 +1,43 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:hijri/hijri_calendar.dart';
 import '../data/app_state.dart';
 import '../i18n/strings.dart';
+import '../prayer/city.dart';
 import '../prayer/schedule.dart';
+import '../prayer/schedule_service.dart';
+import '../prayer/windows.dart';
 import '../theme/tokens.dart';
 import 'day.dart';
 import 'reader.dart';
 
 /// Главный экран «одно дело» (README §2): показывает ровно одну актуальную
-/// вещь — открытое окно поклонения, час дуа или таймер до следующей молитвы.
-class HomeScreen extends StatelessWidget {
+/// вещь — открытое окно поклонения или таймер до следующей молитвы.
+/// Времена — реальные (ДУМК/расчёт), таймер живой.
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
-  static const schedule = DemoScheduleProvider();
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    // Обновление раз в 20 секунд достаточно для минутного таймера.
+    _ticker = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
 
   void _openDay(BuildContext context) {
     Navigator.of(context).push(PageRouteBuilder(
@@ -27,44 +53,73 @@ class HomeScreen extends StatelessWidget {
     ));
   }
 
+  void _openReader(BuildContext context, String collectionId) =>
+      Navigator.of(context).push(MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => ReaderScreen(collectionId: collectionId)));
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    final schedule = ScheduleScope.of(context);
     final s = S.of(app.lang);
     final c = jColorsOf(context);
-    final day = schedule.today();
-    final toMaghrib = day.minutesUntil(Prayer.maghrib);
+    final now = schedule.now();
+    final t = schedule.timesFor(app.city, now);
+    final nowMin = now.hour * 60 + now.minute;
 
-    final Widget center;
-    if (!app.isDone('evening')) {
-      center = _WindowCard(
-        s: s,
-        c: c,
-        caption: s.windowOpen,
-        title: s.eveningTitle,
-        sub: s.eveningSub,
-        timer: DaySchedule.fmtDuration(toMaghrib),
-        timerCaption: s.toMaghrib,
-        buttonLabel: s.read,
-        onButton: () => Navigator.of(context).push(MaterialPageRoute(
-            fullscreenDialog: true, builder: (_) => const ReaderScreen(collectionId: 'evening'))),
-        linkLabel: s.markOnly,
-        onLink: () => app.markDone('evening'),
-      );
-    } else if (day.isFriday && !app.isDone('dua')) {
-      center = _WindowCard(
-        s: s,
-        c: c,
-        caption: s.windowOpen,
-        title: s.duaTitle,
-        sub: s.duaSub,
-        timer: DaySchedule.fmtDuration(toMaghrib),
-        timerCaption: s.toMaghrib,
-        buttonLabel: s.markDua,
-        onButton: () => app.markDone('dua'),
-      );
+    Widget center;
+    if (t == null) {
+      center = CircularProgressIndicator(color: c.gold);
     } else {
-      center = _AllDone(s: s, c: c, day: day);
+      final w = currentWindow(t, nowMin, (id) => app.isDone(id.name));
+      center = switch (w?.id) {
+        TaskId.morning => _WindowCard(
+            c: c,
+            caption: s.windowOpen,
+            title: s.morningTitle,
+            sub: s.morningSub,
+            timer: DayTimes.fmtDuration(w!.end - nowMin),
+            timerCaption: s.toPrayerCaps[Prayer.sunrise.index],
+            buttonLabel: s.read,
+            onButton: () => _openReader(context, 'morning'),
+            linkLabel: s.markOnly,
+            onLink: () => app.markDone(TaskId.morning.name),
+          ),
+        TaskId.kahf => _WindowCard(
+            c: c,
+            caption: s.windowOpen,
+            title: s.kahfTitle,
+            sub: s.kahfSub,
+            timer: DayTimes.fmtDuration(w!.end - nowMin),
+            timerCaption: s.toPrayerCaps[Prayer.dhuhr.index],
+            buttonLabel: s.markKahf,
+            onButton: () => app.markDone(TaskId.kahf.name),
+          ),
+        TaskId.evening => _WindowCard(
+            c: c,
+            caption: s.windowOpen,
+            title: s.eveningTitle,
+            sub: s.eveningSub,
+            timer: DayTimes.fmtDuration(w!.end - nowMin),
+            timerCaption: s.toPrayerCaps[Prayer.maghrib.index],
+            buttonLabel: s.read,
+            onButton: () => _openReader(context, 'evening'),
+            linkLabel: s.markOnly,
+            onLink: () => app.markDone(TaskId.evening.name),
+          ),
+        TaskId.dua => _WindowCard(
+            c: c,
+            caption: s.windowOpen,
+            title: s.duaTitle,
+            sub: s.duaSub,
+            timer: DayTimes.fmtDuration(w!.end - nowMin),
+            timerCaption: s.toPrayerCaps[Prayer.maghrib.index],
+            buttonLabel: s.markDua,
+            onButton: () => app.markDone(TaskId.dua.name),
+          ),
+        null => _StatusCenter(s: s, c: c, schedule: schedule, t: t, nowMin: nowMin),
+      };
     }
 
     return Scaffold(
@@ -83,8 +138,8 @@ class HomeScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(cities[app.city], style: JType.ui(12, color: c.faint)),
-                    Text(_dateLine(app.lang), style: JType.ui(12, color: c.faint)),
+                    Text(kCities[app.city].name, style: JType.ui(12, color: c.faint)),
+                    Text(dateLine(s, now), style: JType.ui(12, color: c.faint)),
                   ],
                 ),
                 Expanded(child: Center(child: center)),
@@ -99,9 +154,12 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+}
 
-  static String _dateLine(String lang) =>
-      lang == 'kz' ? 'Жұма · 19 мухаррам' : 'Пятница · 19 мухаррама';
+/// «Пятница · 19 мухаррама» — день недели + дата по хиджре.
+String dateLine(S s, DateTime now) {
+  final h = HijriCalendar.fromDate(now);
+  return '${s.weekdays[now.weekday - 1]} · ${h.hDay} ${s.hijriMonths[h.hMonth - 1]}';
 }
 
 /// Цвета по актуальной теме (учитывает «системную»).
@@ -117,7 +175,6 @@ JColors jColorsOf(BuildContext context) {
 
 class _WindowCard extends StatelessWidget {
   const _WindowCard({
-    required this.s,
     required this.c,
     required this.caption,
     required this.title,
@@ -130,7 +187,6 @@ class _WindowCard extends StatelessWidget {
     this.onLink,
   });
 
-  final S s;
   final JColors c;
   final String caption, title, sub, timer, timerCaption, buttonLabel;
   final VoidCallback onButton;
@@ -148,11 +204,14 @@ class _WindowCard extends StatelessWidget {
             textAlign: TextAlign.center,
             style: JType.ui(38, w: FontWeight.w800, color: c.ink, h: 1.1)),
         const SizedBox(height: 10),
-        Text(sub,
-            textAlign: TextAlign.center, style: JType.ui(14, color: c.sub, h: 1.4)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(sub,
+              textAlign: TextAlign.center, style: JType.ui(14, color: c.sub, h: 1.4)),
+        ),
         const SizedBox(height: 28),
         Text(timer, style: JType.timer(64, c.ink)),
-        Text(timerCaption, style: JType.ui(13, color: c.faint)),
+        Text(timerCaption.toLowerCase(), style: JType.ui(13, color: c.faint)),
         const SizedBox(height: 28),
         GestureDetector(
           onTap: onButton,
@@ -178,66 +237,125 @@ class _WindowCard extends StatelessWidget {
   }
 }
 
-class _AllDone extends StatelessWidget {
-  const _AllDone({required this.s, required this.c, required this.day});
+/// Состояние вне окон: таймер до следующей молитвы (или «после азана» —
+/// первые минуты после наступления времени), сетка времён, бейдж «всё выполнено».
+class _StatusCenter extends StatelessWidget {
+  const _StatusCenter(
+      {required this.s,
+      required this.c,
+      required this.schedule,
+      required this.t,
+      required this.nowMin});
   final S s;
   final JColors c;
-  final DaySchedule day;
+  final ScheduleService schedule;
+  final DayTimes t;
+  final int nowMin;
 
   @override
   Widget build(BuildContext context) {
-    final toMaghrib = day.minutesUntil(Prayer.maghrib);
+    final done = allDone(t, (id) => AppScope.of(context).isDone(id.name));
+
+    // Режим «после азана»: удобно идущим в мечеть (джамаат через 10–20 мин).
+    final called = justCalledPrayer(t, nowMin);
+    final String caption, timer, subLine;
+    if (called != null) {
+      caption = s.afterAzanCaps[called.index];
+      timer = DayTimes.fmtDuration(nowMin - t.times[called]!);
+      final next = nextPrayer(t, nowMin);
+      subLine = next == null
+          ? ''
+          : s.atTpl.replaceFirst('{p}', s.prayers[next.index]).replaceFirst('{t}', t.fmt(next));
+    } else {
+      final next = nextPrayer(t, nowMin);
+      if (next != null) {
+        caption = s.toPrayerCaps[next.index];
+        timer = DayTimes.fmtDuration(t.times[next]! - nowMin);
+        subLine = s.atTpl
+            .replaceFirst('{p}', s.prayers[next.index])
+            .replaceFirst('{t}', t.fmt(next));
+      } else {
+        // Иша прошла — считаем до завтрашнего Фаджра.
+        final app = AppScope.of(context);
+        final tomorrow = schedule.timesFor(
+            app.city, schedule.now().add(const Duration(days: 1)));
+        final fajr = tomorrow?.times[Prayer.fajr] ?? 0;
+        caption = s.toPrayerCaps[Prayer.fajr.index];
+        timer = DayTimes.fmtDuration(24 * 60 - nowMin + fajr);
+        subLine = tomorrow == null
+            ? ''
+            : s.atTpl
+                .replaceFirst('{p}', s.prayers[Prayer.fajr.index])
+                .replaceFirst('{t}', tomorrow.fmt(Prayer.fajr));
+      }
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-          decoration: BoxDecoration(
-            border: Border.all(color: c.green),
-            borderRadius: BorderRadius.circular(100),
+        if (done) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border.all(color: c.green),
+              borderRadius: BorderRadius.circular(100),
+            ),
+            child: Text('✓ ${s.allDone}',
+                style: JType.ui(13, w: FontWeight.w700, color: c.green)),
           ),
-          child: Text('✓ ${s.allDone}',
-              style: JType.ui(13, w: FontWeight.w700, color: c.green)),
-        ),
-        const SizedBox(height: 30),
-        Text(s.nextPrayerCaps, style: JType.caption(c.gold)),
+          const SizedBox(height: 30),
+        ],
+        Text(caption, style: JType.caption(c.gold)),
         const SizedBox(height: 6),
-        Text(DaySchedule.fmtDuration(toMaghrib), style: JType.timer(72, c.ink)),
-        Text(s.maghribAt, style: JType.ui(13, color: c.faint)),
+        Text(timer, style: JType.timer(72, c.ink)),
+        Text(subLine, style: JType.ui(13, color: c.faint)),
         const SizedBox(height: 30),
-        _PrayerGrid(s: s, c: c, day: day, columns: 3),
+        PrayerGrid(s: s, c: c, t: t, nowMin: nowMin, columns: 3),
       ],
     );
   }
 }
 
-class _PrayerGrid extends StatelessWidget {
-  const _PrayerGrid({required this.s, required this.c, required this.day, required this.columns});
+class PrayerGrid extends StatelessWidget {
+  const PrayerGrid(
+      {super.key,
+      required this.s,
+      required this.c,
+      required this.t,
+      required this.nowMin,
+      required this.columns});
   final S s;
   final JColors c;
-  final DaySchedule day;
+  final DayTimes t;
+  final int nowMin;
   final int columns;
+
+  /// Выделяем следующую молитву (или Фаджр, если день закончился).
+  Prayer get highlighted => nextPrayer(t, nowMin) ?? Prayer.fajr;
 
   @override
   Widget build(BuildContext context) {
+    final hl = highlighted;
     final cells = [
       for (final (i, p) in Prayer.values.indexed)
         Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: p == Prayer.maghrib ? c.gdim : null,
-            border: Border.all(color: p == Prayer.maghrib ? c.gold : c.hair),
+            color: p == hl ? c.gdim : null,
+            border: Border.all(color: p == hl ? c.gold : c.hair),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(s.prayers[i],
-                  style: JType.ui(11, color: p == Prayer.maghrib ? c.gold : c.faint)),
+              FittedBox(
+                  child: Text(s.prayers[i],
+                      style: JType.ui(11, color: p == hl ? c.gold : c.faint))),
               const SizedBox(height: 2),
-              Text(day.fmt(p),
-                  style: JType.ui(14,
-                      w: FontWeight.w700,
-                      color: p == Prayer.maghrib ? c.gold : c.sub)),
+              FittedBox(
+                  child: Text(t.fmt(p),
+                      style: JType.ui(14,
+                          w: FontWeight.w700, color: p == hl ? c.gold : c.sub))),
             ],
           ),
         ),
@@ -263,10 +381,10 @@ class _AlreadyLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final done = <String>[
-      if (app.isDone('morning')) s.un[0],
-      if (app.isDone('kahf')) s.un[1],
-      if (app.isDone('evening')) s.un[2],
-      if (app.isDone('dua')) s.un[3],
+      if (app.isDone(TaskId.morning.name)) s.un[0],
+      if (app.isDone(TaskId.kahf.name)) s.un[1],
+      if (app.isDone(TaskId.evening.name)) s.un[2],
+      if (app.isDone(TaskId.dua.name)) s.un[3],
     ];
     if (done.isEmpty) return const SizedBox.shrink();
     return Text('${s.already} ${done.map((d) => '$d ✓').join(' · ')}',

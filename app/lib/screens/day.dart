@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import '../data/app_state.dart';
 import '../i18n/strings.dart';
+import '../prayer/city.dart';
 import '../prayer/schedule.dart';
+import '../prayer/schedule_service.dart';
+import '../prayer/windows.dart';
 import '../theme/tokens.dart';
 import 'home.dart';
 import 'reader.dart';
@@ -14,9 +17,21 @@ class DayScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    final schedule = ScheduleScope.of(context);
     final s = S.of(app.lang);
     final c = jColorsOf(context);
-    final day = HomeScreen.schedule.today();
+    final now = schedule.now();
+    final nowMin = now.hour * 60 + now.minute;
+    final t = schedule.timesFor(app.city, now);
+    if (t == null) {
+      return Scaffold(
+          backgroundColor: c.bg,
+          body: Center(child: CircularProgressIndicator(color: c.gold)));
+    }
+    final next = nextPrayer(t, nowMin);
+    final windows = windowsFor(t);
+    final eveningOpen = windows
+        .any((w) => w.id == TaskId.evening && w.contains(nowMin));
 
     return Scaffold(
       backgroundColor: c.bg,
@@ -26,7 +41,7 @@ class DayScreen extends StatelessWidget {
           if ((d.primaryVelocity ?? 0) > 300) Navigator.of(context).pop();
         },
         child: SafeArea(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -52,83 +67,65 @@ class DayScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(_dayTitle(app.lang), style: JType.ui(13, color: c.sub)),
-                    Text(cities[app.city], style: JType.ui(13, color: c.faint)),
+                    Text(dateLine(s, now), style: JType.ui(13, color: c.sub)),
+                    Text(kCities[app.city].name, style: JType.ui(13, color: c.faint)),
                   ],
                 ),
                 const SizedBox(height: 20),
-                Center(
-                  child: Column(
-                    children: [
-                      Text(s.nextPrayerCaps, style: JType.caption(c.gold)),
-                      const SizedBox(height: 4),
-                      Text(DaySchedule.fmtDuration(day.minutesUntil(Prayer.maghrib)),
-                          style: JType.timer(52, c.ink)),
-                      Text(s.maghribAt, style: JType.ui(12, color: c.faint)),
-                    ],
+                if (next != null)
+                  Center(
+                    child: Column(
+                      children: [
+                        Text(s.toPrayerCaps[next.index], style: JType.caption(c.gold)),
+                        const SizedBox(height: 4),
+                        Text(DayTimes.fmtDuration(t.times[next]! - nowMin),
+                            style: JType.timer(52, c.ink)),
+                        Text(
+                            s.atTpl
+                                .replaceFirst('{p}', s.prayers[next.index])
+                                .replaceFirst('{t}', t.fmt(next)),
+                            style: JType.ui(12, color: c.faint)),
+                      ],
+                    ),
                   ),
-                ),
                 const SizedBox(height: 20),
-                Row(
-                  children: [
-                    for (final (i, p) in Prayer.values.indexed) ...[
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            color: p == Prayer.maghrib ? c.gdim : null,
-                            border: Border.all(
-                                color: p == Prayer.maghrib ? c.gold : c.hair),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Column(
-                            children: [
-                              FittedBox(
-                                child: Text(s.prayers[i],
-                                    style: JType.ui(10,
-                                        color:
-                                            p == Prayer.maghrib ? c.gold : c.faint)),
-                              ),
-                              const SizedBox(height: 2),
-                              FittedBox(
-                                child: Text(day.fmt(p),
-                                    style: JType.ui(12,
-                                        w: FontWeight.w700,
-                                        color: p == Prayer.maghrib ? c.gold : c.sub)),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (p != Prayer.isha) const SizedBox(width: 6),
-                    ],
-                  ],
-                ),
+                _TimesRow(s: s, c: c, t: t, nowMin: nowMin),
                 const SizedBox(height: 24),
                 Text(s.todayCaps, style: JType.caption(c.faint)),
                 const SizedBox(height: 10),
                 _TaskRow(
                     label: s.morningTitle,
-                    done: app.isDone('morning'),
+                    done: app.isDone(TaskId.morning.name),
                     c: c,
                     onTap: () => _openReader(context, 'morning')),
-                _TaskRow(label: s.kahfTitle, done: app.isDone('kahf'), c: c),
+                if (t.isFriday)
+                  _TaskRow(
+                      label: s.kahfTitle,
+                      done: app.isDone(TaskId.kahf.name),
+                      c: c,
+                      onTap: () => app.markDone(TaskId.kahf.name)),
                 _TaskRow(
                     label: s.eveningTitle,
-                    done: app.isDone('evening'),
+                    done: app.isDone(TaskId.evening.name),
                     c: c,
-                    active: !app.isDone('evening'),
-                    trailing:
-                        '${s.still} ${DaySchedule.fmtDuration(day.minutesUntil(Prayer.maghrib))}',
+                    active: eveningOpen && !app.isDone(TaskId.evening.name),
+                    trailing: eveningOpen
+                        ? '${s.still} ${DayTimes.fmtDuration(t.times[Prayer.maghrib]! - nowMin)}'
+                        : null,
                     onTap: () => _openReader(context, 'evening')),
-                _TaskRow(label: s.duaTitle, done: app.isDone('dua'), c: c),
+                if (t.isFriday)
+                  _TaskRow(
+                      label: s.duaTitle,
+                      done: app.isDone(TaskId.dua.name),
+                      c: c,
+                      onTap: () => app.markDone(TaskId.dua.name)),
                 const SizedBox(height: 24),
-                Text(s.month, style: JType.caption(c.faint)),
+                Text(_hijriMonthCaps(s, now), style: JType.caption(c.faint)),
                 const SizedBox(height: 12),
                 _Notebook(c: c),
                 const SizedBox(height: 10),
                 _Legend(s: s, c: c),
-                const Spacer(),
+                const SizedBox(height: 28),
                 Row(
                   children: [
                     Expanded(
@@ -171,8 +168,53 @@ class DayScreen extends StatelessWidget {
       Navigator.of(context).push(MaterialPageRoute(
           fullscreenDialog: true, builder: (_) => ReaderScreen(collectionId: id)));
 
-  static String _dayTitle(String lang) =>
-      lang == 'kz' ? 'Жұма, 19 мухаррам' : 'Пятница, 19 мухаррама';
+  static String _hijriMonthCaps(S s, DateTime now) {
+    final line = dateLine(s, now); // «Пятница · 19 мухаррама»
+    final month = line.split(' ').last.toUpperCase();
+    return month;
+  }
+}
+
+class _TimesRow extends StatelessWidget {
+  const _TimesRow({required this.s, required this.c, required this.t, required this.nowMin});
+  final S s;
+  final JColors c;
+  final DayTimes t;
+  final int nowMin;
+
+  @override
+  Widget build(BuildContext context) {
+    final hl = nextPrayer(t, nowMin) ?? Prayer.fajr;
+    return Row(
+      children: [
+        for (final (i, p) in Prayer.values.indexed) ...[
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: p == hl ? c.gdim : null,
+                border: Border.all(color: p == hl ? c.gold : c.hair),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                children: [
+                  FittedBox(
+                      child: Text(s.prayers[i],
+                          style: JType.ui(10, color: p == hl ? c.gold : c.faint))),
+                  const SizedBox(height: 2),
+                  FittedBox(
+                      child: Text(t.fmt(p),
+                          style: JType.ui(12,
+                              w: FontWeight.w700, color: p == hl ? c.gold : c.sub))),
+                ],
+              ),
+            ),
+          ),
+          if (p != Prayer.isha) const SizedBox(width: 6),
+        ],
+      ],
+    );
+  }
 }
 
 class _TaskRow extends StatelessWidget {

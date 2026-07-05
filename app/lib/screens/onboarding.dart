@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/app_state.dart';
 import '../i18n/strings.dart';
+import '../prayer/city.dart';
 import '../theme/tokens.dart';
 import 'home.dart';
 
@@ -109,13 +110,13 @@ class _CityStep extends StatelessWidget {
           const SizedBox(height: 16),
           Expanded(
             child: ListView.separated(
-              itemCount: cities.length,
+              itemCount: kCities.length,
               separatorBuilder: (_, _) => Divider(color: c.hair, height: 1),
               itemBuilder: (_, i) => InkWell(
                 onTap: () => onPick(i),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Text(cities[i], style: JType.ui(16, color: c.ink)),
+                  child: Text(kCities[i].name, style: JType.ui(16, color: c.ink)),
                 ),
               ),
             ),

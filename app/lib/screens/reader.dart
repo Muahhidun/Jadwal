@@ -3,9 +3,9 @@ import '../data/adhkar.dart';
 import '../data/app_state.dart';
 import '../i18n/strings.dart';
 import '../prayer/schedule.dart';
+import '../prayer/schedule_service.dart';
 import '../theme/tokens.dart';
 import 'celebration.dart';
-import 'home.dart';
 
 /// Чтение зикров — «книга» (README §4). Фон-«бумага» в обеих темах,
 /// один зикр на экран, сегментированный прогресс. Никаких счётчиков нажатий.
@@ -49,11 +49,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
     final z = col.items[idx];
     final last = idx == col.items.length - 1;
-    final day = HomeScreen.schedule.today();
+    final schedule = ScheduleScope.of(context);
+    final now = schedule.now();
+    final nowMin = now.hour * 60 + now.minute;
+    final t = schedule.timesFor(app.city, now);
+    final endPrayer =
+        widget.collectionId == 'morning' ? Prayer.sunrise : Prayer.maghrib;
     final title = widget.collectionId == 'morning' ? s.readerMorning : s.readerEvening;
     final timerCaption = widget.collectionId == 'morning' ? s.toSunrise : s.toMaghrib;
-    final remaining = DaySchedule.fmtDuration(day.minutesUntil(
-        widget.collectionId == 'morning' ? Prayer.sunrise : Prayer.maghrib));
+    final remainingMin = t == null ? 0 : t.times[endPrayer]! - nowMin;
+    final remaining = DayTimes.fmtDuration(remainingMin);
 
     return Scaffold(
       backgroundColor: JPaper.bg,
@@ -76,8 +81,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       children: [
                         Text(title, style: JType.caption(JPaper.accent)),
                         const SizedBox(height: 2),
-                        Text('$timerCaption · $remaining',
-                            style: JType.ui(11, color: JPaper.source)),
+                        if (remainingMin > 0)
+                          Text('$timerCaption · $remaining',
+                              style: JType.ui(11, color: JPaper.source)),
                       ],
                     ),
                   ),

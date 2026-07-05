@@ -66,8 +66,11 @@ class S {
       back,
       already,
       still,
-      repeatTimes;
-  final List<String> prayers, un;
+      repeatTimes,
+      kahfSub,
+      markKahf,
+      atTpl;
+  final List<String> prayers, un, weekdays, hijriMonths, toPrayerCaps, afterAzanCaps;
   final List<Quote> quotes;
 
   const S({
@@ -132,8 +135,15 @@ class S {
     required this.already,
     required this.still,
     required this.repeatTimes,
+    required this.kahfSub,
+    required this.markKahf,
+    required this.atTpl,
     required this.prayers,
     required this.un,
+    required this.weekdays,
+    required this.hijriMonths,
+    required this.toPrayerCaps,
+    required this.afterAzanCaps,
     required this.quotes,
   });
 
@@ -200,8 +210,15 @@ class S {
     already: 'СЕГОДНЯ УЖЕ:',
     still: 'ещё',
     repeatTimes: 'ПРОИЗНОСИТСЯ {n} РАЗА',
+    kahfSub: 'пятница · до Джума',
+    markKahf: 'Прочитал ✓',
+    atTpl: '{p} в {t}',
     prayers: ['Фаджр', 'Восход', 'Зухр', 'Аср', 'Магриб', 'Иша'],
     un: ['УТРЕННИЕ', 'АЛЬ-КАХФ', 'ВЕЧЕРНИЕ', 'ДУА'],
+    weekdays: ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'],
+    hijriMonths: ['мухаррама', 'сафара', 'раби аль-авваля', 'раби ас-сани', 'джумада аль-уля', 'джумада ас-сани', 'раджаба', 'шаабана', 'рамадана', 'шавваля', 'зуль-каады', 'зуль-хиджжи'],
+    toPrayerCaps: ['ДО ФАДЖРА', 'ДО ВОСХОДА', 'ДО ЗУХРА', 'ДО АСРА', 'ДО МАГРИБА', 'ДО ИША'],
+    afterAzanCaps: ['ПОСЛЕ АЗАНА ФАДЖРА', 'ПОСЛЕ ВОСХОДА', 'ПОСЛЕ АЗАНА ЗУХРА', 'ПОСЛЕ АЗАНА АСРА', 'ПОСЛЕ АЗАНА МАГРИБА', 'ПОСЛЕ АЗАНА ИША'],
     quotes: [
       Quote('«Самое любимое дело пред Аллахом — наиболее постоянное, даже если оно мало»',
           'аль-Бухари, 6464'),
@@ -274,8 +291,15 @@ class S {
     already: 'БҮГІН:',
     still: 'тағы',
     repeatTimes: '{n} РЕТ АЙТЫЛАДЫ',
+    kahfSub: 'жұма · жұма намазына дейін',
+    markKahf: 'Оқыдым ✓',
+    atTpl: '{p} {t}',
     prayers: ['Таң', 'Күн шығуы', 'Бесін', 'Екінті', 'Ақшам', 'Құптан'],
     un: ['ТАҢҒЫ', 'ӘЛ-КӘҺФ', 'КЕШКІ', 'ДҰҒА'],
+    weekdays: ['Дүйсенбі', 'Сейсенбі', 'Сәрсенбі', 'Бейсенбі', 'Жұма', 'Сенбі', 'Жексенбі'],
+    hijriMonths: ['мухаррам', 'сафар', 'рабиғул-әууәл', 'рабиғус-сани', 'жумадәл-үлә', 'жумадас-сани', 'ражап', 'шағбан', 'рамазан', 'шәууәл', 'зулқағда', 'зулхижжа'],
+    toPrayerCaps: ['ТАҢҒА ДЕЙІН', 'КҮН ШЫҒУЫНА ДЕЙІН', 'БЕСІНГЕ ДЕЙІН', 'ЕКІНТІГЕ ДЕЙІН', 'АҚШАМҒА ДЕЙІН', 'ҚҰПТАНҒА ДЕЙІН'],
+    afterAzanCaps: ['ТАҢ АЗАНЫНАН КЕЙІН', 'КҮН ШЫҚҚАННАН КЕЙІН', 'БЕСІН АЗАНЫНАН КЕЙІН', 'ЕКІНТІ АЗАНЫНАН КЕЙІН', 'АҚШАМ АЗАНЫНАН КЕЙІН', 'ҚҰПТАН АЗАНЫНАН КЕЙІН'],
     quotes: [
       Quote('«Аллаһқа істердің ең сүйіктісі — аз болса да, үзбей жасалғаны»', 'әл-Бухари, 6464'),
       Quote('«Раббысын еске алатын адам мен еске алмайтын адам — тірі мен өлі сияқты»',
@@ -286,5 +310,3 @@ class S {
 
   static S of(String lang) => lang == 'kz' ? kz : ru;
 }
-
-const cities = ['Алматы', 'Астана', 'Шымкент', 'Караганда', 'Актобе', 'Тараз'];
