@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#e8e6df;font-family:Manrope,system-ui,sans-serif}
+@keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes dayup{from{transform:translateY(100%);filter:blur(10px)}60%{filter:blur(4px)}to{transform:none;filter:blur(0)}}
+@keyframes pop{0%{transform:scale(.6);opacity:0}70%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
+@keyframes hintbounce{0%,72%,100%{transform:none}78%{transform:translateY(-8px)}84%{transform:none}90%{transform:translateY(-4px)}96%{transform:none}}
+@keyframes confetti{0%{transform:translate(0,0) rotate(0deg);opacity:1}100%{transform:translate(var(--dx),var(--dy)) rotate(560deg);opacity:0}}
+@keyframes flydown{0%,55%{transform:translate(0,0) scale(1);opacity:1}100%{transform:translate(0,236px) scale(.22);opacity:0}}
+@keyframes landpop{0%,82%{transform:scale(.5);opacity:0}92%{transform:scale(1.25);opacity:1}100%{transform:scale(1);opacity:1}}
+.jw-input::placeholder{color:#9aa49b;opacity:.7}
+.jw-input{outline:none}
+</style>
+</helmet>
+
+<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:16px;padding:36px 0 70px">
+<div style="font-size:12px;color:#8b887e;display:flex;gap:14px;align-items:center">
+  <span>Jadwal · демо: пятница, 19 мухаррама, 20:11</span>
+  <span onClick="{{reset}}" style="cursor:pointer;text-decoration:underline;color:#6b685e">начать заново</span>
+</div>
+
+<!-- PHONE -->
+<div style="width:390px;height:844px;border-radius:46px;overflow:hidden;position:relative;box-shadow:0 30px 90px rgba(20,25,20,.35),0 0 0 10px #17181a;--bg:{{c.bg}};--ink:{{c.ink}};--sub:{{c.sub}};--faint:{{c.faint}};--hair:{{c.hair}};--gold:{{c.gold}};--green:{{c.green}};--gdim:{{c.gdim}};--red:{{c.red}};--card:{{c.card}};--btnbg:{{c.btnbg}};--btnink:{{c.btnink}};background:var(--bg);color:var(--ink)">
+
+<!-- ============ ONBOARDING: LANGUAGE ============ -->
+<sc-if value="{{ sLang }}" hint-placeholder-val="{{ true }}">
+<div data-screen-label="Онбординг · язык" style="position:absolute;inset:0;display:flex;flex-direction:column;background:#14241d;color:#ece9df;animation:rise .35s ease both;padding:0 28px">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;text-align:center">
+    <div style="font-family:Amiri,serif;font-size:44px;color:#c99a3f;line-height:1">جدول</div>
+    <div style="font-size:30px;font-weight:800;letter-spacing:-.01em;margin-top:10px">Jadwal</div>
+    <div style="font-size:13.5px;color:#9aa49b;margin-top:8px;line-height:1.5">ғибадат серігі · ассистент поклонения</div>
+  </div>
+  <div style="padding-bottom:64px;display:flex;flex-direction:column;gap:12px">
+    <div style="font-size:11px;letter-spacing:.14em;font-weight:700;color:#6f7a72;text-align:center;margin-bottom:4px">ТІЛ · ЯЗЫК</div>
+    <div onClick="{{pickKz}}" style="background:#1d2f26;border:1.5px solid #2a3a30;border-radius:16px;padding:18px 20px;font-size:16px;font-weight:700;text-align:center;cursor:pointer">Қазақша</div>
+    <div onClick="{{pickRu}}" style="background:#1d2f26;border:1.5px solid #2a3a30;border-radius:16px;padding:18px 20px;font-size:16px;font-weight:700;text-align:center;cursor:pointer">Русский</div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ ONBOARDING: CITY ============ -->
+<sc-if value="{{ sCity }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Онбординг · город" style="position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);animation:rise .35s ease both;padding:0 28px">
+  <div style="padding-top:70px">
+    <div style="font-size:11px;letter-spacing:.14em;font-weight:700;color:var(--gold)">{{ t.step }} 1 / 3</div>
+    <div style="font-size:27px;font-weight:800;letter-spacing:-.01em;margin-top:10px">{{ t.cityTitle }}</div>
+    <div style="font-size:13.5px;color:var(--sub);margin-top:8px;line-height:1.55">{{ t.citySub }}</div>
+  </div>
+  <div onClick="{{geo}}" style="margin-top:26px;border:1.5px solid var(--gold);border-radius:14px;padding:15px 18px;display:flex;align-items:center;gap:10px;cursor:pointer">
+    <div style="width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 4px rgba(201,154,63,.2)"></div>
+    <div style="font-size:14.5px;font-weight:700;color:var(--gold)">{{ t.geo }}</div>
+  </div>
+  <div style="margin-top:22px;display:flex;flex-direction:column">
+    <sc-for list="{{ cities }}" as="ct" hint-placeholder-count="6">
+      <div onClick="{{ ct.pick }}" style="display:flex;justify-content:space-between;align-items:center;padding:15px 4px;border-bottom:1px solid var(--hair);cursor:pointer">
+        <div style="font-size:15px;font-weight:600;color:{{ ct.color }}">{{ ct.name }}</div>
+        <div style="font-size:14px;color:{{ ct.mark }}">✓</div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ ONBOARDING: NOTIFICATIONS ============ -->
+<sc-if value="{{ sNotif }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Онбординг · уведомления" style="position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);animation:rise .35s ease both;padding:0 28px">
+  <div style="padding-top:70px">
+    <div style="font-size:11px;letter-spacing:.14em;font-weight:700;color:var(--gold)">{{ t.step }} 2 / 3</div>
+    <div style="font-size:27px;font-weight:800;letter-spacing:-.01em;margin-top:10px">{{ t.notifTitle }}</div>
+    <div style="font-size:13.5px;color:var(--sub);margin-top:8px;line-height:1.6">{{ t.notifSub }}</div>
+  </div>
+  <div style="margin-top:34px;background:var(--card);border:1px solid var(--hair);border-radius:18px;padding:14px 16px;box-shadow:0 8px 30px rgba(0,0,0,.12)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <div style="width:22px;height:22px;border-radius:6px;background:#14241d;color:#c99a3f;display:flex;align-items:center;justify-content:center;font-family:Amiri,serif;font-size:13px">ج</div>
+      <div style="font-size:12px;font-weight:700">Jadwal</div>
+      <div style="margin-left:auto;font-size:11px;color:var(--faint)">{{ t.now }}</div>
+    </div>
+    <div style="font-size:13.5px;font-weight:700;margin-bottom:3px">{{ t.notifDemoTitle }}</div>
+    <div style="font-size:12.5px;color:var(--sub);line-height:1.5">{{ t.notifDemoBody }}</div>
+  </div>
+  <div style="margin-top:auto;padding-bottom:44px;display:flex;flex-direction:column;gap:10px">
+    <div onClick="{{allow}}" style="background:var(--btnbg);color:var(--btnink);border-radius:100px;padding:16px 0;text-align:center;font-weight:700;font-size:15px;cursor:pointer">{{ t.allow }}</div>
+    <div onClick="{{allow}}" style="padding:12px 0;text-align:center;font-size:13.5px;color:var(--faint);cursor:pointer">{{ t.later }}</div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ ONBOARDING: THEME ============ -->
+<sc-if value="{{ sTheme }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Онбординг · тема" style="position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);animation:rise .35s ease both;padding:0 28px">
+  <div style="padding-top:70px">
+    <div style="font-size:11px;letter-spacing:.14em;font-weight:700;color:var(--gold)">{{ t.step }} 3 / 3</div>
+    <div style="font-size:27px;font-weight:800;letter-spacing:-.01em;margin-top:10px">{{ t.themeTitle }}</div>
+  </div>
+  <div style="margin-top:30px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+    <sc-for list="{{ themes }}" as="th" hint-placeholder-count="3">
+      <div onClick="{{ th.pick }}" style="border:2px solid {{ th.border }};border-radius:16px;padding:8px;cursor:pointer">
+        <div style="height:92px;border-radius:10px;background:{{ th.swatch }};border:1px solid var(--hair);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px">
+          <div style="width:34px;height:7px;border-radius:4px;background:{{ th.line1 }}"></div>
+          <div style="width:22px;height:7px;border-radius:4px;background:{{ th.line2 }}"></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;text-align:center;margin-top:8px;color:{{ th.label }}">{{ th.name }}</div>
+      </div>
+    </sc-for>
+  </div>
+  <div style="margin-top:auto;padding-bottom:44px">
+    <div onClick="{{toPoster}}" style="background:var(--btnbg);color:var(--btnink);border-radius:100px;padding:16px 0;text-align:center;font-weight:700;font-size:15px;cursor:pointer">{{ t.next }}</div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ ONBOARDING: POSTER ============ -->
+<sc-if value="{{ sPoster }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Онбординг · постер" style="position:absolute;inset:0;display:flex;flex-direction:column;background:#14241d;color:#ece9df;animation:rise .5s ease both;padding:0 32px">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;text-align:center">
+    <div style="font-family:Amiri,serif;font-size:26px;color:#c99a3f;line-height:1.8" dir="rtl" lang="ar">فَاذْكُرُونِي أَذْكُرْكُمْ</div>
+    <div style="font-size:13px;color:#9aa49b;margin-top:6px">{{ t.posterAyat }}</div>
+    <div style="font-size:11.5px;color:#6f7a72;margin-top:4px">{{ t.posterAyatSrc }}</div>
+    <div style="width:36px;height:1.5px;background:#c99a3f;margin:34px auto"></div>
+    <div style="font-family:Literata,Georgia,serif;font-size:23px;line-height:1.55;font-weight:400">{{ t.posterQuote }}</div>
+    <div style="font-size:12px;color:#9aa49b;margin-top:16px">{{ t.posterSrc }}</div>
+  </div>
+  <div style="padding-bottom:56px">
+    <div onClick="{{toHome}}" style="background:#ece9df;color:#14241d;border-radius:100px;padding:17px 0;text-align:center;font-weight:700;font-size:16px;cursor:pointer">{{ t.start }}</div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ HOME ============ -->
+<sc-if value="{{ sHome }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Главный" style="position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);animation:rise .35s ease both">
+  <div style="padding:26px 26px 0;display:flex;justify-content:space-between;font-size:12px;color:var(--faint)">
+    <div>{{ cityName }}</div>
+    <div>{{ t.dateLine }}</div>
+  </div>
+
+  <!-- focus: evening -->
+  <sc-if value="{{ focusEvening }}" hint-placeholder-val="{{ true }}">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 30px;text-align:center">
+    <div style="font-size:12px;letter-spacing:.18em;font-weight:600;color:var(--gold);margin-bottom:22px">{{ t.windowOpen }}</div>
+    <div style="font-size:38px;line-height:1.12;font-weight:800;letter-spacing:-.01em;margin-bottom:16px">{{ t.eveningTitle }}</div>
+    <div style="font-size:14px;color:var(--sub);line-height:1.5">{{ t.eveningSub }}</div>
+    <div style="font-size:64px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin:32px 0 6px">0:42</div>
+    <div style="font-size:13px;color:var(--faint);margin-bottom:40px">{{ t.toMaghrib }}</div>
+    <div onClick="{{openReader}}" style="background:var(--btnbg);color:var(--btnink);border-radius:100px;padding:17px 0;font-weight:700;font-size:16px;cursor:pointer">{{ t.read }}</div>
+    <div onClick="{{markEvening}}" style="margin-top:12px;font-size:13px;color:var(--faint);padding:10px;cursor:pointer">{{ t.markOnly }}</div>
+  </div>
+  </sc-if>
+
+  <!-- focus: dua hour -->
+  <sc-if value="{{ focusDua }}" hint-placeholder-val="{{ false }}">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 30px;text-align:center">
+    <div style="font-size:12px;letter-spacing:.18em;font-weight:600;color:var(--gold);margin-bottom:22px">{{ t.windowOpen }}</div>
+    <div style="font-size:38px;line-height:1.12;font-weight:800;letter-spacing:-.01em;margin-bottom:16px">{{ t.duaTitle }}</div>
+    <div style="font-size:14px;color:var(--sub);line-height:1.6;padding:0 10px">{{ t.duaSub }}</div>
+    <div style="font-size:64px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin:32px 0 6px">0:42</div>
+    <div style="font-size:13px;color:var(--faint);margin-bottom:40px">{{ t.toMaghrib }}</div>
+    <div onClick="{{markDua}}" style="background:var(--btnbg);color:var(--btnink);border-radius:100px;padding:17px 0;font-weight:700;font-size:16px;cursor:pointer">{{ t.markDua }}</div>
+  </div>
+  </sc-if>
+
+  <!-- focus: all done → prayer times take the stage -->
+  <sc-if value="{{ focusDone }}" hint-placeholder-val="{{ false }}">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 28px;text-align:center">
+    <div style="align-self:center;display:flex;align-items:center;gap:8px;margin-bottom:30px;padding:9px 18px;border-radius:100px;border:1.5px solid var(--green);color:var(--green);font-size:12.5px;font-weight:700;animation:pop .5s ease both">✓&nbsp;{{ t.allDone }}</div>
+    <div style="font-size:12px;letter-spacing:.18em;font-weight:600;color:var(--gold)">{{ t.nextPrayerCaps }}</div>
+    <div style="font-size:72px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin:16px 0 6px">0:42</div>
+    <div style="font-size:13px;color:var(--faint);margin-bottom:38px">{{ t.maghribAt }}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <sc-for list="{{ prayers }}" as="p" hint-placeholder-count="6">
+        <div style="background:var(--card);border:1px solid {{ p.cardBorder }};border-radius:14px;padding:13px 0">
+          <div style="font-size:11px;color:{{ p.nameColor }}">{{ p.name }}</div>
+          <div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:4px;color:{{ p.timeColor }}">{{ p.time }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  </sc-if>
+
+  <div style="padding:0 26px 22px;text-align:center">
+    <div style="font-size:11px;color:var(--faint);letter-spacing:.06em;margin-bottom:10px">{{ todayLine }}</div>
+    <div onClick="{{openDay}}" style="cursor:pointer;padding:4px 0;animation:hintbounce 5s ease-in-out 2s infinite">
+      <div style="width:36px;height:4px;border-radius:2px;background:var(--faint);margin:0 auto;opacity:.7"></div>
+      <div style="font-size:11px;color:var(--faint);margin-top:8px">{{ t.swipe }}</div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ DAY (full screen, slides up) ============ -->
+<sc-if value="{{ sDay }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="День и тетрадь" style="position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);animation:dayup .45s cubic-bezier(.22,.8,.3,1) both">
+  <div onClick="{{closeDay}}" style="padding:14px 24px 6px;text-align:center;cursor:pointer">
+    <div style="width:36px;height:4px;border-radius:2px;background:var(--hair);margin:0 auto"></div>
+    <div style="font-size:10.5px;color:var(--faint);margin-top:6px">{{ t.swipeBack }}</div>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column;overflow:auto;padding:6px 24px 28px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <div style="font-size:16px;font-weight:800">{{ t.dayTitle }}</div>
+      <div style="font-size:11.5px;color:var(--faint)">{{ cityName }}</div>
+    </div>
+    <!-- countdown, carried over from home -->
+    <div style="text-align:center;padding:20px 0 22px">
+      <div style="font-size:11.5px;letter-spacing:.16em;font-weight:600;color:var(--gold);margin-bottom:10px">{{ t.nextPrayerCaps }}</div>
+      <div style="font-size:52px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1">0:42</div>
+      <div style="font-size:12.5px;color:var(--faint);margin-top:8px">{{ t.maghribAt }}</div>
+    </div>
+    <!-- prayer times -->
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px;text-align:center;margin-bottom:22px">
+      <sc-for list="{{ prayers }}" as="p" hint-placeholder-count="6">
+        <div style="background:{{ p.bg }};border:1px solid {{ p.cardBorder2 }};border-radius:10px;padding:9px 0">
+          <div style="font-size:10px;color:{{ p.nameColor }}">{{ p.name }}</div>
+          <div style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:4px;color:{{ p.timeColor }}">{{ p.time }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <!-- today -->
+    <div style="font-size:11px;letter-spacing:.12em;font-weight:700;color:var(--faint);margin-bottom:12px">{{ t.todayCaps }}</div>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px">
+      <sc-for list="{{ todayItems }}" as="it" hint-placeholder-count="4">
+        <div onClick="{{ it.act }}" style="display:flex;align-items:center;gap:12px;opacity:{{ it.opacity }};cursor:pointer">
+          <div style="width:22px;height:22px;border-radius:50%;background:{{ it.cbg }};border:{{ it.cborder }};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;flex:none;box-sizing:border-box">{{ it.check }}</div>
+          <div style="flex:1;font-size:14px;font-weight:600">{{ it.label }}</div>
+          <div style="font-size:11.5px;color:{{ it.timeColor }};font-weight:600">{{ it.time }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <!-- month tracker -->
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+      <div style="font-size:11px;letter-spacing:.12em;font-weight:700;color:var(--faint)">{{ t.month }}</div>
+      <div style="font-size:11px;color:var(--faint)">‹ ›</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;justify-items:center;margin-bottom:14px">
+      <sc-for list="{{ trackerDays }}" as="d" hint-placeholder-count="21">
+        <div style="width:28px;height:28px;border-radius:50%;border:{{ d.ring }};display:flex;align-items:center;justify-content:center;box-sizing:border-box">
+          <div style="width:20px;height:20px;border-radius:{{ d.radius }};background:{{ d.bg }};border:{{ d.border }};transform:{{ d.rotate }};display:flex;align-items:center;justify-content:center;box-sizing:border-box">
+            <span style="transform:{{ d.iconRotate }};font-size:10px;font-weight:700;color:{{ d.iconColor }};line-height:1">{{ d.icon }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;gap:13px;font-size:10.5px;color:var(--faint);align-items:center;margin-bottom:22px;flex-wrap:wrap">
+      <div style="display:flex;gap:6px;align-items:center"><div style="width:11px;height:11px;border-radius:50%;background:var(--green);color:#fff;font-size:7px;display:flex;align-items:center;justify-content:center">✓</div>{{ t.legendAll }}</div>
+      <div style="display:flex;gap:6px;align-items:center"><div style="width:9px;height:9px;border-radius:2.5px;background:var(--gold);transform:rotate(45deg)"></div>{{ t.legendPart }}</div>
+      <div style="display:flex;gap:6px;align-items:center"><div style="width:11px;height:11px;border-radius:50%;background:var(--red);color:#fff;font-size:7px;display:flex;align-items:center;justify-content:center">✕</div>{{ t.legendMiss }}</div>
+      <div style="margin-left:auto;color:var(--faint)">{{ t.legendToday }}</div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:auto">
+      <div onClick="{{openSettings}}" style="flex:1;border:1.5px solid var(--hair);border-radius:12px;padding:13px 0;text-align:center;font-size:13px;font-weight:700;cursor:pointer;box-sizing:border-box">{{ t.remindersBtn }}</div>
+      <div onClick="{{toggleTheme}}" style="flex:1;border:1.5px solid var(--hair);border-radius:12px;padding:13px 0;text-align:center;font-size:13px;font-weight:700;cursor:pointer;box-sizing:border-box">{{ t.themeBtn }}</div>
+      <div onClick="{{toggleLang}}" style="flex:1;border:1.5px solid var(--hair);border-radius:12px;padding:13px 0;text-align:center;font-size:13px;font-weight:700;cursor:pointer;box-sizing:border-box">{{ t.langBtn }}</div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ READER ============ -->
+<sc-if value="{{ sReader }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Чтение зикров" style="position:absolute;inset:0;display:flex;flex-direction:column;background:#f7f2e7;color:#2c2a24;font-family:Literata,Georgia,serif;animation:rise .35s ease both">
+  <div style="padding:20px 24px 14px;border-bottom:1px solid #e3dcc9;font-family:Manrope,sans-serif">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div onClick="{{closeReader}}" style="font-size:16px;color:#8c7a4e;cursor:pointer;padding:2px 4px">✕</div>
+        <div style="font-size:12px;font-weight:700;letter-spacing:.08em;color:#8c7a4e">{{ t.readerTitle }}</div>
+      </div>
+      <div style="font-size:12px;color:#9a927e">{{ t.toMaghribShort }}</div>
+    </div>
+    <div style="display:flex;gap:3px;margin-top:12px">
+      <sc-for list="{{ progressSegs }}" as="seg" hint-placeholder-count="5">
+        <div style="flex:1;height:3px;border-radius:2px;background:{{ seg.bg }}"></div>
+      </sc-for>
+    </div>
+    <div style="font-size:11px;color:#9a927e;margin-top:8px">{{ counter }}</div>
+  </div>
+  <div style="flex:1;padding:26px 28px 0;overflow:auto">
+    <div dir="rtl" lang="ar" style="font-family:Amiri,serif;font-size:26px;line-height:1.95;text-align:center;color:#23211b">{{ cur.ar }}</div>
+    <sc-if value="{{ cur.hasNote }}" hint-placeholder-val="{{ false }}">
+      <div style="font-family:Manrope,sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;color:#8c7a4e;text-align:center;margin-top:14px">{{ cur.note }}</div>
+    </sc-if>
+    <div style="font-style:italic;font-size:13.5px;line-height:1.7;text-align:center;color:#7b7461;margin-top:18px">{{ cur.tr }}</div>
+    <div style="font-size:14.5px;line-height:1.75;text-align:center;margin-top:16px">{{ cur.text }}</div>
+    <sc-if value="{{ cur.hasFaz }}" hint-placeholder-val="{{ true }}">
+    <div style="margin:22px 0 24px;padding:14px 18px;background:#efe8d6;border-radius:12px;font-family:Manrope,sans-serif">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:#8c7a4e;margin-bottom:5px">{{ t.fazTitle }}</div>
+      <div style="font-size:12.5px;line-height:1.6;color:#5c564a">{{ cur.faz }}</div>
+      <div style="font-size:11.5px;color:#9a927e;margin-top:8px">{{ cur.src }}</div>
+    </div>
+    </sc-if>
+    <sc-if value="{{ cur.srcOnly }}" hint-placeholder-val="{{ false }}">
+      <div style="font-family:Manrope,sans-serif;font-size:11.5px;color:#9a927e;text-align:center;margin:20px 0 24px">{{ cur.src }}</div>
+    </sc-if>
+  </div>
+  <div style="padding:14px 24px 26px;display:flex;align-items:center;gap:14px;font-family:Manrope,sans-serif">
+    <div onClick="{{prev}}" style="width:48px;height:48px;border-radius:50%;border:1.5px solid #d9d1bc;display:flex;align-items:center;justify-content:center;color:{{ prevColor }};font-size:18px;box-sizing:border-box;cursor:pointer;flex:none">←</div>
+    <div onClick="{{next}}" style="flex:1;background:#2c2a24;color:#f7f2e7;border-radius:100px;padding:15px 0;text-align:center;font-weight:600;font-size:14.5px;cursor:pointer">{{ nextLabel }}</div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ READER DONE · CELEBRATION ============ -->
+<sc-if value="{{ sReaderDone }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Зикры выполнены" style="position:absolute;inset:0;display:flex;flex-direction:column;background:#f7f2e7;color:#2c2a24;animation:rise .35s ease both;padding:0 32px;text-align:center;overflow:hidden">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;position:relative">
+    <!-- confetti -->
+    <div style="position:absolute;left:50%;top:38%;width:0;height:0">
+      <sc-for list="{{ confetti }}" as="cf" hint-placeholder-count="14">
+        <div style="position:absolute;width:{{ cf.size }};height:{{ cf.size }};border-radius:2px;background:{{ cf.color }};--dx:{{ cf.dx }};--dy:{{ cf.dy }};animation:confetti {{ cf.dur }} cubic-bezier(.2,.7,.4,1) {{ cf.delay }} both"></div>
+      </sc-for>
+    </div>
+    <!-- big check + flying ghost -->
+    <div style="position:relative;width:84px;height:84px">
+      <div style="position:absolute;inset:0;border-radius:50%;background:#4a5d50;color:#f7f2e7;display:flex;align-items:center;justify-content:center;font-size:36px;animation:pop .55s ease both">✓</div>
+      <div style="position:absolute;inset:0;border-radius:50%;background:#4a5d50;color:#f7f2e7;display:flex;align-items:center;justify-content:center;font-size:36px;animation:flydown 1.6s cubic-bezier(.4,0,.6,1) .9s both">✓</div>
+    </div>
+    <div style="font-size:24px;font-weight:800;letter-spacing:-.01em;margin-top:26px">{{ t.doneTitle }}</div>
+    <div style="font-family:Literata,Georgia,serif;font-style:italic;font-size:16px;line-height:1.65;color:#5c564a;margin-top:18px;padding:0 6px">{{ quote.text }}</div>
+    <div style="font-family:Manrope,sans-serif;font-size:11.5px;color:#9a927e;margin-top:10px">{{ quote.src }}</div>
+    <!-- landing strip: this week -->
+    <div style="margin-top:40px">
+      <div style="font-size:10.5px;letter-spacing:.1em;font-weight:700;color:#9a927e;margin-bottom:10px">{{ t.doneSub }}</div>
+      <div style="display:flex;gap:10px;justify-content:center">
+        <div style="width:22px;height:22px;border-radius:50%;background:#4a5d50;color:#f7f2e7;font-size:10px;display:flex;align-items:center;justify-content:center">✓</div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#4a5d50;color:#f7f2e7;font-size:10px;display:flex;align-items:center;justify-content:center">✓</div>
+        <div style="width:15px;height:15px;border-radius:4px;background:#c99a3f;transform:rotate(45deg);margin:3.5px"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#b4544a;color:#f7f2e7;font-size:10px;display:flex;align-items:center;justify-content:center">✕</div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#4a5d50;color:#f7f2e7;font-size:10px;display:flex;align-items:center;justify-content:center">✓</div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#4a5d50;color:#f7f2e7;font-size:10px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #f7f2e7,0 0 0 4px #c99a3f;animation:landpop 3s ease both">✓</div>
+        <div style="width:22px;height:22px;border-radius:50%;border:1.5px dashed #d9d1bc;box-sizing:border-box"></div>
+      </div>
+    </div>
+  </div>
+  <div style="padding-bottom:48px">
+    <div onClick="{{backHome}}" style="background:#2c2a24;color:#f7f2e7;border-radius:100px;padding:16px 0;font-weight:700;font-size:15px;cursor:pointer">{{ t.back }}</div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ REMINDER SETTINGS ============ -->
+<sc-if value="{{ sSettings }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Настройки напоминаний" style="position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);animation:rise .35s ease both">
+  <div style="padding:26px 24px 18px;display:flex;align-items:center;gap:14px">
+    <div onClick="{{backToDay}}" style="width:38px;height:38px;border-radius:50%;border:1.5px solid var(--hair);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;box-sizing:border-box">←</div>
+    <div style="font-size:20px;font-weight:800">{{ t.settingsTitle }}</div>
+  </div>
+  <div style="flex:1;overflow:auto;padding:4px 24px 20px">
+    <sc-for list="{{ reminderRows }}" as="r" hint-placeholder-count="4">
+      <div style="display:flex;align-items:center;gap:14px;padding:15px 0;border-bottom:1px solid var(--hair)">
+        <div style="flex:1">
+          <div style="font-size:14.5px;font-weight:700;color:{{ r.labelColor }}">{{ r.label }}</div>
+          <div style="font-size:12px;color:var(--faint);margin-top:3px">{{ r.sub }}</div>
+        </div>
+        <div onClick="{{ r.toggle }}" style="width:46px;height:27px;border-radius:14px;background:{{ r.pillBg }};position:relative;cursor:pointer;transition:background .2s;flex:none">
+          <div style="position:absolute;top:3px;left:{{ r.knobLeft }};width:21px;height:21px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></div>
+        </div>
+      </div>
+    </sc-for>
+    <div onClick="{{openAdd}}" style="margin-top:22px;border:1.5px dashed var(--faint);border-radius:14px;padding:15px 0;text-align:center;font-size:14px;font-weight:700;color:var(--sub);cursor:pointer">+ {{ t.addBtn }}</div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ ADD REMINDER ============ -->
+<sc-if value="{{ sAdd }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Своё напоминание" style="position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);animation:rise .35s ease both">
+  <div style="padding:26px 24px 18px;display:flex;align-items:center;gap:14px">
+    <div onClick="{{openSettings}}" style="width:38px;height:38px;border-radius:50%;border:1.5px solid var(--hair);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;box-sizing:border-box">←</div>
+    <div style="font-size:20px;font-weight:800">{{ t.addTitle }}</div>
+  </div>
+  <div style="flex:1;overflow:auto;padding:4px 24px">
+    <div style="font-size:11px;letter-spacing:.12em;font-weight:700;color:var(--faint);margin:14px 0 8px">{{ t.addName }}</div>
+    <input class="jw-input" value="{{ formName }}" onChange="{{ onFormName }}" placeholder="{{ t.addPh }}" style="width:100%;box-sizing:border-box;background:var(--card);border:1.5px solid var(--hair);border-radius:12px;padding:14px 16px;font-size:14.5px;font-family:Manrope,sans-serif;color:var(--ink)">
+    <div style="font-size:11px;letter-spacing:.12em;font-weight:700;color:var(--faint);margin:22px 0 10px">{{ t.addBind }}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <sc-for list="{{ bindChips }}" as="ch" hint-placeholder-count="7">
+        <div onClick="{{ ch.pick }}" style="padding:9px 14px;border-radius:100px;font-size:12.5px;font-weight:600;border:1.5px solid {{ ch.border }};background:{{ ch.bg }};color:{{ ch.color }};cursor:pointer;box-sizing:border-box">{{ ch.name }}</div>
+      </sc-for>
+    </div>
+    <div style="font-size:11px;letter-spacing:.12em;font-weight:700;color:var(--faint);margin:22px 0 10px">{{ t.addOffset }}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <sc-for list="{{ offsetChips }}" as="ch" hint-placeholder-count="3">
+        <div onClick="{{ ch.pick }}" style="padding:9px 14px;border-radius:100px;font-size:12.5px;font-weight:600;border:1.5px solid {{ ch.border }};background:{{ ch.bg }};color:{{ ch.color }};cursor:pointer;box-sizing:border-box">{{ ch.name }}</div>
+      </sc-for>
+    </div>
+    <div style="font-size:11px;letter-spacing:.12em;font-weight:700;color:var(--faint);margin:22px 0 10px">{{ t.addDays }}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <sc-for list="{{ dayChips }}" as="ch" hint-placeholder-count="3">
+        <div onClick="{{ ch.pick }}" style="padding:9px 14px;border-radius:100px;font-size:12.5px;font-weight:600;border:1.5px solid {{ ch.border }};background:{{ ch.bg }};color:{{ ch.color }};cursor:pointer;box-sizing:border-box">{{ ch.name }}</div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="padding:16px 24px 40px">
+    <div onClick="{{saveReminder}}" style="background:var(--btnbg);color:var(--btnink);border-radius:100px;padding:16px 0;text-align:center;font-weight:700;font-size:15px;cursor:pointer;opacity:{{ saveOpacity }}">{{ t.save }}</div>
+  </div>
+</div>
+</sc-if>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 520, &quot;height&quot;: 1000}, &quot;skipOnboarding&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Демо&quot;}}">
+class Component extends DCLogic {
+  state = {
+    screen: 'lang', lang: 'ru', city: 0, theme: 'dark',
+    doneEvening: false, doneDua: false, idx: 0, quoteIdx: 0,
+    toggles: { m: true, e: true, k: true, d: true },
+    custom: [],
+    form: { name: '', bind: 4, offset: 1, days: 0 }
+  };
+
+  componentDidMount() {
+    if (this.props.skipOnboarding) this.setState({ screen: 'home' });
+  }
+
+  strings(lang) {
+    const ru = {
+      step: 'ШАГ', cityTitle: 'Ваш город', citySub: 'Времена молитв рассчитываются для вашего города и обновляются каждый день.',
+      geo: 'Определить автоматически', now: 'сейчас',
+      notifTitle: 'Напоминания в нужный момент', notifSub: 'Jadwal напомнит, когда откроется окно поклонения: утренние и вечерние зикры, сура аль-Кахф, час дуа. Без лишнего шума — всё можно настроить.',
+      notifDemoTitle: 'Окно вечерних зикров открыто', notifDemoBody: 'После Асра, до захода солнца. До Магриба 1:02.',
+      allow: 'Разрешить уведомления', later: 'Позже',
+      themeTitle: 'Оформление', themeDark: 'Тёмная', themeLight: 'Светлая', themeSystem: 'Системная', next: 'Продолжить',
+      posterAyat: '«Поминайте Меня — и Я буду помнить о вас»', posterAyatSrc: 'Коран, аль-Бакара, 152',
+      posterQuote: 'Самое любимое дело пред Аллахом — наиболее постоянное, даже если оно мало',
+      posterSrc: 'аль-Бухари, 6464 · Муслим, 783', start: 'Начать',
+      dateLine: 'Пятница · 19 мухаррама · 20:11',
+      windowOpen: 'ОКНО ОТКРЫТО', eveningTitle: 'Вечерние\u00a0зикры', eveningSub: 'после Асра · до захода солнца',
+      toMaghrib: 'до Магриба', read: 'Читать зикры', markOnly: 'Отметить без чтения ✓',
+      duaTitle: 'Час дуа', duaSub: 'особый час принятия дуа — пятница, последний час перед Магрибом', markDua: 'Отметить ✓',
+      allDone: 'На сегодня всё выполнено', allDoneSub: 'Пусть Аллах примет.', nextPrayer: 'Магриб в 20:53 · Иша в 22:38',
+      swipe: 'свайп вверх — день и тетрадь', swipeBack: 'свайп вниз — назад', dayTitle: 'Пятница, 19 мухаррама',
+      nextPrayerCaps: 'ДО МАГРИБА', maghribAt: 'Магриб в 20:53', langBtn: 'Тіл · Язык',
+      todayCaps: 'СЕГОДНЯ', month: 'МУХАРРАМ 1448',
+      legendAll: 'всё', legendPart: 'частично', legendMiss: 'пропущен', legendToday: 'сегодня — в кольце',
+      remindersBtn: 'Напоминания', themeBtn: 'Тема',
+      readerTitle: 'ВЕЧЕРНИЕ ЗИКРЫ', toMaghribShort: 'до Магриба · 0:42', fazTitle: 'ДОСТОИНСТВО',
+      nextBtn: 'Дальше →', finishBtn: 'Завершить ✓', of: 'из',
+      doneTitle: 'Вечерние зикры выполнены', doneSub: 'ЗАПИСАНО В ТЕТРАДЬ ПОСТОЯНСТВА', back: 'Вернуться',
+      settingsTitle: 'Напоминания', addBtn: 'Добавить напоминание',
+      remMorning: 'Утренние зикры', remMorningSub: 'после Фаджра, до восхода', remEvening: 'Вечерние зикры', remEveningSub: 'после Асра, до Магриба',
+      remKahf: 'Сура аль-Кахф', remKahfSub: 'пятница, до Джума', remDua: 'Час дуа', remDuaSub: 'пятница, перед Магрибом',
+      addTitle: 'Своё напоминание', addName: 'НАЗВАНИЕ', addPh: 'Например: Салават', addBind: 'ПРИВЯЗКА', addOffset: 'СДВИГ', addDays: 'ДНИ', save: 'Сохранить',
+      offsets: ['в момент азана', '+15 мин', '+30 мин'], days: ['Каждый день', 'Пятница', 'Пн–Пт'], exact: 'Точное время',
+      prayers: ['Фаджр', 'Восход', 'Зухр', 'Аср', 'Магриб', 'Иша'],
+      itMorning: 'Утренние зикры', itKahf: 'Сура аль-Кахф', itEvening: 'Вечерние зикры', itDua: 'Час дуа',
+      already: 'СЕГОДНЯ УЖЕ:', un: ['УТРЕННИЕ', 'АЛЬ-КАХФ', 'ВЕЧЕРНИЕ', 'ДУА'], still: 'ещё', note3: 'ПРОИЗНОСИТСЯ ТРИ РАЗА',
+      quotes: [
+        { text: '«Самое любимое дело пред Аллахом — наиболее постоянное, даже если оно мало»', src: 'аль-Бухари, 6464' },
+        { text: '«Тот, кто поминает своего Господа, и тот, кто не поминает, подобны живому и мёртвому»', src: 'аль-Бухари, 6407' },
+        { text: '«Пусть твой язык не перестаёт быть влажным от поминания Аллаха»', src: 'ат-Тирмизи, 3375' }
+      ]
+    };
+    const kz = {
+      step: 'ҚАДАМ', cityTitle: 'Қалаңыз', citySub: 'Намаз уақыттары қалаңыз үшін есептеліп, күн сайын жаңарып отырады.',
+      geo: 'Автоматты түрде анықтау', now: 'қазір',
+      notifTitle: 'Дәл уақытында еске салу', notifSub: 'Jadwal ғибадат уақыты ашылғанда еске салады: таңғы және кешкі зікірлер, «әл-Кәһф» сүресі, дұға сағаты. Артық шусыз — бәрін баптауға болады.',
+      notifDemoTitle: 'Кешкі зікірлер уақыты ашылды', notifDemoBody: 'Екінтіден кейін, күн батқанға дейін. Ақшамға дейін 1:02.',
+      allow: 'Хабарламаларға рұқсат беру', later: 'Кейінірек',
+      themeTitle: 'Безендіру', themeDark: 'Қараңғы', themeLight: 'Ашық', themeSystem: 'Жүйелік', next: 'Жалғастыру',
+      posterAyat: '«Мені еске алыңдар — Мен де сендерді еске аламын»', posterAyatSrc: 'Құран, әл-Бақара, 152',
+      posterQuote: 'Аллаһқа істердің ең сүйіктісі — аз болса да, үзбей жасалғаны',
+      posterSrc: 'әл-Бухари, 6464 · Муслим, 783', start: 'Бастау',
+      dateLine: 'Жұма · 19 мухаррам · 20:11',
+      windowOpen: 'УАҚЫТ АШЫҚ', eveningTitle: 'Кешкі\u00a0зікірлер', eveningSub: 'Екінтіден кейін · күн батқанға дейін',
+      toMaghrib: 'Ақшамға дейін', read: 'Зікірлерді оқу', markOnly: 'Оқымай белгілеу ✓',
+      duaTitle: 'Дұға сағаты', duaSub: 'дұға қабыл болатын ерекше сағат — жұма, Ақшам алдындағы соңғы сағат', markDua: 'Белгілеу ✓',
+      allDone: 'Бүгінге бәрі орындалды', allDoneSub: 'Аллаһ қабыл етсін.', nextPrayer: 'Ақшам 20:53 · Құптан 22:38',
+      swipe: 'жоғары сырғыту — күн және дәптер', swipeBack: 'төмен сырғыту — артқа', dayTitle: 'Жұма, 19 мухаррам',
+      nextPrayerCaps: 'АҚШАМҒА ДЕЙІН', maghribAt: 'Ақшам 20:53', langBtn: 'Тіл · Язык',
+      todayCaps: 'БҮГІН', month: 'МУХАРРАМ 1448',
+      legendAll: 'бәрі', legendPart: 'ішінара', legendMiss: 'өткізілді', legendToday: 'бүгін — шеңберде',
+      remindersBtn: 'Еске салулар', themeBtn: 'Тақырып',
+      readerTitle: 'КЕШКІ ЗІКІРЛЕР', toMaghribShort: 'Ақшамға дейін · 0:42', fazTitle: 'АРТЫҚШЫЛЫҒЫ',
+      nextBtn: 'Келесі →', finishBtn: 'Аяқтау ✓', of: '/',
+      doneTitle: 'Кешкі зікірлер орындалды', doneSub: 'ТҰРАҚТЫЛЫҚ ДӘПТЕРІНЕ ЖАЗЫЛДЫ', back: 'Оралу',
+      settingsTitle: 'Еске салулар', addBtn: 'Еске салу қосу',
+      remMorning: 'Таңғы зікірлер', remMorningSub: 'Таңнан кейін, күн шыққанға дейін', remEvening: 'Кешкі зікірлер', remEveningSub: 'Екінтіден кейін, Ақшамға дейін',
+      remKahf: '«әл-Кәһф» сүресі', remKahfSub: 'жұма, жұма намазына дейін', remDua: 'Дұға сағаты', remDuaSub: 'жұма, Ақшам алдында',
+      addTitle: 'Жаңа еске салу', addName: 'АТАУЫ', addPh: 'Мысалы: Салауат', addBind: 'БАЙЛАНЫСТЫРУ', addOffset: 'ЖЫЛЖЫТУ', addDays: 'КҮНДЕР', save: 'Сақтау',
+      offsets: ['азан кезінде', '+15 мин', '+30 мин'], days: ['Күн сайын', 'Жұма', 'Дс–Жм'], exact: 'Нақты уақыт',
+      prayers: ['Таң', 'Күн шығуы', 'Бесін', 'Екінті', 'Ақшам', 'Құптан'],
+      itMorning: 'Таңғы зікірлер', itKahf: '«әл-Кәһф» сүресі', itEvening: 'Кешкі зікірлер', itDua: 'Дұға сағаты',
+      already: 'БҮГІН:', un: ['ТАҢҒЫ', 'ӘЛ-КӘҺФ', 'КЕШКІ', 'ДҰҒА'], still: 'тағы', note3: 'ҮШ РЕТ АЙТЫЛАДЫ',
+      quotes: [
+        { text: '«Аллаһқа істердің ең сүйіктісі — аз болса да, үзбей жасалғаны»', src: 'әл-Бухари, 6464' },
+        { text: '«Раббысын еске алатын адам мен еске алмайтын адам — тірі мен өлі сияқты»', src: 'әл-Бухари, 6407' },
+        { text: '«Тілің Аллаһты зікір етуден кеппесін»', src: 'ат-Тирмизи, 3375' }
+      ]
+    };
+    return lang === 'kz' ? kz : ru;
+  }
+
+  adhkar(lang) {
+    const kz = lang === 'kz';
+    return [
+      {
+        ar: 'أَمْسَيْنَا وَأَمْسَى الْمُلْكُ لِلَّهِ، وَالْحَمْدُ لِلَّهِ، لَا إِلَهَ إِلَّا اللَّهُ وَحْدَهُ لَا شَرِيكَ لَهُ، لَهُ الْمُلْكُ وَلَهُ الْحَمْدُ وَهُوَ عَلَى كُلِّ شَيْءٍ قَدِيرٌ',
+        tr: 'Амсайна ва амсаль-мульку ли-Лляхи, валь-хамду ли-Лляхи, ля иляха илля-Ллаху вахдаху ля шарика лях, ляхуль-мульку ва ляхуль-хамду ва хува ‘аля кулли шайин кадир',
+        text: kz ? '«Кеш болды, бұл кеште бүкіл билік Аллаһқа тән. Аллаһқа мақтау! Жалғыз Аллаһтан басқа құдай жоқ, Оның серігі жоқ. Билік те, мақтау да Оған тән, Ол әр нәрсеге құдіретті»' : '«Мы встретили вечер, и вся власть этим вечером принадлежит Аллаху. Хвала Аллаху, нет божества, кроме одного лишь Аллаха, у Которого нет сотоварища. Ему принадлежит власть, Ему хвала, и Он всё может»',
+        faz: kz ? 'Пайғамбар ﷺ әр кеш сайын айтатын зікір сөздері' : 'Слова поминания, которые Пророк ﷺ произносил каждый вечер',
+        src: 'Муслим, 2723', note: false
+      },
+      {
+        ar: 'اللَّهُمَّ بِكَ أَمْسَيْنَا، وَبِكَ أَصْبَحْنَا، وَبِكَ نَحْيَا، وَبِكَ نَمُوتُ، وَإِلَيْكَ الْمَصِيرُ',
+        tr: 'Аллахумма бика амсайна, ва бика асбахна, ва бика нахья, ва бика намуту, ва иляйкаль-масыр',
+        text: kz ? '«Уа, Аллаһ! Сенімен кешке жеттік, Сенімен таңға жетеміз, Сенімен өмір сүреміз, Сенің қалауыңмен өлеміз және қайтар жеріміз — Сен»' : '«О Аллах, с Тобой мы встретили вечер и с Тобой встретим утро, Тобой мы живём и по воле Твоей умираем, и к Тебе — возвращение»',
+        faz: null, src: 'ат-Тирмизи, 3391', note: false
+      },
+      {
+        ar: 'اللَّهُمَّ أَنْتَ رَبِّي لَا إِلَهَ إِلَّا أَنْتَ، خَلَقْتَنِي وَأَنَا عَبْدُكَ، وَأَنَا عَلَى عَهْدِكَ وَوَعْدِكَ مَا اسْتَطَعْتُ، أَعُوذُ بِكَ مِنْ شَرِّ مَا صَنَعْتُ، أَبُوءُ لَكَ بِنِعْمَتِكَ عَلَيَّ وَأَبُوءُ بِذَنْبِي، فَاغْفِرْ لِي فَإِنَّهُ لَا يَغْفِرُ الذُّنُوبَ إِلَّا أَنْتَ',
+        tr: 'Аллахумма Анта Рабби, ля иляха илля Анта, халяктани ва ана ‘абдук, ва ана ‘аля ‘ахдика ва ва‘дика ма-стата‘ту, а‘узу бика мин шарри ма сана‘ту, абуу ляка би-ни‘матика ‘аляйя ва абуу би-занби, фа-гфир ли, фа-иннаху ля ягфируз-зунуба илля Анта',
+        text: kz ? '«Уа, Аллаһ! Сен — менің Раббымсың, Сенен басқа құдай жоқ. Сен мені жараттың, мен — Сенің құлыңмын. Шамам келгенше Саған берген серт пен уәдемде тұрамын. Жасаған ісімнің жамандығынан Саған сыйынамын. Маған берген игілігіңді мойындаймын, күнәмді де мойындаймын. Мені кешіре гөр — күнәларды Сенен басқа ешкім кешірмейді»' : '«О Аллах, Ты — мой Господь, и нет божества, кроме Тебя. Ты создал меня, а я — Твой раб, и я буду верен завету с Тобой и обещанию Тебе, насколько смогу. Прибегаю к Тебе от зла того, что я совершил. Признаю Твою милость ко мне и признаю свой грех. Прости же меня, ведь никто не прощает грехов, кроме Тебя»',
+        faz: kz ? 'Истиғфардың қожайыны (сайид әл-истиғфар). Кім оны кешке шын сеніммен айтып, сол түні қайтыс болса — жәннатқа кіреді' : 'Господин молитв о прощении (сайид аль-истигфар). Кто произнесёт его вечером с убеждённостью и умрёт в эту ночь — войдёт в Рай',
+        src: 'аль-Бухари, 6306', note: false
+      },
+      {
+        ar: 'بِسْمِ اللَّهِ الَّذِي لَا يَضُرُّ مَعَ اسْمِهِ شَيْءٌ فِي الْأَرْضِ وَلَا فِي السَّمَاءِ وَهُوَ السَّمِيعُ الْعَلِيمُ',
+        tr: 'Бисми-Лляхи аллязи ля ядурру ма‘а-смихи шайун филь-арды ва ля фис-самаи ва хува-с-Сами‘уль-‘Алим',
+        text: kz ? '«Аллаһтың атымен! Оның атымен жерде де, көкте де еш нәрсе зиян тигізе алмайды. Ол — Естуші, Білуші»' : '«С именем Аллаха, с именем Которого ничто не причинит вреда ни на земле, ни на небе, и Он — Слышащий, Знающий»',
+        faz: kz ? 'Кім мұны кешке үш рет айтса, таңға дейін оған еш нәрсе зиян тигізбейді' : 'Кто произнесёт это трижды вечером, тому ничто не повредит до утра',
+        src: 'Абу Дауд, 5088 · ат-Тирмизи, 3388', note: true
+      },
+      {
+        ar: 'رَضِيتُ بِاللَّهِ رَبًّا، وَبِالْإِسْلَامِ دِينًا، وَبِمُحَمَّدٍ صَلَّى اللهُ عَلَيْهِ وَسَلَّمَ نَبِيًّا',
+        tr: 'Радыту би-Лляхи Раббан, ва биль-ислями динан, ва би-Мухаммадин салля-Ллаху ‘аляйхи ва саллям набийян',
+        text: kz ? '«Раббым — Аллаһ, дінім — Ислам, пайғамбарым — Мұхаммед ﷺ екеніне ризамын»' : '«Я доволен Аллахом как Господом, исламом как религией и Мухаммадом ﷺ как пророком»',
+        faz: kz ? 'Кім мұны таңертең және кешке үш рет айтса, Қиямет күні Аллаһ оны разы етеді' : 'Кто произнесёт это трижды утром и вечером, того Аллах непременно порадует в День воскресения',
+        src: 'Абу Дауд, 5072 · ат-Тирмизи, 3389', note: true
+      }
+    ];
+  }
+
+  colors() {
+    const dark = {
+      bg: '#101714', ink: '#ece9df', sub: '#9aa49b', faint: '#6f7a72', hair: '#2a332d',
+      gold: '#c99a3f', green: '#5d7a66', gdim: '#33443a', red: '#b4544a', card: '#1a221d', btnbg: '#ece9df', btnink: '#101714'
+    };
+    const light = {
+      bg: '#f5f2e9', ink: '#22302b', sub: '#7f857b', faint: '#94978c', hair: '#dcd8c9',
+      gold: '#b8862f', green: '#4a5d50', gdim: '#cdd6c8', red: '#b4544a', card: '#fffdf6', btnbg: '#22302b', btnink: '#f5f2e9'
+    };
+    return this.state.theme === 'light' ? light : dark;
+  }
+
+  go(screen) { this.setState({ screen }); }
+
+  renderVals() {
+    const s = this.state;
+    const t = this.strings(s.lang);
+    const c = this.colors();
+    const items = this.adhkar(s.lang);
+    const cityNamesRu = ['Алматы', 'Астана', 'Шымкент', 'Караганда', 'Актобе', 'Тараз'];
+    const cityNamesKz = ['Алматы', 'Астана', 'Шымкент', 'Қарағанды', 'Ақтөбе', 'Тараз'];
+    const cityNames = s.lang === 'kz' ? cityNamesKz : cityNamesRu;
+
+    // ----- onboarding -----
+    const cities = cityNames.map((name, i) => ({
+      name,
+      color: i === s.city ? 'var(--gold)' : 'var(--ink)',
+      mark: i === s.city ? 'var(--gold)' : 'transparent',
+      pick: () => { this.setState({ city: i }); setTimeout(() => this.go('notif'), 250); }
+    }));
+
+    const themeDefs = [
+      { id: 'dark', name: t.themeDark, swatch: '#101714', line1: '#ece9df', line2: '#5d7a66' },
+      { id: 'light', name: t.themeLight, swatch: '#f5f2e9', line1: '#22302b', line2: '#4a5d50' },
+      { id: 'system', name: t.themeSystem, swatch: 'linear-gradient(105deg,#101714 50%,#f5f2e9 50%)', line1: '#9aa49b', line2: '#b8862f' }
+    ];
+    const themes = themeDefs.map(d => ({
+      ...d,
+      border: s.theme === d.id ? 'var(--gold)' : 'var(--hair)',
+      label: s.theme === d.id ? 'var(--gold)' : 'var(--sub)',
+      pick: () => this.setState({ theme: d.id })
+    }));
+
+    // ----- home -----
+    const focusEvening = !s.doneEvening;
+    const focusDua = s.doneEvening && !s.doneDua;
+    const focusDone = s.doneEvening && s.doneDua;
+    const doneList = [t.un[0], t.un[1]];
+    if (s.doneEvening) doneList.push(t.un[2]);
+    if (s.doneDua) doneList.push(t.un[3]);
+    const todayLine = t.already + ' ' + doneList.map(x => x + ' ✓').join(' · ');
+
+    // ----- prayers -----
+    const prayerTimes = ['03:05', '04:58', '12:59', '17:54', '20:53', '22:38'];
+    const prayers = t.prayers.map((name, i) => ({
+      name, time: prayerTimes[i],
+      bg: i === 4 ? 'var(--gdim)' : 'transparent',
+      cardBorder: i === 4 ? 'var(--gold)' : 'var(--hair)',
+      cardBorder2: i === 4 ? 'var(--gold)' : 'var(--hair)',
+      nameColor: i === 4 ? 'var(--gold)' : 'var(--faint)',
+      timeColor: i === 4 ? 'var(--gold)' : 'var(--ink)'
+    }));
+
+    const todayItems = [
+      { label: t.itMorning, done: true, time: '04:12', act: null },
+      { label: t.itKahf, done: true, time: '11:20', act: null },
+      { label: t.itEvening, done: s.doneEvening, time: s.doneEvening ? '20:14' : t.still + ' 0:42', act: s.doneEvening ? null : () => this.setState({ screen: 'reader', idx: 0 }) },
+      { label: t.itDua, done: s.doneDua, time: s.doneDua ? '20:20' : '19:53–20:53', act: null }
+    ].map(it => ({
+      label: it.label, time: it.time,
+      act: it.act || (() => {}),
+      check: it.done ? '✓' : '',
+      cbg: it.done ? 'var(--green)' : 'transparent',
+      cborder: it.done ? 'none' : '1.5px solid ' + (it.act ? 'var(--gold)' : 'var(--hair)'),
+      timeColor: it.done ? 'var(--faint)' : 'var(--gold)',
+      opacity: it.done ? '.75' : '1'
+    }));
+
+    // ----- tracker: f=full, p=partial, n=missed, u=future -----
+    const pattern = ['f','f','p','f','n','p','f','f','p','f','f','p','f','n','f','f','f','p'];
+    const doneCount = 2 + (s.doneEvening ? 1 : 0) + (s.doneDua ? 1 : 0);
+    const cell = (p, today) => {
+      const base = { ring: today ? '2px solid var(--gold)' : 'none', rotate: 'none', iconRotate: 'none', border: 'none' };
+      if (p === 'f') return { ...base, bg: 'var(--green)', radius: '50%', icon: '✓', iconColor: '#fff' };
+      if (p === 'p') return { ...base, bg: 'var(--gold)', radius: '5px', rotate: 'rotate(45deg)', iconRotate: 'rotate(-45deg)', icon: '', iconColor: '#fff' };
+      if (p === 'n') return { ...base, bg: 'var(--red)', radius: '50%', icon: '✕', iconColor: '#fff' };
+      return { ...base, bg: 'transparent', radius: '50%', border: '1.5px dashed var(--hair)', icon: '', iconColor: 'transparent' };
+    };
+    const trackerDays = pattern.map(p => cell(p, false));
+    trackerDays.push(cell(doneCount === 4 ? 'f' : 'p', true));
+    trackerDays.push(cell('u', false));
+    trackerDays.push(cell('u', false));
+
+    // ----- reader -----
+    const idx = Math.min(s.idx, items.length - 1);
+    const item = items[idx];
+    const cur = {
+      ar: item.ar, tr: item.tr, text: item.text,
+      hasFaz: !!item.faz, faz: item.faz || '', src: item.src,
+      srcOnly: !item.faz, hasNote: item.note, note: t.note3
+    };
+    const progressSegs = items.map((_, j) => ({ bg: j <= idx ? '#8c7a4e' : '#e3dcc9' }));
+    const isLast = idx === items.length - 1;
+
+    // ----- celebration -----
+    const quote = t.quotes[s.quoteIdx % t.quotes.length];
+    const confettiColors = ['#c99a3f', '#4a5d50', '#8c7a4e', '#b4544a', '#e8bc6a'];
+    const confetti = [];
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      const dist = 90 + (i % 4) * 34;
+      confetti.push({
+        color: confettiColors[i % confettiColors.length],
+        size: (5 + (i % 3) * 2) + 'px',
+        dx: Math.round(Math.cos(ang) * dist) + 'px',
+        dy: Math.round(Math.sin(ang) * dist - 60) + 'px',
+        dur: (0.9 + (i % 5) * 0.12) + 's',
+        delay: (0.35 + (i % 4) * 0.07) + 's'
+      });
+    }
+
+    // ----- settings -----
+    const builtins = [
+      { id: 'm', label: t.remMorning, sub: t.remMorningSub },
+      { id: 'e', label: t.remEvening, sub: t.remEveningSub },
+      { id: 'k', label: t.remKahf, sub: t.remKahfSub },
+      { id: 'd', label: t.remDua, sub: t.remDuaSub }
+    ];
+    const customRows = s.custom.map((cu, i) => ({
+      label: cu.name, sub: cu.sub, on: cu.on,
+      toggle: () => {
+        const custom = s.custom.map((x, j) => j === i ? { ...x, on: !x.on } : x);
+        this.setState({ custom });
+      }
+    }));
+    const reminderRows = builtins.map(b => ({
+      label: b.label, sub: b.sub, on: s.toggles[b.id],
+      toggle: () => this.setState({ toggles: { ...s.toggles, [b.id]: !s.toggles[b.id] } })
+    })).concat(customRows).map(r => ({
+      label: r.label, sub: r.sub, toggle: r.toggle,
+      labelColor: r.on ? 'var(--ink)' : 'var(--faint)',
+      pillBg: r.on ? 'var(--green)' : 'var(--hair)',
+      knobLeft: r.on ? '22px' : '3px'
+    }));
+
+    // ----- add form -----
+    const bindNames = t.prayers.concat([t.exact]);
+    const chip = (name, on, pick) => ({
+      name, pick,
+      border: on ? 'var(--gold)' : 'var(--hair)',
+      bg: on ? 'var(--gdim)' : 'transparent',
+      color: on ? 'var(--gold)' : 'var(--sub)'
+    });
+    const bindChips = bindNames.map((n, i) => chip(n, s.form.bind === i, () => this.setState({ form: { ...s.form, bind: i } })));
+    const offsetChips = t.offsets.map((n, i) => chip(n, s.form.offset === i, () => this.setState({ form: { ...s.form, offset: i } })));
+    const dayChips = t.days.map((n, i) => chip(n, s.form.days === i, () => this.setState({ form: { ...s.form, days: i } })));
+
+    return {
+      t, c, quote, confetti,
+      sLang: s.screen === 'lang', sCity: s.screen === 'city', sNotif: s.screen === 'notif',
+      sTheme: s.screen === 'theme', sPoster: s.screen === 'poster', sHome: s.screen === 'home',
+      sDay: s.screen === 'day', sReader: s.screen === 'reader', sReaderDone: s.screen === 'readerDone',
+      sSettings: s.screen === 'settings', sAdd: s.screen === 'add',
+      reset: () => this.setState({ screen: 'lang', lang: 'ru', city: 0, theme: 'dark', doneEvening: false, doneDua: false, idx: 0, custom: [], toggles: { m: true, e: true, k: true, d: true } }),
+      pickRu: () => { this.setState({ lang: 'ru' }); this.go('city'); },
+      pickKz: () => { this.setState({ lang: 'kz' }); this.go('city'); },
+      cities, geo: () => { this.setState({ city: 0 }); setTimeout(() => this.go('notif'), 350); },
+      allow: () => this.go('theme'),
+      themes, toPoster: () => this.go('poster'), toHome: () => this.go('home'),
+      cityName: cityNames[s.city],
+      focusEvening, focusDua, focusDone, todayLine,
+      openReader: () => this.setState({ screen: 'reader', idx: 0 }),
+      markEvening: () => this.setState({ doneEvening: true }),
+      markDua: () => this.setState({ doneDua: true }),
+      openDay: () => this.go('day'),
+      closeDay: () => this.go('home'),
+      prayers, todayItems, trackerDays,
+      openSettings: () => this.go('settings'),
+      backToDay: () => this.go('day'),
+      toggleLang: () => this.setState({ lang: this.state.lang === 'kz' ? 'ru' : 'kz' }),
+      toggleTheme: () => this.setState({ theme: this.state.theme === 'light' ? 'dark' : 'light' }),
+      cur, progressSegs,
+      counter: (idx + 1) + ' ' + t.of + ' ' + items.length,
+      prevColor: idx === 0 ? '#d9d1bc' : '#8c7a4e',
+      prev: () => { if (idx > 0) this.setState({ idx: idx - 1 }); },
+      next: () => {
+        if (isLast) this.setState({ doneEvening: true, quoteIdx: Math.floor(Math.random() * 3), screen: 'readerDone' });
+        else this.setState({ idx: idx + 1 });
+      },
+      nextLabel: isLast ? t.finishBtn : t.nextBtn,
+      closeReader: () => this.go('home'),
+      backHome: () => this.go('home'),
+      reminderRows, openAdd: () => this.go('add'),
+      formName: s.form.name,
+      onFormName: (e) => this.setState({ form: { ...s.form, name: e.target.value } }),
+      bindChips, offsetChips, dayChips,
+      saveOpacity: s.form.name.trim() ? '1' : '.45',
+      saveReminder: () => {
+        if (!s.form.name.trim()) return;
+        const bindNames2 = t.prayers.concat([t.exact]);
+        const sub = bindNames2[s.form.bind] + ' · ' + t.offsets[s.form.offset] + ' · ' + t.days[s.form.days];
+        this.setState({
+          custom: s.custom.concat([{ name: s.form.name.trim(), sub, on: true }]),
+          form: { name: '', bind: 4, offset: 1, days: 0 },
+          screen: 'settings'
+        });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

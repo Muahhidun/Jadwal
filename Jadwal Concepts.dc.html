@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f0eee9;font-family:Manrope,system-ui,sans-serif}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 13px/1.2 Manrope,sans-serif;color:#1a1a1a}
+.dv-opts{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start;margin-top:24px}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px;width:390px}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:700 14px/1.3 Manrope,sans-serif;color:#1a1a1a}
+.dv-desc{font:400 12px/1.55 Manrope,sans-serif;color:rgba(0,0,0,.6);margin:0 0 4px}
+.dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:24px;box-shadow:0 2px 12px rgba(0,0,0,.08);overflow:hidden}
+.dv-opt:target .dv-oid{background:#2a78d6;color:#fff}
+.dv-next{margin:26px 0 0;font:12px/1.5 Manrope,sans-serif;color:rgba(0,0,0,.5)}
+</style>
+</helmet>
+
+<section class="dv-turn" id="t2" data-screen-label="Объединённое направление">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Объединённое направление: <a class="dv-oid" href="#1b">1b</a> + <a class="dv-oid" href="#1d">1d</a> + трекер из <a class="dv-oid" href="#1e">1e</a></span></div>
+<p style="max-width:720px;font:400 12.5px/1.6 Manrope,sans-serif;color:rgba(0,0,0,.6);margin:0">Один продукт, три слоя: главный экран «одно дело» → тап «Читать» открывает книгу → свайп вверх открывает дашборд с временами молитв и месячной тетрадью. День в тетради — круг: тёмно-зелёный (всё), светлый (частично), пустой (ничего). Тема переключается: тёмная / светлая.</p>
+
+<div class="dv-opts">
+
+<!-- 2a HOME dark -->
+<div class="dv-opt" id="2a">
+  <div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>Главный · тёмная тема</div>
+  <p class="dv-desc">Экран «одно дело». Кнопка «Читать зикры» → <a class="dv-oid" href="#2b">2b</a>, свайп вверх → <a class="dv-oid" href="#2c">2c</a>.</p>
+  <div class="dv-card" data-screen-label="2a Главный тёмный" style="background:#101714;color:#ece9df;height:790px;display:flex;flex-direction:column">
+    <div style="padding:24px 26px 0;display:flex;justify-content:space-between;font-size:12px;color:#6f7a72">
+      <div>Алматы</div>
+      <div>Пятница · 19 мухаррама · 20:11</div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 30px;text-align:center">
+      <div style="font-size:12px;letter-spacing:.18em;font-weight:600;color:#c99a3f;margin-bottom:22px">ОКНО ОТКРЫТО</div>
+      <div style="font-size:38px;line-height:1.12;font-weight:800;letter-spacing:-.01em;margin-bottom:18px">Вечерние<br>зикры</div>
+      <div style="font-size:14px;color:#9aa49b;line-height:1.5">после Асра · до захода солнца</div>
+      <div style="font-size:64px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin:34px 0 6px">0:42</div>
+      <div style="font-size:13px;color:#6f7a72;margin-bottom:44px">до Магриба</div>
+      <div style="background:#ece9df;color:#101714;border-radius:100px;padding:17px 0;font-weight:700;font-size:16px">Читать зикры</div>
+      <div style="margin-top:14px;font-size:13px;color:#6f7a72;padding:10px">Отметить без чтения ✓</div>
+    </div>
+    <div style="padding:0 26px 26px;text-align:center">
+      <div style="font-size:11px;color:#4c554e;letter-spacing:.06em;margin-bottom:10px">СЕГОДНЯ УЖЕ: УТРЕННИЕ ✓ · АЛЬ-КАХФ ✓</div>
+      <div style="width:36px;height:4px;border-radius:2px;background:#2a332d;margin:0 auto"></div>
+      <div style="font-size:11px;color:#4c554e;margin-top:8px">свайп вверх — день и тетрадь</div>
+    </div>
+  </div>
+</div>
+
+<!-- 2b READER -->
+<div class="dv-opt" id="2b">
+  <div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>Чтение · книга</div>
+  <p class="dv-desc">Открывается по «Читать зикры». Тёплая бумага даже в тёмной теме — чтение всегда как книга. Последний зикр завершается жестом «закрыть».</p>
+  <div class="dv-card" data-screen-label="2b Чтение" style="background:#f7f2e7;color:#2c2a24;height:790px;display:flex;flex-direction:column;font-family:Literata,Georgia,serif">
+    <div style="padding:18px 24px 14px;border-bottom:1px solid #e3dcc9;font-family:Manrope,sans-serif">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div style="display:flex;align-items:center;gap:10px"><div style="font-size:15px;color:#8c7a4e">✕</div><div style="font-size:12px;font-weight:700;letter-spacing:.08em;color:#8c7a4e">ВЕЧЕРНИЕ ЗИКРЫ</div></div>
+        <div style="font-size:12px;color:#9a927e">до Магриба · 0:42</div>
+      </div>
+      <div style="display:flex;gap:3px;margin-top:12px">
+        <div style="flex:1;height:3px;border-radius:2px;background:#8c7a4e"></div>
+        <div style="flex:1;height:3px;border-radius:2px;background:#8c7a4e"></div>
+        <div style="flex:1;height:3px;border-radius:2px;background:#8c7a4e"></div>
+        <div style="flex:1;height:3px;border-radius:2px;background:#e3dcc9"></div>
+        <div style="flex:1;height:3px;border-radius:2px;background:#e3dcc9"></div>
+        <div style="flex:1;height:3px;border-radius:2px;background:#e3dcc9"></div>
+        <div style="flex:1;height:3px;border-radius:2px;background:#e3dcc9"></div>
+      </div>
+      <div style="font-size:11px;color:#9a927e;margin-top:8px">4 из 7</div>
+    </div>
+    <div style="flex:1;padding:34px 28px 0;overflow:hidden">
+      <div dir="rtl" lang="ar" style="font-family:Amiri,serif;font-size:30px;line-height:2;text-align:center;color:#23211b">أَمْسَيْنَا وَأَمْسَى الْمُلْكُ لِلَّهِ، وَالْحَمْدُ لِلَّهِ، لَا إِلَهَ إِلَّا اللَّهُ وَحْدَهُ لَا شَرِيكَ لَهُ</div>
+      <div style="font-style:italic;font-size:14.5px;line-height:1.7;text-align:center;color:#7b7461;margin-top:22px">Амсайна ва амсаль-мульку лиЛляхи, валь-хамду лиЛляхи, ля иляха илля Ллаху вахдаху ля шарика лях</div>
+      <div style="font-size:15.5px;line-height:1.75;text-align:center;margin-top:20px">«Мы встретили вечер, и вся власть этим вечером принадлежит Аллаху. Хвала Аллаху, нет божества, кроме Аллаха Единого, у Которого нет сотоварища»</div>
+      <div style="margin-top:26px;padding:14px 18px;background:#efe8d6;border-radius:12px;font-family:Manrope,sans-serif">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:#8c7a4e;margin-bottom:5px">ДОСТОИНСТВО</div>
+        <div style="font-size:12.5px;line-height:1.6;color:#5c564a">Кто произнесёт эти слова вечером, тому будет защита до утра</div>
+        <div style="font-size:11.5px;color:#9a927e;margin-top:8px">Муслим, 2723</div>
+      </div>
+    </div>
+    <div style="padding:16px 24px 24px;display:flex;align-items:center;gap:14px;font-family:Manrope,sans-serif">
+      <div style="width:48px;height:48px;border-radius:50%;border:1.5px solid #d9d1bc;display:flex;align-items:center;justify-content:center;color:#8c7a4e;font-size:18px;box-sizing:border-box">←</div>
+      <div style="flex:1;background:#2c2a24;color:#f7f2e7;border-radius:100px;padding:15px 0;text-align:center;font-weight:600;font-size:14.5px">Дальше →</div>
+    </div>
+  </div>
+</div>
+
+<!-- 2c DASHBOARD sheet -->
+<div class="dv-opt" id="2c">
+  <div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a>Дашборд · свайп вверх</div>
+  <p class="dv-desc">Шторка поверх главного: времена молитв, дела дня, месячная тетрадь. День — круг: тёмный (всё выполнено), светлый (частично), пустой контур (ничего). Никаких цифр и процентов.</p>
+  <div class="dv-card" data-screen-label="2c Дашборд" style="background:#101714;color:#ece9df;height:790px;display:flex;flex-direction:column">
+    <div style="padding:16px 26px 10px;display:flex;justify-content:space-between;font-size:12px;color:#4c554e">
+      <div>Алматы</div><div>20:11</div>
+    </div>
+    <div style="margin-top:auto;background:#1a221d;border-radius:24px 24px 0 0;padding:16px 24px 24px;box-shadow:0 -10px 40px rgba(0,0,0,.4)">
+      <div style="width:34px;height:4px;border-radius:2px;background:#39433c;margin:0 auto 18px"></div>
+      <!-- prayer times -->
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px;text-align:center;margin-bottom:22px">
+        <div><div style="font-size:10.5px;color:#6f7a72">Фаджр</div><div style="font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:3px">03:05</div></div>
+        <div><div style="font-size:10.5px;color:#6f7a72">Восход</div><div style="font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:3px">04:58</div></div>
+        <div><div style="font-size:10.5px;color:#6f7a72">Зухр</div><div style="font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:3px">12:59</div></div>
+        <div><div style="font-size:10.5px;color:#6f7a72">Аср</div><div style="font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:3px">17:54</div></div>
+        <div style="background:#26302a;border-radius:8px;padding:4px 0"><div style="font-size:10.5px;color:#c99a3f">Магриб</div><div style="font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:3px;color:#c99a3f">20:53</div></div>
+        <div><div style="font-size:10.5px;color:#6f7a72">Иша</div><div style="font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:3px">22:38</div></div>
+      </div>
+      <!-- today tasks -->
+      <div style="font-size:11px;letter-spacing:.12em;font-weight:700;color:#6f7a72;margin-bottom:12px">СЕГОДНЯ</div>
+      <div style="display:flex;flex-direction:column;gap:11px;margin-bottom:24px">
+        <div style="display:flex;align-items:center;gap:12px"><div style="width:22px;height:22px;border-radius:50%;background:#5d7a66;color:#101714;display:flex;align-items:center;justify-content:center;font-size:11px;flex:none">✓</div><div style="flex:1;font-size:13.5px;font-weight:600">Утренние зикры</div><div style="font-size:11px;color:#6f7a72">04:12</div></div>
+        <div style="display:flex;align-items:center;gap:12px"><div style="width:22px;height:22px;border-radius:50%;background:#5d7a66;color:#101714;display:flex;align-items:center;justify-content:center;font-size:11px;flex:none">✓</div><div style="flex:1;font-size:13.5px;font-weight:600">Сура аль-Кахф</div><div style="font-size:11px;color:#6f7a72">11:20</div></div>
+        <div style="display:flex;align-items:center;gap:12px"><div style="width:22px;height:22px;border-radius:50%;border:1.5px solid #c99a3f;box-sizing:border-box;flex:none"></div><div style="flex:1;font-size:13.5px;font-weight:600">Вечерние зикры</div><div style="font-size:11px;color:#c99a3f;font-weight:600">ещё 0:42</div></div>
+        <div style="display:flex;align-items:center;gap:12px;opacity:.55"><div style="width:22px;height:22px;border-radius:50%;border:1.5px solid #39433c;box-sizing:border-box;flex:none"></div><div style="flex:1;font-size:13.5px;font-weight:600">Час дуа</div><div style="font-size:11px;color:#6f7a72">с 19:53</div></div>
+      </div>
+      <!-- month tracker -->
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+        <div style="font-size:11px;letter-spacing:.12em;font-weight:700;color:#6f7a72">МУХАРРАМ 1448</div>
+        <div style="font-size:11px;color:#4c554e">‹ ›</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:9px;justify-items:center;margin-bottom:14px">
+        <div style="width:22px;height:22px;border-radius:50%;background:#5d7a66"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#5d7a66"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#33443a"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#5d7a66"></div>
+        <div style="width:22px;height:22px;border-radius:50%;border:1.5px solid #2b342e;box-sizing:border-box"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#33443a"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#5d7a66"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#5d7a66"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#33443a"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#5d7a66"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#5d7a66"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#33443a"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#5d7a66"></div>
+        <div style="width:22px;height:22px;border-radius:50%;border:1.5px solid #2b342e;box-sizing:border-box"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#5d7a66"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#5d7a66"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#5d7a66"></div>
+        <div style="width:22px;height:22px;border-radius:50%;background:#33443a"></div>
+        <div style="width:22px;height:22px;border-radius:50%;border:2px solid #c99a3f;background:#33443a;box-sizing:border-box"></div>
+        <div style="width:22px;height:22px;border-radius:50%;border:1.5px dashed #2b342e;box-sizing:border-box"></div>
+        <div style="width:22px;height:22px;border-radius:50%;border:1.5px dashed #2b342e;box-sizing:border-box"></div>
+      </div>
+      <div style="display:flex;gap:16px;font-size:10.5px;color:#6f7a72;align-items:center">
+        <div style="display:flex;gap:6px;align-items:center"><div style="width:10px;height:10px;border-radius:50%;background:#5d7a66"></div>всё</div>
+        <div style="display:flex;gap:6px;align-items:center"><div style="width:10px;height:10px;border-radius:50%;background:#33443a"></div>частично</div>
+        <div style="display:flex;gap:6px;align-items:center"><div style="width:10px;height:10px;border-radius:50%;border:1.5px solid #2b342e;box-sizing:border-box"></div>ничего</div>
+        <div style="margin-left:auto;color:#4c554e">сегодня — в золотом кольце</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 2d LIGHT THEME -->
+<div class="dv-opt" id="2d">
+  <div class="dv-olabel"><a class="dv-oid" href="#2d">2d</a>Главный · светлая тема</div>
+  <p class="dv-desc">Та же композиция в светлой теме — тёплая бумага из <a class="dv-oid" href="#1d">1d</a>/<a class="dv-oid" href="#1e">1e</a>, те же акценты: зелёный и приглушённое золото.</p>
+  <div class="dv-card" data-screen-label="2d Главный светлый" style="background:#f5f2e9;color:#22302b;height:790px;display:flex;flex-direction:column">
+    <div style="padding:24px 26px 0;display:flex;justify-content:space-between;font-size:12px;color:#94978c">
+      <div>Алматы</div>
+      <div>Пятница · 19 мухаррама · 20:11</div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 30px;text-align:center">
+      <div style="font-size:12px;letter-spacing:.18em;font-weight:600;color:#b8862f;margin-bottom:22px">ОКНО ОТКРЫТО</div>
+      <div style="font-size:38px;line-height:1.12;font-weight:800;letter-spacing:-.01em;margin-bottom:18px">Вечерние<br>зикры</div>
+      <div style="font-size:14px;color:#7f857b;line-height:1.5">после Асра · до захода солнца</div>
+      <div style="font-size:64px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin:34px 0 6px">0:42</div>
+      <div style="font-size:13px;color:#94978c;margin-bottom:44px">до Магриба</div>
+      <div style="background:#22302b;color:#f5f2e9;border-radius:100px;padding:17px 0;font-weight:700;font-size:16px">Читать зикры</div>
+      <div style="margin-top:14px;font-size:13px;color:#94978c;padding:10px">Отметить без чтения ✓</div>
+    </div>
+    <div style="padding:0 26px 26px;text-align:center">
+      <div style="font-size:11px;color:#a9ac9f;letter-spacing:.06em;margin-bottom:10px">СЕГОДНЯ УЖЕ: УТРЕННИЕ ✓ · АЛЬ-КАХФ ✓</div>
+      <div style="width:36px;height:4px;border-radius:2px;background:#dcd8c9;margin:0 auto"></div>
+      <div style="font-size:11px;color:#a9ac9f;margin-top:8px">свайп вверх — день и тетрадь</div>
+    </div>
+  </div>
+</div>
+
+</div>
+<p class="dv-next">Дальше: «сделай это интерактивным прототипом — свайп и переходы работают» · «покажи дашборд в светлой теме» · «экран настройки напоминаний»</p>
+</section>
+
+<section class="dv-turn" id="t1" data-screen-label="Концепции Jadwal">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Jadwal — пять парадигм «ассистента поклонения»</span></div>
+<p style="max-width:720px;font:400 12.5px/1.6 Manrope,sans-serif;color:rgba(0,0,0,.6);margin:0">Пять разных ответов на вопрос «чем является приложение»: рекой дня, одним делом, небом, книгой и тетрадью. Все соблюдают рамки: без счётчиков, без геймификации, источник у каждого текста, спокойный тон.</p>
+
+<div class="dv-opts">
+
+<!-- ============ 1a РЕКА ДНЯ ============ -->
+<div class="dv-opt" id="1a">
+  <div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Река дня</div>
+  <p class="dv-desc">Дашборда нет — приложение и есть день. Один вертикальный поток от Фаджра до Иша: молитвы и окна поклонения стоят в хронологии, прожитое тихо гаснет, текущее окно раскрыто, линия «сейчас» движется вниз вместе с вами. Утром вы наверху потока, вечером — внизу.</p>
+  <div class="dv-card" data-screen-label="1a Река дня" style="background:#faf8f2;color:#22302b">
+    <div style="padding:22px 24px 8px;display:flex;justify-content:space-between;align-items:baseline">
+      <div style="font-weight:700;font-size:15px">Алматы</div>
+      <div style="font-size:12.5px;color:#8a9088">Пятница · 19 мухаррама 1448</div>
+    </div>
+    <div style="padding:8px 24px 30px;position:relative">
+      <!-- vertical line -->
+      <div style="position:absolute;left:35px;top:16px;bottom:20px;width:2px;background:linear-gradient(#c9cec4 0%,#c9cec4 46%,#e4e1d6 46%,#e4e1d6 100%)"></div>
+
+      <!-- Fajr (past) -->
+      <div style="display:flex;gap:16px;align-items:baseline;padding:10px 0;opacity:.45">
+        <div style="width:22px;height:22px;border-radius:50%;background:#22302b;color:#faf8f2;display:flex;align-items:center;justify-content:center;font-size:11px;flex:none;position:relative;z-index:1">✓</div>
+        <div style="flex:1;font-weight:600;font-size:14.5px">Фаджр</div>
+        <div style="font-size:13px;font-variant-numeric:tabular-nums">03:05</div>
+      </div>
+      <!-- morning adhkar (past, done) -->
+      <div style="display:flex;gap:16px;align-items:baseline;padding:10px 0 10px 46px;opacity:.45;position:relative">
+        <div style="position:absolute;left:29px;top:18px;width:10px;height:10px;border-radius:50%;background:#22302b;z-index:1"></div>
+        <div style="flex:1;font-size:13.5px">Утренние зикры — прочитаны</div>
+        <div style="font-size:12px;color:#8a9088">до восхода</div>
+      </div>
+      <!-- sunrise -->
+      <div style="display:flex;gap:16px;align-items:baseline;padding:10px 0;opacity:.45">
+        <div style="width:22px;height:22px;border-radius:50%;border:2px solid #c9cec4;background:#faf8f2;flex:none;position:relative;z-index:1;box-sizing:border-box"></div>
+        <div style="flex:1;font-weight:600;font-size:14.5px">Восход</div>
+        <div style="font-size:13px;font-variant-numeric:tabular-nums">04:58</div>
+      </div>
+      <!-- Zuhr -->
+      <div style="display:flex;gap:16px;align-items:baseline;padding:10px 0;opacity:.45">
+        <div style="width:22px;height:22px;border-radius:50%;background:#22302b;color:#faf8f2;display:flex;align-items:center;justify-content:center;font-size:11px;flex:none;position:relative;z-index:1">✓</div>
+        <div style="flex:1;font-weight:600;font-size:14.5px">Зухр · Джума</div>
+        <div style="font-size:13px;font-variant-numeric:tabular-nums">12:59</div>
+      </div>
+      <div style="display:flex;gap:16px;align-items:baseline;padding:6px 0 10px 46px;opacity:.45;position:relative">
+        <div style="position:absolute;left:29px;top:14px;width:10px;height:10px;border-radius:50%;background:#22302b;z-index:1"></div>
+        <div style="flex:1;font-size:13.5px">Сура аль-Кахф — прочитана</div>
+      </div>
+      <!-- Asr -->
+      <div style="display:flex;gap:16px;align-items:baseline;padding:10px 0;opacity:.45">
+        <div style="width:22px;height:22px;border-radius:50%;background:#22302b;color:#faf8f2;display:flex;align-items:center;justify-content:center;font-size:11px;flex:none;position:relative;z-index:1">✓</div>
+        <div style="flex:1;font-weight:600;font-size:14.5px">Аср</div>
+        <div style="font-size:13px;font-variant-numeric:tabular-nums">17:54</div>
+      </div>
+
+      <!-- NOW line -->
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;position:relative">
+        <div style="width:8px;height:8px;border-radius:50%;background:#b8862f;position:relative;left:32px;z-index:1;box-shadow:0 0 0 4px rgba(184,134,47,.18)"></div>
+        <div style="flex:1;height:1.5px;background:#b8862f;margin-left:18px"></div>
+        <div style="font-size:11.5px;font-weight:700;color:#b8862f;letter-spacing:.04em">СЕЙЧАС · 20:11</div>
+      </div>
+
+      <!-- open window (current) -->
+      <div style="margin:6px 0 6px 46px;background:#fff;border:1.5px solid #b8862f33;border-radius:16px;padding:16px 18px;box-shadow:0 4px 16px rgba(34,48,43,.07);position:relative">
+        <div style="position:absolute;left:-17px;top:24px;width:10px;height:10px;border-radius:50%;background:#b8862f;z-index:1"></div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#b8862f;margin-bottom:5px">ОКНО ОТКРЫТО · ЕЩЁ 0:42</div>
+        <div style="font-weight:700;font-size:16px;margin-bottom:3px">Вечерние зикры</div>
+        <div style="font-size:12.5px;color:#8a9088;margin-bottom:12px">После Асра, до захода солнца</div>
+        <div style="display:flex;gap:8px">
+          <div style="flex:1;background:#22302b;color:#faf8f2;border-radius:10px;padding:11px 0;text-align:center;font-weight:600;font-size:13.5px">Читать →</div>
+          <div style="width:44px;border:1.5px solid #d8d5c9;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#8a9088;font-size:15px;box-sizing:border-box">✓</div>
+        </div>
+      </div>
+      <div style="margin:2px 0 4px 46px;font-size:11.5px;color:#b09a6a;padding-left:2px">Час дуа перед Магрибом — окно откроется в 19:53</div>
+
+      <!-- Maghrib (future) -->
+      <div style="display:flex;gap:16px;align-items:baseline;padding:12px 0 8px;color:#9aa096">
+        <div style="width:22px;height:22px;border-radius:50%;border:2px solid #d8d5c9;background:#faf8f2;flex:none;position:relative;z-index:1;box-sizing:border-box"></div>
+        <div style="flex:1;font-weight:600;font-size:14.5px">Магриб</div>
+        <div style="font-size:13px;font-variant-numeric:tabular-nums">20:53</div>
+      </div>
+      <!-- Isha (future) -->
+      <div style="display:flex;gap:16px;align-items:baseline;padding:8px 0;color:#9aa096">
+        <div style="width:22px;height:22px;border-radius:50%;border:2px solid #d8d5c9;background:#faf8f2;flex:none;position:relative;z-index:1;box-sizing:border-box"></div>
+        <div style="flex:1;font-weight:600;font-size:14.5px">Иша</div>
+        <div style="font-size:13px;font-variant-numeric:tabular-nums">22:38</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 1b ОДНО ДЕЛО ============ -->
+<div class="dv-opt" id="1b">
+  <div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Одно дело</div>
+  <p class="dv-desc">Радикальный минимализм: приложение всегда показывает ровно одну вещь — то, что важно прямо сейчас. Открыто окно — оно на весь экран; окна нет — тихий экран ожидания со временем следующего. Ни списков, ни вкладок: вся остальная жизнь приложения живёт в свайпах вверх (день) и вниз (настройки).</p>
+  <div class="dv-card" data-screen-label="1b Одно дело" style="background:#101714;color:#ece9df;height:790px;display:flex;flex-direction:column">
+    <div style="padding:24px 26px 0;display:flex;justify-content:space-between;font-size:12px;color:#6f7a72">
+      <div>Алматы</div>
+      <div>19 мухаррама · 20:11</div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 30px;text-align:center">
+      <div style="font-size:12px;letter-spacing:.18em;font-weight:600;color:#c99a3f;margin-bottom:22px">ОКНО ОТКРЫТО</div>
+      <div style="font-size:38px;line-height:1.12;font-weight:800;letter-spacing:-.01em;margin-bottom:18px">Вечерние<br>зикры</div>
+      <div style="font-size:14px;color:#9aa49b;line-height:1.5">после Асра · до захода солнца</div>
+      <div style="font-size:64px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin:34px 0 6px;color:#ece9df">0:42</div>
+      <div style="font-size:13px;color:#6f7a72;margin-bottom:44px">до Магриба</div>
+      <div style="background:#ece9df;color:#101714;border-radius:100px;padding:17px 0;font-weight:700;font-size:16px">Читать зикры</div>
+      <div style="margin-top:14px;font-size:13px;color:#6f7a72;padding:10px">Отметить без чтения ✓</div>
+    </div>
+    <div style="padding:0 26px 26px;text-align:center">
+      <div style="font-size:11px;color:#4c554e;letter-spacing:.06em;margin-bottom:10px">СЕГОДНЯ УЖЕ: УТРЕННИЕ ✓ · АЛЬ-КАХФ ✓</div>
+      <div style="width:36px;height:4px;border-radius:2px;background:#2a332d;margin:0 auto"></div>
+      <div style="font-size:11px;color:#4c554e;margin-top:8px">свайп вверх — весь день</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 1c НЕБО ============ -->
+<div class="dv-opt" id="1c">
+  <div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Небо</div>
+  <p class="dv-desc">Время показано не цифрами, а самим небом: фон приложения живёт вместе с реальным солнцем — от предрассветной синевы до янтарного заката. Дуга солнца — главный навигатор: окна поклонения лежат на ней как отметки, и «после Асра до Магриба» видно буквально — как отрезок пути солнца к горизонту.</p>
+  <div class="dv-card" data-screen-label="1c Небо" style="background:linear-gradient(180deg,#1d3350 0%,#3d5570 34%,#9a7a55 68%,#d9a656 88%,#e8bc6a 100%);color:#f4efe4;height:790px;display:flex;flex-direction:column;position:relative">
+    <div style="padding:24px 26px;display:flex;justify-content:space-between;font-size:12.5px;color:rgba(244,239,228,.75)">
+      <div style="font-weight:600">Алматы</div>
+      <div>Пятница · 19 мухаррама</div>
+    </div>
+    <div style="text-align:center;margin-top:8px">
+      <div style="font-size:13px;color:rgba(244,239,228,.7)">солнце зайдёт через</div>
+      <div style="font-size:52px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-.02em">0:42</div>
+    </div>
+    <!-- sun arc -->
+    <div style="position:relative;height:230px;margin:26px 24px 0;overflow:hidden">
+      <div style="position:absolute;left:0;right:0;top:30px;height:400px;border:2px dashed rgba(244,239,228,.35);border-radius:50%;box-sizing:border-box"></div>
+      <!-- markers on arc -->
+      <div style="position:absolute;left:6px;top:146px;width:10px;height:10px;border-radius:50%;background:rgba(244,239,228,.5)"></div>
+      <div style="position:absolute;left:6px;top:162px;font-size:10.5px;color:rgba(244,239,228,.65)">Фаджр</div>
+      <div style="position:absolute;left:50%;top:22px;width:10px;height:10px;border-radius:50%;background:rgba(244,239,228,.5);transform:translateX(-50%)"></div>
+      <div style="position:absolute;left:50%;top:38px;font-size:10.5px;color:rgba(244,239,228,.65);transform:translateX(-50%)">Зухр</div>
+      <div style="position:absolute;right:74px;top:64px;width:10px;height:10px;border-radius:50%;background:rgba(244,239,228,.5)"></div>
+      <div style="position:absolute;right:58px;top:80px;font-size:10.5px;color:rgba(244,239,228,.65)">Аср</div>
+      <!-- sun now -->
+      <div style="position:absolute;right:30px;top:118px;width:26px;height:26px;border-radius:50%;background:#ffe9b0;box-shadow:0 0 30px 10px rgba(255,225,150,.55)"></div>
+      <div style="position:absolute;right:8px;top:150px;font-size:10.5px;font-weight:700;color:#ffe9b0">сейчас</div>
+      <!-- maghrib on horizon -->
+      <div style="position:absolute;right:2px;bottom:26px;width:10px;height:10px;border-radius:50%;border:2px solid rgba(244,239,228,.7);box-sizing:border-box"></div>
+      <div style="position:absolute;right:0;bottom:8px;font-size:10.5px;color:rgba(244,239,228,.8)">Магриб 20:53</div>
+      <!-- horizon -->
+      <div style="position:absolute;left:0;right:0;bottom:22px;height:1.5px;background:rgba(244,239,228,.4)"></div>
+    </div>
+    <!-- bottom sheet -->
+    <div style="margin-top:auto;background:rgba(16,22,30,.72);backdrop-filter:blur(14px);border-radius:24px 24px 0 0;padding:20px 24px 26px">
+      <div style="width:34px;height:4px;border-radius:2px;background:rgba(244,239,228,.25);margin:0 auto 16px"></div>
+      <div style="font-size:11px;letter-spacing:.14em;font-weight:700;color:#e8bc6a;margin-bottom:6px">ПОКА СОЛНЦЕ НЕ ЗАШЛО</div>
+      <div style="font-size:19px;font-weight:700;margin-bottom:4px">Вечерние зикры</div>
+      <div style="font-size:12.5px;color:rgba(244,239,228,.6);margin-bottom:14px">и особый час принятия дуа — пятница, перед Магрибом</div>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1;background:#f4efe4;color:#1d2a24;border-radius:12px;padding:13px 0;text-align:center;font-weight:700;font-size:14px">Читать зикры</div>
+        <div style="flex:1;border:1.5px solid rgba(244,239,228,.3);border-radius:12px;padding:13px 0;text-align:center;font-weight:600;font-size:14px;box-sizing:border-box">Делать дуа</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 1d МУСХАФ ============ -->
+<div class="dv-opt" id="1d">
+  <div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>Книга</div>
+  <p class="dv-desc">Приложение — прежде всего книга, а не расписание. Оно открывается сразу на тексте: арабская типографика в центре, всё остальное — тонкая рамка вокруг чтения. Время живёт в узкой ленте сверху («до Магриба 0:42»), отметка о выполнении — естественный жест «закрыть главу» в конце. Напоминание — это просто закладка, зовущая обратно в книгу.</p>
+  <div class="dv-card" data-screen-label="1d Книга" style="background:#f7f2e7;color:#2c2a24;height:790px;display:flex;flex-direction:column;font-family:Literata,Georgia,serif">
+    <div style="padding:18px 24px 14px;border-bottom:1px solid #e3dcc9">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;font-family:Manrope,sans-serif">
+        <div style="font-size:12px;font-weight:700;letter-spacing:.08em;color:#8c7a4e">ВЕЧЕРНИЕ ЗИКРЫ</div>
+        <div style="font-size:12px;color:#9a927e">до Магриба · 0:42</div>
+      </div>
+      <div style="display:flex;gap:3px;margin-top:12px">
+        <div style="flex:1;height:3px;border-radius:2px;background:#8c7a4e"></div>
+        <div style="flex:1;height:3px;border-radius:2px;background:#8c7a4e"></div>
+        <div style="flex:1;height:3px;border-radius:2px;background:#8c7a4e"></div>
+        <div style="flex:1;height:3px;border-radius:2px;background:#e3dcc9"></div>
+        <div style="flex:1;height:3px;border-radius:2px;background:#e3dcc9"></div>
+        <div style="flex:1;height:3px;border-radius:2px;background:#e3dcc9"></div>
+        <div style="flex:1;height:3px;border-radius:2px;background:#e3dcc9"></div>
+      </div>
+      <div style="font-family:Manrope,sans-serif;font-size:11px;color:#9a927e;margin-top:8px">4 из 7</div>
+    </div>
+    <div style="flex:1;padding:34px 28px 0;overflow:hidden">
+      <div dir="rtl" lang="ar" style="font-family:Amiri,serif;font-size:30px;line-height:2;text-align:center;color:#23211b">أَمْسَيْنَا وَأَمْسَى الْمُلْكُ لِلَّهِ، وَالْحَمْدُ لِلَّهِ، لَا إِلَهَ إِلَّا اللَّهُ وَحْدَهُ لَا شَرِيكَ لَهُ</div>
+      <div style="font-style:italic;font-size:14.5px;line-height:1.7;text-align:center;color:#7b7461;margin-top:22px">Амсайна ва амсаль-мульку лиЛляхи, валь-хамду лиЛляхи, ля иляха илля Ллаху вахдаху ля шарика лях</div>
+      <div style="font-size:15.5px;line-height:1.75;text-align:center;margin-top:20px">«Мы встретили вечер, и вся власть этим вечером принадлежит Аллаху. Хвала Аллаху, нет божества, кроме Аллаха Единого, у Которого нет сотоварища»</div>
+      <div style="margin-top:26px;padding:14px 18px;background:#efe8d6;border-radius:12px;font-family:Manrope,sans-serif">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:#8c7a4e;margin-bottom:5px">ДОСТОИНСТВО</div>
+        <div style="font-size:12.5px;line-height:1.6;color:#5c564a">Кто произнесёт эти слова вечером, тому будет защита до утра</div>
+        <div style="font-size:11.5px;color:#9a927e;margin-top:8px">Муслим, 2723</div>
+      </div>
+    </div>
+    <div style="padding:16px 24px 24px;display:flex;align-items:center;gap:14px;font-family:Manrope,sans-serif">
+      <div style="width:48px;height:48px;border-radius:50%;border:1.5px solid #d9d1bc;display:flex;align-items:center;justify-content:center;color:#8c7a4e;font-size:18px;box-sizing:border-box">←</div>
+      <div style="flex:1;background:#2c2a24;color:#f7f2e7;border-radius:100px;padding:15px 0;text-align:center;font-weight:600;font-size:14.5px">Дальше →</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 1e ТЕТРАДЬ ============ -->
+<div class="dv-opt" id="1e">
+  <div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>Тетрадь постоянства</div>
+  <p class="dv-desc">Главный экран — не «сейчас», а «я во времени»: тихая тетрадь, где каждый день оставляет чернильные отметки. Никаких стриков и процентов — просто честная запись, как в дневнике деяний. Постоянство видно само собой, взглядом на плотность страницы; сегодняшняя строка ещё пишется и стоит внизу, живая.</p>
+  <div class="dv-card" data-screen-label="1e Тетрадь" style="background:#f5f3ec;color:#33362f;height:790px;display:flex;flex-direction:column">
+    <div style="padding:24px 26px 6px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div style="font-size:20px;font-weight:800;letter-spacing:-.01em">Мухаррам 1448</div>
+        <div style="font-size:12px;color:#94978c">Алматы</div>
+      </div>
+      <div style="font-size:12.5px;color:#94978c;margin-top:4px">Лучшее из деяний — постоянное, даже если оно мало</div>
+    </div>
+    <!-- month fabric -->
+    <div style="padding:18px 26px 8px">
+      <div style="display:flex;gap:16px;font-size:10.5px;color:#a9ac9f;margin-bottom:10px">
+        <div style="width:26px"></div>
+        <div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center"><div>утро</div><div>вечер</div><div>кахф</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <div style="display:flex;gap:16px;align-items:center;opacity:.85"><div style="width:26px;font-size:11px;color:#a9ac9f;font-variant-numeric:tabular-nums">15</div><div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:6px"><div style="height:16px;border-radius:4px;background:#4a5d50"></div><div style="height:16px;border-radius:4px;background:#4a5d50"></div><div style="height:16px;border-radius:4px;background:#eceadf"></div></div></div>
+        <div style="display:flex;gap:16px;align-items:center;opacity:.85"><div style="width:26px;font-size:11px;color:#a9ac9f;font-variant-numeric:tabular-nums">16</div><div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:6px"><div style="height:16px;border-radius:4px;background:#4a5d50"></div><div style="height:16px;border-radius:4px;background:#eceadf"></div><div style="height:16px;border-radius:4px;background:#eceadf"></div></div></div>
+        <div style="display:flex;gap:16px;align-items:center;opacity:.85"><div style="width:26px;font-size:11px;color:#a9ac9f;font-variant-numeric:tabular-nums">17</div><div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:6px"><div style="height:16px;border-radius:4px;background:#4a5d50"></div><div style="height:16px;border-radius:4px;background:#4a5d50"></div><div style="height:16px;border-radius:4px;background:#eceadf"></div></div></div>
+        <div style="display:flex;gap:16px;align-items:center;opacity:.85"><div style="width:26px;font-size:11px;color:#a9ac9f;font-variant-numeric:tabular-nums">18</div><div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:6px"><div style="height:16px;border-radius:4px;background:#4a5d50"></div><div style="height:16px;border-radius:4px;background:#4a5d50"></div><div style="height:16px;border-radius:4px;background:#eceadf"></div></div></div>
+      </div>
+    </div>
+    <!-- today -->
+    <div style="margin:14px 20px 0;background:#fff;border:1px solid #e6e3d7;border-radius:18px;padding:18px 20px;box-shadow:0 2px 10px rgba(51,54,47,.05)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+        <div style="font-weight:700;font-size:15px">Сегодня · 19 мухаррама</div>
+        <div style="font-size:11.5px;color:#94978c">пятница</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:24px;height:24px;border-radius:7px;background:#4a5d50;color:#f5f3ec;display:flex;align-items:center;justify-content:center;font-size:12px;flex:none">✓</div>
+          <div style="flex:1;font-size:14px;font-weight:600">Утренние зикры</div>
+          <div style="font-size:11.5px;color:#94978c">04:12</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:24px;height:24px;border-radius:7px;background:#4a5d50;color:#f5f3ec;display:flex;align-items:center;justify-content:center;font-size:12px;flex:none">✓</div>
+          <div style="flex:1;font-size:14px;font-weight:600">Сура аль-Кахф</div>
+          <div style="font-size:11.5px;color:#94978c">11:20</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:24px;height:24px;border-radius:7px;border:1.5px solid #b8862f;box-sizing:border-box;flex:none"></div>
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:600">Вечерние зикры</div>
+            <div style="font-size:11.5px;color:#b8862f;font-weight:600">окно открыто · ещё 0:42</div>
+          </div>
+          <div style="background:#33362f;color:#f5f3ec;border-radius:9px;padding:9px 16px;font-size:12.5px;font-weight:600">Читать</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;opacity:.6">
+          <div style="width:24px;height:24px;border-radius:7px;border:1.5px solid #d9d6c8;box-sizing:border-box;flex:none"></div>
+          <div style="flex:1;font-size:14px;font-weight:600">Час дуа</div>
+          <div style="font-size:11.5px;color:#94978c">с 19:53</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:auto;padding:18px 26px 24px;text-align:center;font-size:12px;color:#94978c">Магриб в 20:53 · Иша в 22:38</div>
+  </div>
+</div>
+
+</div>
+<p class="dv-next">Дальше: «раскрой <a class="dv-oid" href="#1c">1c</a> — покажи все состояния неба за день» · «сделай экран чтения для <a class="dv-oid" href="#1b">1b</a>» · «смешай <a class="dv-oid" href="#1a">1a</a> и <a class="dv-oid" href="#1e">1e</a>» · «ещё направления»</p>
+</section>
+
+</x-dc>
+</body>
+</html>
