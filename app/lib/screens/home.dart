@@ -526,23 +526,33 @@ class _DayLayer extends StatelessWidget {
     // «День» — отдельная тёплая панель со скруглённым верхом, полем до низа
     // экрана. Это отличает второй экран от ночного главного и убирает
     // золотую полосу фона внизу. Панель едет снизу вместе с контентом.
-    const panel = Color(0xFF171812); // тёплый тёмный, отличается от ночного #101714
     return Transform.translate(
       offset: Offset(0, h * (1 - p)),
       child: Opacity(
         opacity: fade,
         child: Stack(
           children: [
-            // Полноэкранная панель (вне SafeArea — доходит до самого низа).
+            // Вариант Б: панель полупрозрачная — фон виден и на «дне».
+            // Затемнение усиливается книзу, чтобы текст/кнопки оставались
+            // читаемыми на светлеющем к рассвету фоне.
             Positioned(
               left: 0,
               right: 0,
               top: h * 0.185,
               bottom: 0,
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: panel,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      const Color(0xFF0B1512).withValues(alpha: 0.45),
+                      const Color(0xFF0B1512).withValues(alpha: 0.66),
+                      const Color(0xFF0B1512).withValues(alpha: 0.82),
+                    ],
+                    stops: const [0.0, 0.35, 1.0],
+                  ),
                 ),
               ),
             ),

@@ -20,10 +20,11 @@ class AppState extends ChangeNotifier {
   bool get dateGregorian => _prefs.getBool('dateGregorian') ?? false;
 
   /// Выбранный город (любой из справочника ДУМК). По умолчанию — Алматы.
+  /// Координаты — точные строки ДУМК (см. City).
   City get city => City(
         _prefs.getString('cityName') ?? kDefaultCity.name,
-        _prefs.getDouble('cityLat') ?? kDefaultCity.lat,
-        _prefs.getDouble('cityLng') ?? kDefaultCity.lng,
+        _prefs.getString('cityLatStr') ?? kDefaultCity.latStr,
+        _prefs.getString('cityLngStr') ?? kDefaultCity.lngStr,
         region: _prefs.getString('cityRegion') ?? kDefaultCity.region,
       );
 
@@ -34,8 +35,8 @@ class AppState extends ChangeNotifier {
 
   void setCity(City c) => _set(() {
         _prefs.setString('cityName', c.name);
-        _prefs.setDouble('cityLat', c.lat);
-        _prefs.setDouble('cityLng', c.lng);
+        _prefs.setString('cityLatStr', c.latStr);
+        _prefs.setString('cityLngStr', c.lngStr);
         _prefs.setString('cityRegion', c.region);
       });
 

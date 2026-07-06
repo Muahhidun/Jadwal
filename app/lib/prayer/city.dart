@@ -3,36 +3,42 @@ import 'dart:math';
 import 'package:flutter/services.dart' show rootBundle;
 
 /// Населённый пункт из справочника ДУМК (api.muftyat.kz/cities).
-/// Полный список (5695 пунктов) лежит в assets/data/cities.json,
-/// генерируется скриптом tools/fetch_cities.py.
+///
+/// ВАЖНО: координаты хранятся ТОЧНОЙ строкой как отдаёт ДУМК и передаются
+/// в endpoint prayer-times дословно — он ищет город по точному совпадению
+/// координат (округление → 404 → запасной расчёт, времена не совпадут с мечетью).
 class City {
   final String name;
-  final double lat, lng;
+  final String latStr, lngStr;
   final String region;
 
-  const City(this.name, this.lat, this.lng, {this.region = ''});
+  const City(this.name, this.latStr, this.lngStr, {this.region = ''});
+
+  double get lat => double.parse(latStr);
+  double get lng => double.parse(lngStr);
 
   factory City.fromJson(Map<String, dynamic> j) => City(
         j['t'] as String,
-        (j['lat'] as num).toDouble(),
-        (j['lng'] as num).toDouble(),
+        j['lat'] as String,
+        j['lng'] as String,
         region: (j['r'] as String?) ?? '',
       );
 }
 
-/// Город по умолчанию до выбора/определения — Алматы.
-const kDefaultCity = City('Алматы', 43.238949, 76.889709, region: 'Алматы');
+/// Город по умолчанию — Алматы (точные координаты ДУМК).
+const kDefaultCity =
+    City('Алматы', '43.238293', '76.945465', region: 'Алматы');
 
-/// Крупные города — для быстрого выбора в онбординге до ввода поиска.
+/// Крупные города для быстрого выбора в онбординге. Координаты — точные ДУМК.
 const kMajorCities = [
-  City('Алматы', 43.238949, 76.889709, region: 'Алматы'),
-  City('Астана', 51.169392, 71.449074, region: 'Астана'),
-  City('Шымкент', 42.341686, 69.590101, region: 'Шымкент'),
-  City('Караганда', 49.804684, 73.087749, region: 'Қарағанды облысы'),
-  City('Актобе', 50.283937, 57.166978, region: 'Ақтөбе облысы'),
-  City('Тараз', 42.899444, 71.392778, region: 'Жамбыл облысы'),
-  City('Павлодар', 52.287363, 76.967283, region: 'Павлодар облысы'),
-  City('Өскемен', 49.948759, 82.627935, region: 'Шығыс Қазақстан облысы'),
+  City('Алматы', '43.238293', '76.945465', region: 'Алматы'),
+  City('Астана', '51.133333', '71.433333', region: 'Астана'),
+  City('Шымкент', '42.368009', '69.612769', region: 'Шымкент'),
+  City('Қарағанды', '49.806406', '73.085485', region: 'Қарағанды облысы'),
+  City('Ақтөбе', '50.300377', '57.154555', region: 'Ақтөбе облысы'),
+  City('Тараз', '42.883333', '71.366667', region: 'Жамбыл облысы'),
+  City('Павлодар', '52.315556', '76.956389', region: 'Павлодар облысы'),
+  City('Өскемен', '49.948325', '82.627848', region: 'Шығыс Қазақстан облысы'),
 ];
 
 class CityRepository {
@@ -61,7 +67,7 @@ class CityRepository {
     return best;
   }
 
-  /// Поиск по названию (регистронезависимо, латиница/кириллица как есть).
+  /// Поиск по названию (регистронезависимо).
   static Future<List<City>> search(String query, {int limit = 40}) async {
     final all = await load();
     final q = query.trim().toLowerCase();

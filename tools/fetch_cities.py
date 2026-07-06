@@ -28,17 +28,22 @@ def main():
     while True:
         data = fetch(page)
         for c in data["results"]:
+            lat_s = (c.get("lat") or "").strip()
+            lng_s = (c.get("lng") or "").strip()
             try:
-                lat, lng = float(c["lat"]), float(c["lng"])
+                float(lat_s), float(lng_s)  # валидность
             except (TypeError, ValueError):
                 continue
             title = (c.get("title") or "").strip()
             if not title:
                 continue
+            # ВАЖНО: координаты храним ТОЧНОЙ строкой как отдаёт ДУМК —
+            # endpoint prayer-times ищет город по точному совпадению координат,
+            # округление ломает поиск (404 → запасной расчёт, времена мимо).
             cities.append({
                 "t": title,
-                "lat": round(lat, 5),
-                "lng": round(lng, 5),
+                "lat": lat_s,
+                "lng": lng_s,
                 "r": (c.get("region") or "").strip(),
                 "tz": int(c.get("timezone") or 5),
             })

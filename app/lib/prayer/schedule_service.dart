@@ -22,9 +22,8 @@ class ScheduleService extends ChangeNotifier {
   String source = '';
   bool _loading = false;
 
-  /// Ключ кеша по координатам (5 знаков ≈ метровая точность).
-  static String cityKey(double lat, double lng) =>
-      '${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}';
+  /// Ключ кеша по точным координатам-строкам.
+  static String cityKey(City city) => '${city.latStr},${city.lngStr}';
   static String _prefsKey(String ck, int year) => 'pt:$ck:$year';
   static String _dateKey(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -34,7 +33,7 @@ class ScheduleService extends ChangeNotifier {
   /// Времена на дату для города. Пока год не загружен — мгновенный
   /// астрономический расчёт, чтобы UI не ждал сеть; после ответа ДУМК уточнится.
   DayTimes? timesFor(City city, DateTime date) {
-    final ck = cityKey(city.lat, city.lng);
+    final ck = cityKey(city);
     _ensure(city, date.year);
     final y = _year;
     if (y == null || _loadedKey != ck || _loadedYear != date.year) {
@@ -48,7 +47,7 @@ class ScheduleService extends ChangeNotifier {
   }
 
   Future<void> _ensure(City city, int year) async {
-    final ck = cityKey(city.lat, city.lng);
+    final ck = cityKey(city);
     if (_loading || (_loadedKey == ck && _loadedYear == year)) return;
     _loading = true;
     try {
@@ -57,7 +56,7 @@ class ScheduleService extends ChangeNotifier {
         _apply(ck, year, cached, 'ДУМК (кеш)');
         return;
       }
-      final data = await MuftyatApi.fetchYear(city.lat, city.lng, year);
+      final data = await MuftyatApi.fetchYear(city.latStr, city.lngStr, year);
       final encoded = jsonEncode(data);
       await _prefs.setString(_prefsKey(ck, year), encoded);
       _apply(ck, year, encoded, 'ДУМК');
@@ -81,7 +80,7 @@ class ScheduleService extends ChangeNotifier {
   @visibleForTesting
   void preload(City city, int year, Map<String, List<int>> data, {String src = 'test'}) {
     _year = data;
-    _loadedKey = cityKey(city.lat, city.lng);
+    _loadedKey = cityKey(city);
     _loadedYear = year;
     source = src;
   }

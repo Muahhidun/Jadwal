@@ -9,9 +9,12 @@ class MuftyatApi {
 
   /// Год времён: карта 'YYYY-MM-DD' → [fajr, sunrise, dhuhr, asr, maghrib, isha]
   /// в минутах от полуночи. Бросает исключение при сетевой ошибке.
+  ///
+  /// [latStr]/[lngStr] — ТОЧНЫЕ строки координат из справочника ДУМК,
+  /// передаются в URL дословно (endpoint ищет город по точному совпадению).
   static Future<Map<String, List<int>>> fetchYear(
-      double lat, double lng, int year) async {
-    final url = Uri.parse('$_base/prayer-times/$year/$lat/$lng');
+      String latStr, String lngStr, int year) async {
+    final url = Uri.parse('$_base/prayer-times/$year/$latStr/$lngStr');
     final resp = await http.get(url).timeout(const Duration(seconds: 20));
     if (resp.statusCode != 200) {
       throw Exception('muftyat.kz HTTP ${resp.statusCode}');
