@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hijri/hijri_calendar.dart';
 import '../data/app_state.dart';
 import '../i18n/strings.dart';
+import '../notifications/notifications.dart';
 import '../prayer/schedule.dart';
 import '../prayer/schedule_service.dart';
 import '../prayer/windows.dart';
@@ -25,6 +26,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Timer? _ticker;
+  String _lastNotifSig = '';
   late final AnimationController _p =
       AnimationController(vsync: this, duration: const Duration(milliseconds: 420));
 
@@ -34,6 +36,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Разрешение на уведомления (iOS покажет диалог один раз; тем, кто
+      // прошёл онбординг на старом билде, попросим сейчас).
+      await gNotifier?.requestPermission();
+      if (!mounted) return;
+      syncNotifications(AppScope.of(context));
+      // По тапу на уведомление зикров — открыть соответствующий сборник.
+      final pending = gNotifier?.pendingCollection;
+      if (pending != null && pending.isNotEmpty && mounted) {
+        gNotifier!.pendingCollection = null;
+        _openReader(pending);
+      }
+    });
+  }
+
+  /// Перепланировать уведомления, только когда изменилось что-то значимое
+  /// (город / язык / набор выполненного за сегодня).
+  void _syncNotificationsIfNeeded(AppState app) {
+    final sig = '${app.city.name}|${app.lang}|'
+        '${TaskId.values.where((id) => app.isDone(id.name)).join(",")}';
+    if (sig == _lastNotifSig) return;
+    _lastNotifSig = sig;
+    syncNotifications(app);
   }
 
   @override
@@ -74,6 +99,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final t = schedule.timesFor(app.city, now);
     final nowSec = now.hour * 3600 + now.minute * 60 + now.second;
     final nowMin = nowSec ~/ 60;
+    _syncNotificationsIfNeeded(app);
 
     return Scaffold(
       backgroundColor: c.bg,

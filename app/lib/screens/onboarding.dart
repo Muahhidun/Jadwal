@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/app_state.dart';
 import '../i18n/strings.dart';
+import '../notifications/notifications.dart';
 import '../prayer/city.dart';
 import '../prayer/geo.dart';
 import '../theme/tokens.dart';
@@ -33,7 +34,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           app.setCity(city);
           Future.delayed(const Duration(milliseconds: 250), next);
         }),
-      2 => _NotifStep(s: s, c: c, onNext: next),
+      2 => _NotifStep(
+          s: s,
+          c: c,
+          onAllow: () async {
+            await gNotifier?.requestPermission();
+            next();
+          },
+          onNext: next),
       3 => _ThemeStep(s: s, c: c, app: app, onNext: next),
       _ => _PosterStep(s: s, onStart: () {
           app.onboardingDone = true;
@@ -208,10 +216,11 @@ class _CityStepState extends State<_CityStep> {
 }
 
 class _NotifStep extends StatelessWidget {
-  const _NotifStep({required this.s, required this.c, required this.onNext});
+  const _NotifStep(
+      {required this.s, required this.c, required this.onAllow, required this.onNext});
   final S s;
   final JColors c;
-  final VoidCallback onNext;
+  final VoidCallback onAllow, onNext;
 
   @override
   Widget build(BuildContext context) {
@@ -253,7 +262,7 @@ class _NotifStep extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          _PillButton(label: s.allow, onTap: onNext, colors: c),
+          _PillButton(label: s.allow, onTap: onAllow, colors: c),
           const SizedBox(height: 10),
           Center(
             child: TextButton(

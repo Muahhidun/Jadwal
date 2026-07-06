@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'data/app_state.dart';
+import 'notifications/notifications.dart';
 import 'prayer/schedule_service.dart';
 import 'screens/home.dart';
 import 'screens/onboarding.dart';
@@ -10,7 +11,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   final state = await AppState.load();
-  runApp(JadwalApp(state: state, schedule: ScheduleService(prefs)));
+  final schedule = ScheduleService(prefs);
+  final notifier = NotificationService(schedule);
+  gNotifier = notifier;
+  await notifier.init();
+  runApp(JadwalApp(state: state, schedule: schedule));
 }
 
 class JadwalApp extends StatelessWidget {
