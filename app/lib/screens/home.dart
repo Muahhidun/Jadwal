@@ -523,45 +523,34 @@ class _DayLayer extends StatelessWidget {
     final eveningOpen =
         windowsFor(t).any((w) => w.id == TaskId.evening && w.contains(nowMin));
     final fade = Curves.easeIn.transform(p);
-    // «День» — отдельная тёплая панель со скруглённым верхом, полем до низа
-    // экрана. Это отличает второй экран от ночного главного и убирает
-    // золотую полосу фона внизу. Панель едет снизу вместе с контентом.
+    // Вариант Б: единый фон без рамок и делений. Только мягкое затемнение,
+    // плавно нарастающее книзу (для читаемости текста на светлеющем фоне),
+    // без скруглений и линий — фон выглядит цельным на обоих экранах.
     return Transform.translate(
       offset: Offset(0, h * (1 - p)),
       child: Opacity(
         opacity: fade,
         child: Stack(
           children: [
-            // Вариант Б: панель полупрозрачная — фон виден и на «дне».
-            // Затемнение усиливается книзу, чтобы текст/кнопки оставались
-            // читаемыми на светлеющем к рассвету фоне.
             Positioned(
               left: 0,
               right: 0,
-              top: h * 0.185,
+              top: h * 0.10,
               bottom: 0,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      const Color(0xFF0B1512).withValues(alpha: 0.45),
-                      const Color(0xFF0B1512).withValues(alpha: 0.66),
-                      const Color(0xFF0B1512).withValues(alpha: 0.82),
+                      const Color(0xFF0B1512).withValues(alpha: 0.0),
+                      const Color(0xFF0B1512).withValues(alpha: 0.55),
+                      const Color(0xFF0B1512).withValues(alpha: 0.8),
                     ],
-                    stops: const [0.0, 0.35, 1.0],
+                    stops: const [0.0, 0.4, 1.0],
                   ),
                 ),
               ),
-            ),
-            // Тонкая золотая грань по верху панели — сигнал «другой экран».
-            Positioned(
-              left: 40,
-              right: 40,
-              top: h * 0.185,
-              child: Container(height: 2, color: c.gold.withValues(alpha: 0.5)),
             ),
             SafeArea(
               child: Stack(
@@ -606,7 +595,7 @@ class _DayLayer extends StatelessWidget {
               Positioned(
                 left: 28,
                 right: 28,
-                top: h * 0.26,
+                top: h * 0.20,
                 bottom: 0,
                 child: SingleChildScrollView(
                   physics: const NeverScrollableScrollPhysics(),
@@ -615,9 +604,9 @@ class _DayLayer extends StatelessWidget {
                     children: [
                       // Времена молитв — сетка 3×2, крупнее (перенесены с главного).
                       _DayTimesGrid(s: s, c: c, t: t, nowMin: nowMin),
-                      const SizedBox(height: 22),
+                      const SizedBox(height: 16),
                       Text(s.todayCaps, style: JType.caption(c.faint)),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       _TaskRow(
                           label: s.morningTitle,
                           done: app.isDone('morning'),
@@ -644,13 +633,13 @@ class _DayLayer extends StatelessWidget {
                             done: app.isDone('dua'),
                             c: c,
                             onTap: () => app.markDone('dua')),
-                      const SizedBox(height: 22),
+                      const SizedBox(height: 16),
                       Text(_monthCaps(s, app), style: JType.caption(c.faint)),
-                      const SizedBox(height: 12),
-                      _Notebook(c: c),
                       const SizedBox(height: 10),
+                      _Notebook(c: c),
+                      const SizedBox(height: 8),
                       _Legend(s: s, c: c),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
                       Row(children: [
                         Expanded(
                             child: _SmallOutlineButton(
@@ -661,13 +650,24 @@ class _DayLayer extends StatelessWidget {
                                         content: Text(app.lang == 'kz'
                                             ? 'Жасалуда…'
                                             : 'В разработке…'))))),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
+                        Expanded(
+                            child: _SmallOutlineButton(
+                                label: s.themeBtn,
+                                c: c,
+                                onTap: () => app.theme = switch (app.theme) {
+                                      'dark' => 'light',
+                                      'light' => 'system',
+                                      _ => 'dark',
+                                    })),
+                        const SizedBox(width: 8),
                         Expanded(
                             child: _SmallOutlineButton(
                                 label: s.langBtn,
                                 c: c,
                                 onTap: () => app.lang = app.lang == 'ru' ? 'kz' : 'ru')),
                       ]),
+                      const SizedBox(height: 4),
                     ],
                   ),
                 ),
@@ -741,7 +741,7 @@ class _DayTimesGrid extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 10,
       crossAxisSpacing: 10,
-      childAspectRatio: 1.5,
+      childAspectRatio: 1.75,
       children: [
         for (final (i, prayer) in Prayer.values.indexed)
           Container(

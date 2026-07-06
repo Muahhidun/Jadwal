@@ -12,10 +12,9 @@ class SceneBackground extends StatelessWidget {
   final double progress;
   final double screenHeight;
 
-  /// Путь к пользовательской картинке-фону на 2 экрана (портрет, ~1:4.3).
-  /// Верх картинки = главный экран, низ = экран «дня». Если null —
-  /// используется рисованный фон ниже. Задел под сменные фоны в настройках.
-  static const String? customAsset = null;
+  /// Картинка-фон на 2 экрана (портрет, ~1:4.3): верх = главный, низ = «день».
+  /// При ошибке загрузки — рисованный фон ниже. Задел под сменные фоны настроек.
+  static const String customAsset = 'assets/images/scene_bg.png';
 
   @override
   Widget build(BuildContext context) {
@@ -28,12 +27,10 @@ class SceneBackground extends StatelessWidget {
       top: dy,
       height: screenHeight * 2,
       child: RepaintBoundary(
-        child: customAsset != null
-            ? Image.asset(customAsset!,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) =>
-                    CustomPaint(painter: _ScenePainter(), size: Size.infinite))
-            : CustomPaint(painter: _ScenePainter(), size: Size.infinite),
+        child: Image.asset(customAsset,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) =>
+                CustomPaint(painter: _ScenePainter(), size: Size.infinite)),
       ),
     );
   }
