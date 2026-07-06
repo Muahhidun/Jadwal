@@ -124,9 +124,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           onToggleDate: () => app.dateGregorian = !app.dateGregorian,
                         ),
                       ),
-                      // Общие элементы поверх: таймер и сетка времён.
+                      // Общий элемент поверх: только таймер (переезжает наверх).
+                      // Времена молитв — на экране «дня» (сеткой 3+3), не на главном.
                       _HeroTimer(p: p, s: s, c: c, t: t, nowSec: nowSec, h: h, schedule: schedule, app: app),
-                      _HeroTimes(p: p, s: s, c: c, t: t, nowMin: nowMin, h: h),
                     ] else
                       Center(child: CircularProgressIndicator(color: c.gold)),
                   ],
@@ -163,8 +163,8 @@ class _HeroTimer extends StatelessWidget {
   Widget build(BuildContext context) {
     final nowMin = nowSec ~/ 60;
     final (caption, timer, _) = heroTimer(s, t, nowSec, nowMin, schedule, app);
-    final top = lerpDouble(h * 0.34, h * 0.115, p)!;
-    final size = lerpDouble(78.0, 50.0, p)!;
+    final top = lerpDouble(h * 0.40, h * 0.10, p)!;
+    final size = lerpDouble(80.0, 50.0, p)!;
     final capSize = lerpDouble(14.0, 12.0, p)!;
     return Positioned(
       left: 0,
@@ -225,94 +225,6 @@ class _HeroTimer extends StatelessWidget {
     DayTimes.fmtHMS(24 * 3600 - nowSec + fajr * 60),
     tomorrow == null ? '' : s.atTpl.replaceFirst('{p}', s.prayers[Prayer.fajr.index]).replaceFirst('{t}', tomorrow.fmt(Prayer.fajr)),
   );
-}
-
-// ── Общий герой: сетка времён (морфинг 3+3 → ряд из 6) ────────────────────────
-class _HeroTimes extends StatelessWidget {
-  const _HeroTimes(
-      {required this.p,
-      required this.s,
-      required this.c,
-      required this.t,
-      required this.nowMin,
-      required this.h});
-  final double p, h;
-  final S s;
-  final JColors c;
-  final DayTimes t;
-  final int nowMin;
-
-  @override
-  Widget build(BuildContext context) {
-    final hl = nextPrayer(t, nowMin) ?? Prayer.fajr;
-    final width = MediaQuery.of(context).size.width - 56;
-    const gap3 = 10.0, gap6 = 6.0;
-    final cellW3 = (width - 2 * gap3) / 3;
-    final cellW6 = (width - 5 * gap6) / 6;
-    const cellH = 52.0;
-    final stripH = lerpDouble(cellH * 2 + 10, cellH, p)!;
-    final top = lerpDouble(h * 0.60, h * 0.30, p)!;
-
-    // В открытом окне на главном сетки нет: проявляем её по мере прокрутки.
-    final w = currentWindow(t, nowMin, (id) => false);
-    final baseOpacity = w != null ? Curves.easeIn.transform(p) : 1.0;
-
-    return Positioned(
-      left: 28,
-      top: top,
-      width: width,
-      height: stripH,
-      child: IgnorePointer(
-        child: Opacity(
-          opacity: baseOpacity,
-          child: Stack(
-            children: [
-              for (final (i, prayer) in Prayer.values.indexed)
-                _cell(i, prayer, hl, cellW3, cellW6, cellH, gap3, gap6),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _cell(int i, Prayer prayer, Prayer hl, double cellW3, double cellW6,
-      double cellH, double gap3, double gap6) {
-    final col3 = i % 3, row3 = i ~/ 3;
-    final x3 = col3 * (cellW3 + gap3);
-    final y3 = row3 * (cellH + 10);
-    final x6 = i * (cellW6 + gap6);
-    const y6 = 0.0;
-    final x = lerpDouble(x3, x6, p)!;
-    final y = lerpDouble(y3, y6, p)!;
-    final wid = lerpDouble(cellW3, cellW6, p)!;
-    final active = prayer == hl;
-    return Positioned(
-      left: x,
-      top: y,
-      width: wid,
-      height: cellH,
-      child: Container(
-        decoration: BoxDecoration(
-          color: active ? c.gdim : null,
-          border: Border.all(color: active ? c.gold : c.hair),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            FittedBox(
-                child: Text(s.prayers[i],
-                    style: JType.ui(11, color: active ? c.gold : c.faint))),
-            const SizedBox(height: 2),
-            FittedBox(
-                child: Text(t.fmt(prayer),
-                    style: JType.ui(14, w: FontWeight.w700, color: active ? c.gold : c.sub))),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // ── Слой «главный»: заголовок, карточка окна / бейдж, подсказка. Уезжает вверх ─
@@ -599,7 +511,7 @@ class _DayLayer extends StatelessWidget {
             Positioned(
               left: 0,
               right: 0,
-              top: h * 0.335,
+              top: h * 0.185,
               bottom: 0,
               child: Container(
                 decoration: const BoxDecoration(
@@ -612,7 +524,7 @@ class _DayLayer extends StatelessWidget {
             Positioned(
               left: 40,
               right: 40,
-              top: h * 0.335,
+              top: h * 0.185,
               child: Container(height: 2, color: c.gold.withValues(alpha: 0.5)),
             ),
             SafeArea(
@@ -658,13 +570,16 @@ class _DayLayer extends StatelessWidget {
               Positioned(
                 left: 28,
                 right: 28,
-                top: h * 0.42,
+                top: h * 0.26,
                 bottom: 0,
                 child: SingleChildScrollView(
                   physics: const NeverScrollableScrollPhysics(),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      // Времена молитв — сетка 3×2, крупнее (перенесены с главного).
+                      _DayTimesGrid(s: s, c: c, t: t, nowMin: nowMin),
+                      const SizedBox(height: 22),
                       Text(s.todayCaps, style: JType.caption(c.faint)),
                       const SizedBox(height: 10),
                       _TaskRow(
@@ -770,6 +685,50 @@ JColors jColorsOf(BuildContext context) {
     _ => false,
   };
   return isLight ? JColors.light : JColors.dark;
+}
+
+/// Сетка времён молитв на экране «дня»: 3 колонки × 2 ряда, крупные ячейки.
+class _DayTimesGrid extends StatelessWidget {
+  const _DayTimesGrid(
+      {required this.s, required this.c, required this.t, required this.nowMin});
+  final S s;
+  final JColors c;
+  final DayTimes t;
+  final int nowMin;
+
+  @override
+  Widget build(BuildContext context) {
+    final hl = nextPrayer(t, nowMin) ?? Prayer.fajr;
+    return GridView.count(
+      crossAxisCount: 3,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 1.5,
+      children: [
+        for (final (i, prayer) in Prayer.values.indexed)
+          Container(
+            decoration: BoxDecoration(
+              color: prayer == hl ? c.gdim : null,
+              border: Border.all(color: prayer == hl ? c.gold : c.hair),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(s.prayers[i],
+                    style: JType.ui(13, color: prayer == hl ? c.gold : c.faint)),
+                const SizedBox(height: 3),
+                Text(t.fmt(prayer),
+                    style: JType.ui(20,
+                        w: FontWeight.w700, color: prayer == hl ? c.gold : c.ink)),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class _TaskRow extends StatelessWidget {

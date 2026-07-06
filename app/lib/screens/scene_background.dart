@@ -12,17 +12,28 @@ class SceneBackground extends StatelessWidget {
   final double progress;
   final double screenHeight;
 
+  /// Путь к пользовательской картинке-фону на 2 экрана (портрет, ~1:4.3).
+  /// Верх картинки = главный экран, низ = экран «дня». Если null —
+  /// используется рисованный фон ниже. Задел под сменные фоны в настройках.
+  static const String? customAsset = null;
+
   @override
   Widget build(BuildContext context) {
-    // Фон едет чуть медленнее контента (параллакс, глубина).
-    final dy = -progress * screenHeight * 0.7;
+    // Фон высотой на 2 экрана; едет ровно с прокруткой (1:1) — верхний экран
+    // показывает верхнюю половину, нижний — нижнюю (важно для картинки).
+    final dy = -progress * screenHeight;
     return Positioned(
       left: 0,
       right: 0,
       top: dy,
       height: screenHeight * 2,
       child: RepaintBoundary(
-        child: CustomPaint(painter: _ScenePainter(), size: Size.infinite),
+        child: customAsset != null
+            ? Image.asset(customAsset!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) =>
+                    CustomPaint(painter: _ScenePainter(), size: Size.infinite))
+            : CustomPaint(painter: _ScenePainter(), size: Size.infinite),
       ),
     );
   }
