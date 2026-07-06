@@ -163,18 +163,20 @@ class _HeroTimer extends StatelessWidget {
   Widget build(BuildContext context) {
     final nowMin = nowSec ~/ 60;
     final (caption, timer, _) = heroTimer(s, t, nowSec, nowMin, schedule, app);
-    final top = lerpDouble(h * 0.36, h * 0.125, p)!;
-    final size = lerpDouble(64.0, 44.0, p)!;
+    final top = lerpDouble(h * 0.34, h * 0.115, p)!;
+    final size = lerpDouble(78.0, 50.0, p)!;
+    final capSize = lerpDouble(14.0, 12.0, p)!;
     return Positioned(
       left: 0,
       right: 0,
       top: top,
       child: IgnorePointer(
+        // Таймер — главный элемент; подпись (до восхода) под ним.
         child: Column(
           children: [
-            Text(caption, style: JType.caption(c.gold)),
-            const SizedBox(height: 6),
             Text(timer, style: JType.timer(size, c.ink)),
+            const SizedBox(height: 4),
+            Text(caption, style: JType.caption(c.gold, size: capSize)),
           ],
         ),
       ),
@@ -353,8 +355,6 @@ class _HomeLayer extends StatelessWidget {
       topBlock = Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(s.windowOpen, style: JType.caption(c.gold)),
-          const SizedBox(height: 14),
           Text(title,
               textAlign: TextAlign.center,
               style: JType.ui(34, w: FontWeight.w800, color: c.ink, h: 1.1)),
@@ -585,35 +585,39 @@ class _DayLayer extends StatelessWidget {
     final eveningOpen =
         windowsFor(t).any((w) => w.id == TaskId.evening && w.contains(nowMin));
     final fade = Curves.easeIn.transform(p);
-    // Контент дня начинается ниже геройской сетки (~0.42h) и «въезжает» снизу.
+    // «День» — отдельная тёплая панель со скруглённым верхом, полем до низа
+    // экрана. Это отличает второй экран от ночного главного и убирает
+    // золотую полосу фона внизу. Панель едет снизу вместе с контентом.
+    const panel = Color(0xFF171812); // тёплый тёмный, отличается от ночного #101714
     return Transform.translate(
       offset: Offset(0, h * (1 - p)),
       child: Opacity(
         opacity: fade,
-        child: SafeArea(
-          child: Stack(
-            children: [
-              // Подложка под контент дня — читаемость светлого текста на фоне.
-              Positioned(
-                left: 0,
-                right: 0,
-                top: h * 0.38,
-                bottom: 0,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        c.bg.withValues(alpha: 0.0),
-                        c.bg.withValues(alpha: 0.82),
-                        c.bg.withValues(alpha: 0.92),
-                      ],
-                      stops: const [0.0, 0.14, 1.0],
-                    ),
-                  ),
+        child: Stack(
+          children: [
+            // Полноэкранная панель (вне SafeArea — доходит до самого низа).
+            Positioned(
+              left: 0,
+              right: 0,
+              top: h * 0.335,
+              bottom: 0,
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: panel,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
                 ),
               ),
+            ),
+            // Тонкая золотая грань по верху панели — сигнал «другой экран».
+            Positioned(
+              left: 40,
+              right: 40,
+              top: h * 0.335,
+              child: Container(height: 2, color: c.gold.withValues(alpha: 0.5)),
+            ),
+            SafeArea(
+              child: Stack(
+                children: [
               // Хват + строка даты сверху дня (тап по хвату — назад).
               Positioned(
                 left: 28,
@@ -709,16 +713,6 @@ class _DayLayer extends StatelessWidget {
                         const SizedBox(width: 10),
                         Expanded(
                             child: _SmallOutlineButton(
-                                label: s.themeBtn,
-                                c: c,
-                                onTap: () => app.theme = switch (app.theme) {
-                                      'dark' => 'light',
-                                      'light' => 'system',
-                                      _ => 'dark',
-                                    })),
-                        const SizedBox(width: 10),
-                        Expanded(
-                            child: _SmallOutlineButton(
                                 label: s.langBtn,
                                 c: c,
                                 onTap: () => app.lang = app.lang == 'ru' ? 'kz' : 'ru')),
@@ -727,8 +721,10 @@ class _DayLayer extends StatelessWidget {
                   ),
                 ),
               ),
-            ],
-          ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

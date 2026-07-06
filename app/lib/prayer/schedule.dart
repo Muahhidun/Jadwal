@@ -41,9 +41,15 @@ class DayTimes {
 /// Запасной астрономический расчёт (adhan). Метод — Muslim World League,
 /// аср — ханафитский (стандарт для Казахстана). Возможны расхождения
 /// с таблицами ДУМК на несколько минут — поэтому он только fallback.
+///
+/// На высоких широтах (север Казахстана летом) угол зари не наступает, и
+/// правило по умолчанию «середина ночи» прижимает Фаджр и Иша к полуночи.
+/// Правило «1/7 ночи» даёт осмысленные времена (Иша = закат + ночь/7,
+/// Фаджр = восход − ночь/7) — ближе к практике муфтията.
 DayTimes calculateDayTimes(City city, DateTime date) {
   final params = CalculationMethod.muslim_world_league.getParameters()
-    ..madhab = Madhab.hanafi;
+    ..madhab = Madhab.hanafi
+    ..highLatitudeRule = HighLatitudeRule.seventh_of_the_night;
   final pt = PrayerTimes(
       Coordinates(city.lat, city.lng), DateComponents.from(date), params);
   int mins(DateTime t) {
