@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:hijri/hijri_calendar.dart';
 import '../data/app_state.dart';
@@ -189,21 +188,24 @@ class _HeroTimer extends StatelessWidget {
   Widget build(BuildContext context) {
     final nowMin = nowSec ~/ 60;
     final (caption, timer, _) = heroTimer(s, t, nowSec, nowMin, schedule, app);
-    final top = lerpDouble(h * 0.40, h * 0.13, p)!;
-    final size = lerpDouble(80.0, 48.0, p)!;
-    final capSize = lerpDouble(14.0, 12.0, p)!;
+    // Таймер — только на главном: уезжает вверх и растворяется при прокрутке
+    // к «дню» (на втором экране его нет — там сетка времён вверху).
+    final fade = (1 - p * 1.6).clamp(0.0, 1.0);
     return Positioned(
       left: 0,
       right: 0,
-      top: top,
+      top: h * 0.40 - h * p,
       child: IgnorePointer(
         // Таймер — главный элемент; подпись (до восхода) под ним.
-        child: Column(
-          children: [
-            Text(timer, style: JType.timer(size, c.ink)),
-            const SizedBox(height: 4),
-            Text(caption, style: JType.caption(c.gold, size: capSize)),
-          ],
+        child: Opacity(
+          opacity: fade,
+          child: Column(
+            children: [
+              Text(timer, style: JType.timer(80, c.ink)),
+              const SizedBox(height: 4),
+              Text(caption, style: JType.caption(c.gold, size: 14)),
+            ],
+          ),
         ),
       ),
     );
@@ -428,23 +430,74 @@ class _HomeLayer extends StatelessWidget {
         left: 0,
         right: 0,
         bottom: 12,
-        child: GestureDetector(
-          onTap: onExpand,
-          behavior: HitTestBehavior.opaque,
-          child: Column(
-            children: [
-              Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: c.sub.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 8),
-              Text(s.swipe, style: JType.ui(11, color: c.sub)),
-            ],
-          ),
-        ),
+        child: _BouncingHint(s: s, c: c, onTap: onExpand),
       );
+}
+
+/// Подсказка свайпа с периодическим подскоком (README: hintbounce) —
+/// намекает, что экран можно свайпнуть вверх.
+class _BouncingHint extends StatefulWidget {
+  const _BouncingHint({required this.s, required this.c, required this.onTap});
+  final S s;
+  final JColors c;
+  final VoidCallback onTap;
+
+  @override
+  State<_BouncingHint> createState() => _BouncingHintState();
+}
+
+class _BouncingHintState extends State<_BouncingHint>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl =
+      AnimationController(vsync: this, duration: const Duration(seconds: 5))..repeat();
+  late final Animation<double> _dy = TweenSequence<double>([
+    TweenSequenceItem(tween: ConstantTween(0), weight: 72),
+    TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: -8.0).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 6),
+    TweenSequenceItem(
+        tween: Tween(begin: -8.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 6),
+    TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: -4.0).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 6),
+    TweenSequenceItem(
+        tween: Tween(begin: -4.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 6),
+    TweenSequenceItem(tween: ConstantTween(0), weight: 4),
+  ]).animate(_ctrl);
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.c;
+    return GestureDetector(
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedBuilder(
+        animation: _dy,
+        builder: (_, child) =>
+            Transform.translate(offset: Offset(0, _dy.value), child: child),
+        child: Column(
+          children: [
+            Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: c.sub.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 8),
+            Text(widget.s.swipe, style: JType.ui(11, color: c.sub)),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 (String, String, String, String?, VoidCallback, VoidCallback?) _windowLabels(
@@ -608,14 +661,14 @@ class _DayLayer extends StatelessWidget {
               Positioned(
                 left: 28,
                 right: 28,
-                top: h * 0.24,
-                bottom: 0,
+                top: h * 0.13,
+                bottom: 66,
                 child: SingleChildScrollView(
                   physics: const NeverScrollableScrollPhysics(),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Времена молитв — сетка 3×2, крупнее (перенесены с главного).
+                      // Времена молитв — сетка 3×2 вверху (таймера на «дне» нет).
                       _DayTimesGrid(s: s, c: c, t: t, nowMin: nowMin),
                       const SizedBox(height: 16),
                       Text(s.todayCaps, style: JType.caption(c.faint)),
@@ -653,38 +706,42 @@ class _DayLayer extends StatelessWidget {
                       _Notebook(c: c, app: app, now: schedule.now()),
                       const SizedBox(height: 10),
                       _Legend(s: s, c: c),
-                      const SizedBox(height: 16),
-                      Row(children: [
-                        Expanded(
-                            child: _SmallOutlineButton(
-                                label: s.remindersBtn,
-                                c: c,
-                                onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                        content: Text(app.lang == 'kz'
-                                            ? 'Жасалуда…'
-                                            : 'В разработке…'))))),
-                        const SizedBox(width: 8),
-                        Expanded(
-                            child: _SmallOutlineButton(
-                                label: s.themeBtn,
-                                c: c,
-                                onTap: () => app.theme = switch (app.theme) {
-                                      'dark' => 'light',
-                                      'light' => 'system',
-                                      _ => 'dark',
-                                    })),
-                        const SizedBox(width: 8),
-                        Expanded(
-                            child: _SmallOutlineButton(
-                                label: s.langBtn,
-                                c: c,
-                                onTap: () => app.lang = app.lang == 'ru' ? 'kz' : 'ru')),
-                      ]),
-                      const SizedBox(height: 4),
                     ],
                   ),
                 ),
+              ),
+              // Кнопки закреплены внизу — всегда видны, не уезжают за экран.
+              Positioned(
+                left: 28,
+                right: 28,
+                bottom: 10,
+                child: Row(children: [
+                  Expanded(
+                      child: _SmallOutlineButton(
+                          label: s.remindersBtn,
+                          c: c,
+                          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text(app.lang == 'kz'
+                                      ? 'Жасалуда…'
+                                      : 'В разработке…'))))),
+                  const SizedBox(width: 8),
+                  Expanded(
+                      child: _SmallOutlineButton(
+                          label: s.themeBtn,
+                          c: c,
+                          onTap: () => app.theme = switch (app.theme) {
+                                'dark' => 'light',
+                                'light' => 'system',
+                                _ => 'dark',
+                              })),
+                  const SizedBox(width: 8),
+                  Expanded(
+                      child: _SmallOutlineButton(
+                          label: s.langBtn,
+                          c: c,
+                          onTap: () => app.lang = app.lang == 'ru' ? 'kz' : 'ru')),
+                ]),
               ),
                 ],
               ),
@@ -763,8 +820,9 @@ class _DayTimesGrid extends StatelessWidget {
         for (final (i, prayer) in Prayer.values.indexed)
           Container(
             decoration: BoxDecoration(
-              color: prayer == hl ? c.gdim : null,
-              border: Border.all(color: prayer == hl ? c.gold : c.hair),
+              // Мягкий акцент: без заливки, только чуть заметная золотая рамка.
+              border: Border.all(
+                  color: prayer == hl ? c.gold.withValues(alpha: 0.7) : c.hair),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Column(
@@ -774,8 +832,7 @@ class _DayTimesGrid extends StatelessWidget {
                     style: JType.ui(13, color: prayer == hl ? c.gold : c.faint)),
                 const SizedBox(height: 3),
                 Text(t.fmt(prayer),
-                    style: JType.ui(20,
-                        w: FontWeight.w700, color: prayer == hl ? c.gold : c.ink)),
+                    style: JType.ui(20, w: FontWeight.w700, color: c.ink)),
               ],
             ),
           ),
