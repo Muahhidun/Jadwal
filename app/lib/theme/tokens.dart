@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 /// Дизайн-токены из design_handoff_jadwal/README.md — источник правды по UI.
 class JColors {
@@ -71,15 +70,25 @@ const jSplash = Color(0xFF14241D);
 class JType {
   static TextStyle ui(double size,
           {FontWeight w = FontWeight.w400, Color? color, double? ls, double? h}) =>
-      GoogleFonts.manrope(
-          fontSize: size, fontWeight: w, color: color, letterSpacing: ls, height: h);
+      TextStyle(
+          fontFamily: 'Manrope',
+          fontSize: size,
+          fontWeight: w,
+          color: color,
+          letterSpacing: ls,
+          height: h);
 
   /// Каптион-«шапка»: 11px/700, letter-spacing, UPPERCASE (текст подаёт вызывающий).
-  static TextStyle caption(Color color, {double size = 11}) => GoogleFonts.manrope(
-      fontSize: size, fontWeight: FontWeight.w700, color: color, letterSpacing: size * .15);
+  static TextStyle caption(Color color, {double size = 11}) => TextStyle(
+      fontFamily: 'Manrope',
+      fontSize: size,
+      fontWeight: FontWeight.w700,
+      color: color,
+      letterSpacing: size * .15);
 
   /// Таймер 52–72px/300 tabular-nums.
-  static TextStyle timer(double size, Color color) => GoogleFonts.manrope(
+  static TextStyle timer(double size, Color color) => TextStyle(
+      fontFamily: 'Manrope',
       fontSize: size,
       fontWeight: FontWeight.w300,
       color: color,
@@ -87,8 +96,13 @@ class JType {
 
   static TextStyle reading(double size,
           {Color? color, FontStyle? style, double h = 1.75}) =>
-      GoogleFonts.literata(fontSize: size, color: color, fontStyle: style, height: h);
+      TextStyle(
+          fontFamily: 'Literata',
+          fontSize: size,
+          color: color,
+          fontStyle: style,
+          height: h);
 
   static TextStyle arabic(double size, {Color color = JPaper.arabic}) =>
-      GoogleFonts.amiri(fontSize: size, color: color, height: 1.95);
+      TextStyle(fontFamily: 'Amiri', fontSize: size, color: color, height: 1.95);
 }

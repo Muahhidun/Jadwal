@@ -42,13 +42,21 @@ class AppState extends ChangeNotifier {
 
   /// Отметки за день: ключи morning / kahf / evening / dua.
   /// Хранятся с датой, чтобы в полночь начинался чистый день.
-  String get _todayKey {
-    final n = DateTime.now();
-    return '${n.year}-${n.month}-${n.day}';
-  }
+  static String dayKey(DateTime d) => '${d.year}-${d.month}-${d.day}';
+  String get _todayKey => dayKey(DateTime.now());
 
   bool isDone(String task) =>
       (_prefs.getStringList('done:$_todayKey') ?? const []).contains(task);
+
+  List<String> doneOn(DateTime date) =>
+      _prefs.getStringList('done:${dayKey(date)}') ?? const [];
+
+  /// «Тетрадь постоянства»: день засчитан (зелёный), если выполнены
+  /// оба ежедневных зикра — утренний и вечерний. Иначе — пропущен (красный).
+  bool dayCompleted(DateTime date) {
+    final d = doneOn(date);
+    return d.contains('morning') && d.contains('evening');
+  }
 
   void markDone(String task) => _set(() {
         final list = _prefs.getStringList('done:$_todayKey') ?? <String>[];

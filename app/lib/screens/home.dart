@@ -189,8 +189,8 @@ class _HeroTimer extends StatelessWidget {
   Widget build(BuildContext context) {
     final nowMin = nowSec ~/ 60;
     final (caption, timer, _) = heroTimer(s, t, nowSec, nowMin, schedule, app);
-    final top = lerpDouble(h * 0.40, h * 0.10, p)!;
-    final size = lerpDouble(80.0, 50.0, p)!;
+    final top = lerpDouble(h * 0.40, h * 0.13, p)!;
+    final size = lerpDouble(80.0, 48.0, p)!;
     final capSize = lerpDouble(14.0, 12.0, p)!;
     return Positioned(
       left: 0,
@@ -474,20 +474,33 @@ class _AlreadyBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Понятные строки полными названиями: «Утренние зикры ✓».
     final done = <String>[
-      if (app.isDone('morning')) s.un[0],
-      if (app.isDone('kahf')) s.un[1],
-      if (app.isDone('evening')) s.un[2],
-      if (app.isDone('dua')) s.un[3],
+      if (app.isDone('morning')) s.morningTitle,
+      if (app.isDone('kahf')) s.kahfTitle,
+      if (app.isDone('evening')) s.eveningTitle,
+      if (app.isDone('dua')) s.duaTitle,
     ];
     if (done.isEmpty) return const SizedBox.shrink();
     return Positioned(
-      left: 0,
-      right: 0,
+      left: 28,
+      right: 28,
       bottom: 44,
-      child: Center(
-        child: Text('${s.already} ${done.map((d) => '$d ✓').join(' · ')}',
-            style: JType.caption(c.faint)),
+      child: Column(
+        children: [
+          for (final name in done)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check, size: 14, color: c.green),
+                  const SizedBox(width: 6),
+                  Text(name, style: JType.ui(13, color: c.sub)),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -595,7 +608,7 @@ class _DayLayer extends StatelessWidget {
               Positioned(
                 left: 28,
                 right: 28,
-                top: h * 0.20,
+                top: h * 0.24,
                 bottom: 0,
                 child: SingleChildScrollView(
                   physics: const NeverScrollableScrollPhysics(),
@@ -634,10 +647,11 @@ class _DayLayer extends StatelessWidget {
                             c: c,
                             onTap: () => app.markDone('dua')),
                       const SizedBox(height: 16),
-                      Text(_monthCaps(s, app), style: JType.caption(c.faint)),
+                      Text(_gregMonthCaps(schedule.now()),
+                          style: JType.caption(c.faint)),
                       const SizedBox(height: 10),
-                      _Notebook(c: c),
-                      const SizedBox(height: 8),
+                      _Notebook(c: c, app: app, now: schedule.now()),
+                      const SizedBox(height: 10),
                       _Legend(s: s, c: c),
                       const SizedBox(height: 16),
                       Row(children: [
@@ -681,8 +695,11 @@ class _DayLayer extends StatelessWidget {
     );
   }
 
-  String _monthCaps(S s, AppState app) =>
-      dateLine(s, schedule.now(), app.dateGregorian).split(' ').last.toUpperCase();
+  static const _gregMonthsNom = [
+    'ЯНВАРЬ', 'ФЕВРАЛЬ', 'МАРТ', 'АПРЕЛЬ', 'МАЙ', 'ИЮНЬ', 'ИЮЛЬ', 'АВГУСТ',
+    'СЕНТЯБРЬ', 'ОКТЯБРЬ', 'НОЯБРЬ', 'ДЕКАБРЬ'
+  ];
+  String _gregMonthCaps(DateTime now) => '${_gregMonthsNom[now.month - 1]} ${now.year}';
 }
 
 // ── Общие мелкие виджеты и утилиты ───────────────────────────────────────────
@@ -815,46 +832,79 @@ class _TaskRow extends StatelessWidget {
   }
 }
 
+/// Тетрадь постоянства — настоящий календарь текущего месяца, привязанный к
+/// дням недели. Два состояния: зелёная галочка (день выполнен) и красная
+/// отметка (прошедший день пропущен). Сегодня — в золотом кольце,
+/// будущие дни — пустые. Данные реальные (AppState.dayCompleted).
 class _Notebook extends StatelessWidget {
-  const _Notebook({required this.c});
+  const _Notebook({required this.c, required this.app, required this.now});
   final JColors c;
-  static const _demo = 'ffpfffmffpfffffmffpt.';
+  final AppState app;
+  final DateTime now;
+
+  static const _weekdays = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
-      crossAxisCount: 7,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 8,
-      crossAxisSpacing: 8,
+    final first = DateTime(now.year, now.month, 1);
+    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    final lead = first.weekday - 1; // сколько пустых ячеек до 1-го числа
+    final cells = <Widget>[];
+    for (var i = 0; i < lead; i++) {
+      cells.add(const SizedBox.shrink());
+    }
+    for (var day = 1; day <= daysInMonth; day++) {
+      final date = DateTime(now.year, now.month, day);
+      cells.add(Center(child: _cell(date)));
+    }
+    return Column(
       children: [
-        for (final ch in _demo.split(''))
-          Center(
-            child: switch (ch) {
-              'f' => _dot(c.green, check: true),
-              'p' => Transform.rotate(
-                  angle: .785,
-                  child: Container(
-                      width: 16,
-                      height: 16,
-                      decoration: BoxDecoration(
-                          color: c.gold, borderRadius: BorderRadius.circular(5)))),
-              'm' => _dot(c.red, cross: true),
-              't' => Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                      shape: BoxShape.circle, border: Border.all(color: c.gold, width: 2)),
-                  child: _dot(c.gdim)),
-              _ => Container(
-                  width: 20,
-                  height: 20,
-                  decoration: BoxDecoration(
-                      shape: BoxShape.circle, border: Border.all(color: c.hair))),
-            },
-          ),
+        Row(
+          children: [
+            for (final w in _weekdays)
+              Expanded(
+                child: Center(
+                    child: Text(w, style: JType.ui(10, color: c.faint))),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        GridView.count(
+          crossAxisCount: 7,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 7,
+          crossAxisSpacing: 7,
+          children: cells,
+        ),
       ],
     );
+  }
+
+  Widget _cell(DateTime date) {
+    final today = DateTime(now.year, now.month, now.day);
+    final isToday = date == today;
+    final isFuture = date.isAfter(today);
+    if (isToday) {
+      final done = app.dayCompleted(date);
+      return Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+            shape: BoxShape.circle, border: Border.all(color: c.gold, width: 2)),
+        child: done ? _dot(c.green, check: true) : _dot(c.gdim),
+      );
+    }
+    if (isFuture) {
+      return Container(
+        width: 20,
+        height: 20,
+        decoration:
+            BoxDecoration(shape: BoxShape.circle, border: Border.all(color: c.hair)),
+      );
+    }
+    return app.dayCompleted(date)
+        ? _dot(c.green, check: true)
+        : _dot(c.red, cross: true);
   }
 
   Widget _dot(Color color, {bool check = false, bool cross = false}) => Container(
@@ -890,9 +940,8 @@ class _Legend extends StatelessWidget {
             Text(label, style: JType.ui(11, color: c.faint)),
           ],
         );
-    return Wrap(spacing: 14, runSpacing: 6, children: [
+    return Wrap(spacing: 16, runSpacing: 6, children: [
       item(c.green, s.legendAll),
-      item(c.gold, s.legendPart),
       item(c.red, s.legendMiss),
       item(c.gold, s.legendToday, ring: true),
     ]);
