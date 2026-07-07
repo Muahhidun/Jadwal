@@ -113,15 +113,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               animation: _p,
               builder: (context, _) {
                 final p = _p.value;
+                final fg = t != null ? skyForeground(t, nowSec) : null;
                 return Stack(
                   children: [
-                    SceneBackground(progress: p, screenHeight: h),
+                    if (t != null)
+                      SceneBackground(
+                          progress: p, screenHeight: h, times: t, nowSec: nowSec),
                     if (t != null) ...[
                       Positioned.fill(
                         child: _HomeLayer(
                           p: p,
                           s: s,
                           c: c,
+                          fg: fg!,
                           app: app,
                           t: t,
                           nowMin: nowMin,
@@ -151,7 +155,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       ),
                       // Общий элемент поверх: только таймер (переезжает наверх).
                       // Времена молитв — на экране «дня» (сеткой 3+3), не на главном.
-                      _HeroTimer(p: p, s: s, c: c, t: t, nowSec: nowSec, h: h, schedule: schedule, app: app),
+                      _HeroTimer(p: p, s: s, c: c, fg: fg, t: t, nowSec: nowSec, h: h, schedule: schedule, app: app),
                     ] else
                       Center(child: CircularProgressIndicator(color: c.gold)),
                   ],
@@ -171,6 +175,7 @@ class _HeroTimer extends StatelessWidget {
       {required this.p,
       required this.s,
       required this.c,
+      required this.fg,
       required this.t,
       required this.nowSec,
       required this.h,
@@ -179,6 +184,7 @@ class _HeroTimer extends StatelessWidget {
   final double p, h;
   final S s;
   final JColors c;
+  final SkyFg fg;
   final DayTimes t;
   final int nowSec;
   final ScheduleService schedule;
@@ -201,9 +207,9 @@ class _HeroTimer extends StatelessWidget {
           opacity: fade,
           child: Column(
             children: [
-              Text(timer, style: JType.timer(80, c.ink)),
+              Text(timer, style: JType.timer(80, fg.text)),
               const SizedBox(height: 4),
-              Text(caption, style: JType.caption(c.gold, size: 14)),
+              Text(caption, style: JType.caption(fg.accent, size: 14)),
             ],
           ),
         ),
@@ -261,6 +267,7 @@ class _HomeLayer extends StatelessWidget {
     required this.p,
     required this.s,
     required this.c,
+    required this.fg,
     required this.app,
     required this.t,
     required this.nowMin,
@@ -275,6 +282,7 @@ class _HomeLayer extends StatelessWidget {
   final double p, h;
   final S s;
   final JColors c;
+  final SkyFg fg;
   final AppState app;
   final DayTimes t;
   final int nowMin, nowSec;
@@ -297,12 +305,12 @@ class _HomeLayer extends StatelessWidget {
         children: [
           Text(title,
               textAlign: TextAlign.center,
-              style: JType.ui(34, w: FontWeight.w800, color: c.ink, h: 1.1)),
+              style: JType.ui(34, w: FontWeight.w800, color: fg.text, h: 1.1)),
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(sub,
-                textAlign: TextAlign.center, style: JType.ui(14, color: c.sub, h: 1.4)),
+                textAlign: TextAlign.center, style: JType.ui(14, color: fg.faint, h: 1.4)),
           ),
         ],
       );
@@ -342,9 +350,9 @@ class _HomeLayer extends StatelessWidget {
                         GestureDetector(
                           onTap: onLink,
                           child: Text(link,
-                              style: JType.ui(14, color: c.sub).copyWith(
+                              style: JType.ui(14, color: fg.faint).copyWith(
                                   decoration: TextDecoration.underline,
-                                  decorationColor: c.faint)),
+                                  decorationColor: fg.faint)),
                         ),
                       ],
                     ],
@@ -384,7 +392,7 @@ class _HomeLayer extends StatelessWidget {
                     ),
                   ),
                 ),
-              _AlreadyBar(s: s, c: c, app: app, top: h * 0.52),
+              _AlreadyBar(s: s, fg: fg, app: app),
               _swipeHint(context),
             ],
           ),
@@ -394,11 +402,7 @@ class _HomeLayer extends StatelessWidget {
   }
 
   Widget _header(BuildContext context) {
-    // Лёгкая тень — читаемость шапки на художественном фоне.
-    final shadow = [
-      Shadow(color: c.bg.withValues(alpha: 0.6), blurRadius: 6),
-    ];
-    final style = JType.ui(12.5, color: c.sub).copyWith(shadows: shadow);
+    final style = JType.ui(12.5, color: fg.faint);
     return Positioned(
       left: 28,
       right: 28,
@@ -410,10 +414,10 @@ class _HomeLayer extends StatelessWidget {
             onTap: onCity,
             behavior: HitTestBehavior.opaque,
             child: Row(children: [
-              Icon(Icons.place_outlined, size: 14, color: c.sub, shadows: shadow),
+              Icon(Icons.place_outlined, size: 14, color: fg.faint),
               const SizedBox(width: 3),
               Text(app.city.name, style: style),
-              Icon(Icons.keyboard_arrow_down, size: 14, color: c.sub, shadows: shadow),
+              Icon(Icons.keyboard_arrow_down, size: 14, color: fg.faint),
             ]),
           ),
           GestureDetector(
@@ -430,16 +434,16 @@ class _HomeLayer extends StatelessWidget {
         left: 0,
         right: 0,
         bottom: 12,
-        child: _BouncingHint(s: s, c: c, onTap: onExpand),
+        child: _BouncingHint(s: s, color: fg.faint, onTap: onExpand),
       );
 }
 
 /// Подсказка свайпа с периодическим подскоком (README: hintbounce) —
 /// намекает, что экран можно свайпнуть вверх.
 class _BouncingHint extends StatefulWidget {
-  const _BouncingHint({required this.s, required this.c, required this.onTap});
+  const _BouncingHint({required this.s, required this.color, required this.onTap});
   final S s;
-  final JColors c;
+  final Color color;
   final VoidCallback onTap;
 
   @override
@@ -475,7 +479,7 @@ class _BouncingHintState extends State<_BouncingHint>
 
   @override
   Widget build(BuildContext context) {
-    final c = widget.c;
+    final color = widget.color;
     return GestureDetector(
       onTap: widget.onTap,
       behavior: HitTestBehavior.opaque,
@@ -489,10 +493,10 @@ class _BouncingHintState extends State<_BouncingHint>
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                    color: c.sub.withValues(alpha: 0.6),
+                    color: color.withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 8),
-            Text(widget.s.swipe, style: JType.ui(11, color: c.sub)),
+            Text(widget.s.swipe, style: JType.ui(11, color: color)),
           ],
         ),
       ),
@@ -519,11 +523,10 @@ class _BouncingHintState extends State<_BouncingHint>
 }
 
 class _AlreadyBar extends StatelessWidget {
-  const _AlreadyBar({required this.s, required this.c, required this.app, required this.top});
+  const _AlreadyBar({required this.s, required this.fg, required this.app});
   final S s;
-  final JColors c;
+  final SkyFg fg;
   final AppState app;
-  final double top;
 
   @override
   Widget build(BuildContext context) {
@@ -547,9 +550,9 @@ class _AlreadyBar extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.check, size: 14, color: c.green),
+                  Icon(Icons.check, size: 14, color: fg.accent),
                   const SizedBox(width: 6),
-                  Text(name, style: JType.ui(13, color: c.sub)),
+                  Text(name, style: JType.ui(13, color: fg.faint)),
                 ],
               ),
             ),
