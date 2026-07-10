@@ -32,7 +32,7 @@ class JadwalApp extends StatelessWidget {
         child: ListenableBuilder(
           listenable: Listenable.merge([state, schedule]),
           builder: (context, _) => MaterialApp(
-            title: 'Jadwal',
+            title: 'Дауам',
             debugShowCheckedModeBanner: false,
             themeMode: state.themeMode,
             theme: _theme(JColors.light, Brightness.light),

@@ -70,6 +70,7 @@ flutter:
     - assets/data/adhkar.json
     - assets/data/cities.json
     - assets/images/scene_bg.png
+    - assets/images/mecca_silhouette.png
 
   # Вшитые шрифты — без рантайм-загрузки (иначе мелькание при старте).
   fonts:

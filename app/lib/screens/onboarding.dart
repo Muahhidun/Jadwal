@@ -77,9 +77,9 @@ class _LangStep extends StatelessWidget {
       child: Column(
         children: [
           const Spacer(flex: 2),
-          Text('جدول', style: JType.arabic(56, color: JColors.dark.gold)),
+          Text('دوام', style: JType.arabic(56, color: JColors.dark.gold)),
           const SizedBox(height: 8),
-          Text('Jadwal',
+          Text('Дауам',
               style: JType.ui(30, w: FontWeight.w800, color: JColors.dark.ink)),
           const SizedBox(height: 10),
           Text('ғибадат серігі · ассистент поклонения',

@@ -26,7 +26,7 @@ void main() {
     await tester.pumpWidget(JadwalApp(state: state, schedule: await demoSchedule()));
     await tester.pump();
 
-    expect(find.text('Jadwal'), findsOneWidget);
+    expect(find.text('Дауам'), findsOneWidget);
     expect(find.text('Қазақша'), findsOneWidget);
     expect(find.text('Русский'), findsOneWidget);
   });

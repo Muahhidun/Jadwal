@@ -563,6 +563,27 @@ class _AlreadyBar extends StatelessWidget {
 }
 
 // ── Слой «день»: задачи, тетрадь, кнопки. Приезжает снизу ─────────────────────
+class _GlassCard extends StatelessWidget {
+  const _GlassCard({required this.child, this.padding});
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: padding ?? const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1.0),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: child,
+    );
+  }
+}
+
+// ── Слой «день»: задачи, тетрадь, кнопки. Приезжает снизу ─────────────────────
 class _DayLayer extends StatelessWidget {
   const _DayLayer({
     required this.p,
@@ -592,9 +613,8 @@ class _DayLayer extends StatelessWidget {
     final eveningOpen =
         windowsFor(t).any((w) => w.id == TaskId.evening && w.contains(nowMin));
     final fade = Curves.easeIn.transform(p);
-    // Вариант Б: единый фон без рамок и делений. Только мягкое затемнение,
-    // плавно нарастающее книзу (для читаемости текста на светлеющем фоне),
-    // без скруглений и линий — фон выглядит цельным на обоих экранах.
+    
+    // Стеклянный скролл-контент
     return Transform.translate(
       offset: Offset(0, h * (1 - p)),
       child: Opacity(
@@ -624,128 +644,148 @@ class _DayLayer extends StatelessWidget {
             SafeArea(
               child: Stack(
                 children: [
-              // Хват + строка даты сверху дня (тап по хвату — назад).
-              Positioned(
-                left: 28,
-                right: 28,
-                top: 8,
-                child: Column(
-                  children: [
-                    GestureDetector(
-                      onTap: onCollapse,
-                      behavior: HitTestBehavior.opaque,
-                      child: Container(
-                          width: 36,
-                          height: 4,
-                          decoration: BoxDecoration(
-                              color: c.sub.withValues(alpha: 0.6),
-                              borderRadius: BorderRadius.circular(2))),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  // Хват + строка даты сверху дня (тап по хвату — назад).
+                  Positioned(
+                    left: 28,
+                    right: 28,
+                    top: 8,
+                    child: Column(
                       children: [
-                        Row(children: [
-                          Icon(Icons.place_outlined, size: 13, color: c.sub),
-                          const SizedBox(width: 3),
-                          Text(app.city.name, style: JType.ui(12.5, color: c.sub)),
-                        ]),
                         GestureDetector(
-                          onTap: onToggleDate,
+                          onTap: onCollapse,
                           behavior: HitTestBehavior.opaque,
-                          child: Text(dateLine(s, schedule.now(), app.dateGregorian),
-                              style: JType.ui(12.5, color: c.sub)),
+                          child: Container(
+                              width: 36,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                  color: c.sub.withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(2))),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(children: [
+                              Icon(Icons.place_outlined, size: 13, color: c.sub),
+                              const SizedBox(width: 3),
+                              Text(app.city.name, style: JType.ui(12.5, color: c.sub)),
+                            ]),
+                            GestureDetector(
+                              onTap: onToggleDate,
+                              behavior: HitTestBehavior.opaque,
+                              child: Text(dateLine(s, schedule.now(), app.dateGregorian),
+                                  style: JType.ui(12.5, color: c.sub)),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-              Positioned(
-                left: 28,
-                right: 28,
-                top: h * 0.13,
-                bottom: 66,
-                child: SingleChildScrollView(
-                  physics: const NeverScrollableScrollPhysics(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Времена молитв — сетка 3×2 вверху (таймера на «дне» нет).
-                      _DayTimesGrid(s: s, c: c, t: t, nowMin: nowMin),
-                      const SizedBox(height: 16),
-                      Text(s.todayCaps, style: JType.caption(c.faint)),
-                      const SizedBox(height: 8),
-                      _TaskRow(
-                          label: s.morningTitle,
-                          done: app.isDone('morning'),
-                          c: c,
-                          onTap: () => onReader('morning')),
-                      if (t.isFriday)
-                        _TaskRow(
-                            label: s.kahfTitle,
-                            done: app.isDone('kahf'),
-                            c: c,
-                            onTap: () => app.markDone('kahf')),
-                      _TaskRow(
-                          label: s.eveningTitle,
-                          done: app.isDone('evening'),
-                          c: c,
-                          active: eveningOpen && !app.isDone('evening'),
-                          trailing: eveningOpen
-                              ? '${s.still} ${DayTimes.fmtDuration(t.times[Prayer.maghrib]! - nowMin)}'
-                              : null,
-                          onTap: () => onReader('evening')),
-                      if (t.isFriday)
-                        _TaskRow(
-                            label: s.duaTitle,
-                            done: app.isDone('dua'),
-                            c: c,
-                            onTap: () => app.markDone('dua')),
-                      const SizedBox(height: 16),
-                      Text(_gregMonthCaps(schedule.now()),
-                          style: JType.caption(c.faint)),
-                      const SizedBox(height: 10),
-                      _Notebook(c: c, app: app, now: schedule.now()),
-                      const SizedBox(height: 10),
-                      _Legend(s: s, c: c),
-                    ],
                   ),
-                ),
-              ),
-              // Кнопки закреплены внизу — всегда видны, не уезжают за экран.
-              Positioned(
-                left: 28,
-                right: 28,
-                bottom: 10,
-                child: Row(children: [
-                  Expanded(
-                      child: _SmallOutlineButton(
-                          label: s.remindersBtn,
-                          c: c,
-                          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                  content: Text(app.lang == 'kz'
-                                      ? 'Жасалуда…'
-                                      : 'В разработке…'))))),
-                  const SizedBox(width: 8),
-                  Expanded(
-                      child: _SmallOutlineButton(
-                          label: s.themeBtn,
-                          c: c,
-                          onTap: () => app.theme = switch (app.theme) {
-                                'dark' => 'light',
-                                'light' => 'system',
-                                _ => 'dark',
-                              })),
-                  const SizedBox(width: 8),
-                  Expanded(
-                      child: _SmallOutlineButton(
-                          label: s.langBtn,
-                          c: c,
-                          onTap: () => app.lang = app.lang == 'ru' ? 'kz' : 'ru')),
-                ]),
-              ),
+                  Positioned(
+                    left: 28,
+                    right: 28,
+                    top: 48,
+                    bottom: 34,
+                    child: SingleChildScrollView(
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Карточка 1: Времена молитв (вертикальный список)
+                          _GlassCard(
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                            child: _DayTimesList(s: s, c: c, t: t, nowMin: nowMin),
+                          ),
+                          
+                          // Карточка 2: Сегодня (задачи)
+                          _GlassCard(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(s.todayCaps, style: JType.caption(c.faint)),
+                                const SizedBox(height: 8),
+                                _TaskRow(
+                                    label: s.morningTitle,
+                                    done: app.isDone('morning'),
+                                    c: c,
+                                    onTap: () => onReader('morning')),
+                                if (t.isFriday)
+                                  _TaskRow(
+                                      label: s.kahfTitle,
+                                      done: app.isDone('kahf'),
+                                      c: c,
+                                      onTap: () => app.markDone('kahf')),
+                                _TaskRow(
+                                    label: s.eveningTitle,
+                                    done: app.isDone('evening'),
+                                    c: c,
+                                    active: eveningOpen && !app.isDone('evening'),
+                                    trailing: eveningOpen
+                                        ? '${s.still} ${DayTimes.fmtDuration(t.times[Prayer.maghrib]! - nowMin)}'
+                                        : null,
+                                    onTap: () => onReader('evening')),
+                                if (t.isFriday)
+                                  _TaskRow(
+                                      label: s.duaTitle,
+                                      done: app.isDone('dua'),
+                                      c: c,
+                                      onTap: () => app.markDone('dua')),
+                              ],
+                            ),
+                          ),
+                          
+                          // Карточка 3: Тетрадь постоянства
+                          _GlassCard(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  '${s.notebookTitle} · ${_gregMonthCaps(schedule.now())}',
+                                  style: JType.caption(c.faint),
+                                ),
+                                const SizedBox(height: 12),
+                                _Notebook(c: c, app: app, now: schedule.now()),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Кнопки закреплены внизу — всегда видны, не уезжают за экран.
+                  Positioned(
+                    left: 28,
+                    right: 28,
+                    bottom: 10,
+                    child: Row(children: [
+                      Expanded(
+                          child: _SmallOutlineButton(
+                              label: s.remindersBtn,
+                              c: c,
+                              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(app.lang == 'kz'
+                                          ? 'Жасалуда…'
+                                          : 'В разработке…'))))),
+                      const SizedBox(width: 8),
+                      Expanded(
+                          child: _SmallOutlineButton(
+                              label: s.themeBtn,
+                              c: c,
+                              onTap: () => app.theme = switch (app.theme) {
+                                    'dark' => 'light',
+                                    'light' => 'system',
+                                    _ => 'dark',
+                                  })),
+                      const SizedBox(width: 8),
+                      Expanded(
+                          child: _SmallOutlineButton(
+                              label: s.langBtn,
+                              c: c,
+                              onTap: () => app.lang = app.lang == 'ru' ? 'kz' : 'ru')),
+                    ]),
+                  ),
                 ],
               ),
             ),
@@ -800,10 +840,14 @@ JColors jColorsOf(BuildContext context) {
   return isLight ? JColors.light : JColors.dark;
 }
 
-/// Сетка времён молитв на экране «дня»: 3 колонки × 2 ряда, крупные ячейки.
-class _DayTimesGrid extends StatelessWidget {
-  const _DayTimesGrid(
-      {required this.s, required this.c, required this.t, required this.nowMin});
+/// Вертикальный список времён молитв на экране «дня»
+class _DayTimesList extends StatelessWidget {
+  const _DayTimesList({
+    required this.s,
+    required this.c,
+    required this.t,
+    required this.nowMin,
+  });
   final S s;
   final JColors c;
   final DayTimes t;
@@ -812,32 +856,42 @@ class _DayTimesGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hl = nextPrayer(t, nowMin) ?? Prayer.fajr;
-    return GridView.count(
-      crossAxisCount: 3,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-      childAspectRatio: 1.75,
+    return Column(
       children: [
         for (final (i, prayer) in Prayer.values.indexed)
-          Container(
-            decoration: BoxDecoration(
-              // Мягкий акцент: без заливки, только чуть заметная золотая рамка.
-              border: Border.all(
-                  color: prayer == hl ? c.gold.withValues(alpha: 0.7) : c.hair),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(s.prayers[i],
-                    style: JType.ui(13, color: prayer == hl ? c.gold : c.faint)),
-                const SizedBox(height: 3),
-                Text(t.fmt(prayer),
-                    style: JType.ui(20, w: FontWeight.w700, color: c.ink)),
-              ],
-            ),
+          Builder(
+            builder: (context) {
+              final isCurrent = prayer == hl;
+              return Container(
+                margin: const EdgeInsets.symmetric(vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: isCurrent ? c.gold.withValues(alpha: 0.12) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      s.prayers[i],
+                      style: JType.ui(
+                        14.5,
+                        w: isCurrent ? FontWeight.w700 : FontWeight.w400,
+                        color: isCurrent ? c.gold : c.ink.withValues(alpha: 0.85),
+                      ),
+                    ),
+                    Text(
+                      t.fmt(prayer),
+                      style: JType.ui(
+                        15,
+                        w: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                        color: isCurrent ? c.gold : c.ink,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
       ],
     );
@@ -845,13 +899,14 @@ class _DayTimesGrid extends StatelessWidget {
 }
 
 class _TaskRow extends StatelessWidget {
-  const _TaskRow(
-      {required this.label,
-      required this.done,
-      required this.c,
-      this.active = false,
-      this.trailing,
-      this.onTap});
+  const _TaskRow({
+    required this.label,
+    required this.done,
+    required this.c,
+    this.active = false,
+    this.trailing,
+    this.onTap,
+  });
   final String label;
   final bool done, active;
   final String? trailing;
@@ -861,31 +916,42 @@ class _TaskRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Opacity(
-      opacity: done ? .75 : 1,
+      opacity: done ? 0.75 : 1.0,
       child: InkWell(
         onTap: done ? null : onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 9),
-          child: Row(children: [
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: done ? c.green : null,
-                border: done ? null : Border.all(color: active ? c.gold : c.hair),
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: done ? c.green : null,
+                  border: done ? null : Border.all(color: active ? c.gold : c.hair),
+                ),
+                child: done
+                    ? const Icon(Icons.check, size: 14, color: Colors.white)
+                    : null,
               ),
-              child: done ? const Icon(Icons.check, size: 14, color: Colors.white) : null,
-            ),
-            const SizedBox(width: 12),
-            Text(label,
-                style: JType.ui(15,
-                    w: active ? FontWeight.w700 : FontWeight.w400,
-                    color: done ? c.sub : c.ink)),
-            const Spacer(),
-            if (trailing != null && !done)
-              Text(trailing!, style: JType.ui(12, w: FontWeight.w700, color: c.gold)),
-          ]),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: JType.ui(
+                  14.5,
+                  w: active ? FontWeight.w700 : FontWeight.w400,
+                  color: done ? c.sub : c.ink,
+                ),
+              ),
+              const Spacer(),
+              if (trailing != null && !done)
+                Text(
+                  trailing!,
+                  style: JType.ui(12, w: FontWeight.w700, color: c.gold),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -893,9 +959,8 @@ class _TaskRow extends StatelessWidget {
 }
 
 /// Тетрадь постоянства — настоящий календарь текущего месяца, привязанный к
-/// дням недели. Два состояния: зелёная галочка (день выполнен) и красная
-/// отметка (прошедший день пропущен). Сегодня — в золотом кольце,
-/// будущие дни — пустые. Данные реальные (AppState.dayCompleted).
+/// дням недели. Прошедшие дни — зеленая галочка / красный крестик.
+/// Сегодня — в золотом круге с числом дня. Будущие — просто число дня.
 class _Notebook extends StatelessWidget {
   const _Notebook({required this.c, required this.app, required this.now});
   final JColors c;
@@ -917,6 +982,20 @@ class _Notebook extends StatelessWidget {
       final date = DateTime(now.year, now.month, day);
       cells.add(Center(child: _cell(date)));
     }
+
+    final rows = <List<Widget>>[];
+    for (var i = 0; i < cells.length; i += 7) {
+      final rowCells = <Widget>[];
+      for (var j = 0; j < 7; j++) {
+        if (i + j < cells.length) {
+          rowCells.add(Expanded(child: cells[i + j]));
+        } else {
+          rowCells.add(const Expanded(child: SizedBox.shrink()));
+        }
+      }
+      rows.add(rowCells);
+    }
+
     return Column(
       children: [
         Row(
@@ -924,87 +1003,70 @@ class _Notebook extends StatelessWidget {
             for (final w in _weekdays)
               Expanded(
                 child: Center(
-                    child: Text(w, style: JType.ui(10, color: c.faint))),
+                  child: Text(w, style: JType.ui(10, color: c.faint)),
+                ),
               ),
           ],
         ),
-        const SizedBox(height: 6),
-        GridView.count(
-          crossAxisCount: 7,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 7,
-          crossAxisSpacing: 7,
-          children: cells,
-        ),
+        const SizedBox(height: 8),
+        for (final row in rows)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6.5),
+            child: Row(children: row),
+          ),
       ],
     );
   }
 
   Widget _cell(DateTime date) {
     final today = DateTime(now.year, now.month, now.day);
-    final isToday = date == today;
+    final isToday = date.year == today.year &&
+        date.month == today.month &&
+        date.day == today.day;
     final isFuture = date.isAfter(today);
+
     if (isToday) {
-      final done = app.dayCompleted(date);
       return Container(
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-            shape: BoxShape.circle, border: Border.all(color: c.gold, width: 2)),
-        child: done ? _dot(c.green, check: true) : _dot(c.gdim),
+        width: 22,
+        height: 22,
+        decoration: BoxDecoration(shape: BoxShape.circle, color: c.gold),
+        child: Center(
+          child: Text(
+            '${date.day}',
+            style: JType.ui(11, w: FontWeight.w800, color: const Color(0xFF101510)),
+          ),
+        ),
       );
     }
     if (isFuture) {
-      return Container(
-        width: 20,
-        height: 20,
-        decoration:
-            BoxDecoration(shape: BoxShape.circle, border: Border.all(color: c.hair)),
+      return SizedBox(
+        width: 22,
+        height: 22,
+        child: Center(
+          child: Text(
+            '${date.day}',
+            style: JType.ui(11, w: FontWeight.w400, color: c.faint.withValues(alpha: 0.5)),
+          ),
+        ),
       );
     }
-    return app.dayCompleted(date)
-        ? _dot(c.green, check: true)
-        : _dot(c.red, cross: true);
-  }
 
-  Widget _dot(Color color, {bool check = false, bool cross = false}) => Container(
-        width: 20,
-        height: 20,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-        child: check
-            ? const Icon(Icons.check, size: 13, color: Colors.white)
-            : cross
-                ? const Icon(Icons.close, size: 13, color: Colors.white)
-                : null,
-      );
-}
-
-class _Legend extends StatelessWidget {
-  const _Legend({required this.s, required this.c});
-  final S s;
-  final JColors c;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget item(Color color, String label, {bool ring = false}) => Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: ring ? null : color,
-                    border: ring ? Border.all(color: color, width: 2) : null)),
-            const SizedBox(width: 5),
-            Text(label, style: JType.ui(11, color: c.faint)),
-          ],
-        );
-    return Wrap(spacing: 16, runSpacing: 6, children: [
-      item(c.green, s.legendAll),
-      item(c.red, s.legendMiss),
-      item(c.gold, s.legendToday, ring: true),
-    ]);
+    final done = app.dayCompleted(date);
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: done ? c.green : c.red,
+      ),
+      child: Center(
+        child: Icon(
+          done ? Icons.check : Icons.close,
+          size: 12,
+          color: Colors.white,
+        ),
+      ),
+    );
   }
 }
 
@@ -1021,10 +1083,17 @@ class _SmallOutlineButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-            border: Border.all(color: c.hair), borderRadius: BorderRadius.circular(100)),
+          color: Colors.white.withValues(alpha: 0.04),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1.0),
+          borderRadius: BorderRadius.circular(100),
+        ),
         child: Center(
           child: FittedBox(
-              child: Text(label, style: JType.ui(13, w: FontWeight.w700, color: c.sub))),
+            child: Text(
+              label,
+              style: JType.ui(13, w: FontWeight.w700, color: Colors.white.withValues(alpha: 0.9)),
+            ),
+          ),
         ),
       ),
     );
