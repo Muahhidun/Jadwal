@@ -1,4 +1,4 @@
-package kz.jadwal
+package kz.dauam
 
 import io.flutter.embedding.android.FlutterActivity
 
