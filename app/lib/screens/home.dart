@@ -207,9 +207,9 @@ class _HeroTimer extends StatelessWidget {
           opacity: fade,
           child: Column(
             children: [
-              Text(timer, style: JType.timer(80, fg.text)),
+              Text(timer, style: JType.timer(80, fg.text).copyWith(shadows: fg.shadows)),
               const SizedBox(height: 4),
-              Text(caption, style: JType.caption(fg.accent, size: 14)),
+              Text(caption, style: JType.caption(fg.accent, size: 14).copyWith(shadows: fg.shadows)),
             ],
           ),
         ),
@@ -305,12 +305,12 @@ class _HomeLayer extends StatelessWidget {
         children: [
           Text(title,
               textAlign: TextAlign.center,
-              style: JType.ui(34, w: FontWeight.w800, color: fg.text, h: 1.1)),
+              style: JType.ui(34, w: FontWeight.w800, color: fg.text, h: 1.1).copyWith(shadows: fg.shadows)),
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(sub,
-                textAlign: TextAlign.center, style: JType.ui(14, color: fg.faint, h: 1.4)),
+                textAlign: TextAlign.center, style: JType.ui(14, color: fg.faint, h: 1.4).copyWith(shadows: fg.shadows)),
           ),
         ],
       );
@@ -402,7 +402,7 @@ class _HomeLayer extends StatelessWidget {
   }
 
   Widget _header(BuildContext context) {
-    final style = JType.ui(12.5, color: fg.faint);
+    final style = JType.ui(12.5, color: fg.faint).copyWith(shadows: fg.shadows);
     return Positioned(
       left: 28,
       right: 28,
@@ -434,16 +434,18 @@ class _HomeLayer extends StatelessWidget {
         left: 0,
         right: 0,
         bottom: 12,
-        child: _BouncingHint(s: s, color: fg.faint, onTap: onExpand),
+        child: _BouncingHint(s: s, color: fg.faint, shadows: fg.shadows, onTap: onExpand),
       );
 }
 
 /// Подсказка свайпа с периодическим подскоком (README: hintbounce) —
 /// намекает, что экран можно свайпнуть вверх.
 class _BouncingHint extends StatefulWidget {
-  const _BouncingHint({required this.s, required this.color, required this.onTap});
+  const _BouncingHint(
+      {required this.s, required this.color, required this.shadows, required this.onTap});
   final S s;
   final Color color;
+  final List<Shadow> shadows;
   final VoidCallback onTap;
 
   @override
@@ -496,7 +498,8 @@ class _BouncingHintState extends State<_BouncingHint>
                     color: color.withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 8),
-            Text(widget.s.swipe, style: JType.ui(11, color: color)),
+            Text(widget.s.swipe,
+                style: JType.ui(11, color: color).copyWith(shadows: widget.shadows)),
           ],
         ),
       ),
@@ -552,7 +555,7 @@ class _AlreadyBar extends StatelessWidget {
                 children: [
                   Icon(Icons.check, size: 14, color: fg.accent),
                   const SizedBox(width: 6),
-                  Text(name, style: JType.ui(13, color: fg.faint)),
+                  Text(name, style: JType.ui(13, color: fg.faint).copyWith(shadows: fg.shadows)),
                 ],
               ),
             ),

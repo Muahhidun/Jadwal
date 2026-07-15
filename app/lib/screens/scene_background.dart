@@ -177,18 +177,30 @@ _Sky _skyAt(DayTimes t, int nowMin) {
 /// Цвета текста/акцента для главного экрана — подстраиваются под яркость неба.
 class SkyFg {
   final Color text, faint, accent;
-  const SkyFg(this.text, this.faint, this.accent);
+  final List<Shadow> shadows;
+  const SkyFg(this.text, this.faint, this.accent, this.shadows);
 }
 
-/// Днём — тёмный текст, ночью — светлый (фон и текст меняются вместе).
+/// Днём — тёмный текст, ночью — светлый. Без бледных промежуточных цветов:
+/// на пёстром небе (закат/рассвет) они нечитаемы. Вместо этого — жёсткий
+/// выбор день/ночь + мягкая контрастная тень, сильнее всего в переходные фазы.
 SkyFg skyForeground(DayTimes t, int nowSec) {
   final sky = _skyAt(t, nowSec ~/ 60);
-  final k = ((sky.day - 0.35) / 0.35).clamp(0.0, 1.0); // доля «дневного» текста
-  return SkyFg(
-    Color.lerp(const Color(0xFFECE9DF), const Color(0xFF1B2230), k)!,
-    Color.lerp(const Color(0xFF9AA49B), const Color(0xFF44556A), k)!,
-    Color.lerp(const Color(0xFFD9AE52), const Color(0xFF9A6B14), k)!,
-  );
+  final bright = sky.day > 0.55; // день → тёмный текст
+  // Переходная зона (0.25–0.75): тень усиливается к середине.
+  final transition = (1 - ((sky.day - 0.5).abs() * 4)).clamp(0.0, 1.0);
+  final shadowColor = bright
+      ? Colors.white.withValues(alpha: 0.35 + 0.35 * transition)
+      : Colors.black.withValues(alpha: 0.35 + 0.45 * transition);
+  final shadows = [
+    Shadow(color: shadowColor, blurRadius: 14),
+    Shadow(color: shadowColor, blurRadius: 4),
+  ];
+  return bright
+      ? SkyFg(const Color(0xFF1B2230), const Color(0xFF3A4657),
+          const Color(0xFF8A5F10), shadows)
+      : SkyFg(const Color(0xFFF2EFE6), const Color(0xFFC9CDC2),
+          const Color(0xFFE2B85E), shadows);
 }
 
 // ── Художник сцены ───────────────────────────────────────────────────────────
