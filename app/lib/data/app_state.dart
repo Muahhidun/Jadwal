@@ -28,6 +28,14 @@ class AppState extends ChangeNotifier {
         region: _prefs.getString('cityRegion') ?? kDefaultCity.region,
       );
 
+  /// Сворачиваемые блоки читалки (запоминаются глобально).
+  bool get showTranslit => _prefs.getBool('showTranslit') ?? true;
+  bool get showTranslation => _prefs.getBool('showTranslation') ?? true;
+  bool get showFaz => _prefs.getBool('showFaz') ?? true;
+  set showTranslit(bool v) => _set(() => _prefs.setBool('showTranslit', v));
+  set showTranslation(bool v) => _set(() => _prefs.setBool('showTranslation', v));
+  set showFaz(bool v) => _set(() => _prefs.setBool('showFaz', v));
+
   set lang(String v) => _set(() => _prefs.setString('lang', v));
   set theme(String v) => _set(() => _prefs.setString('theme', v));
   set onboardingDone(bool v) => _set(() => _prefs.setBool('onboardingDone', v));

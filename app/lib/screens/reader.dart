@@ -199,6 +199,7 @@ class _ZikrBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final app = AppScope.of(context);
     final translation = z.translation(lang);
     final faz = z.faz(lang);
     return Column(
@@ -208,31 +209,37 @@ class _ZikrBody extends StatelessWidget {
             textAlign: TextAlign.center,
             textDirection: TextDirection.rtl,
             style: JType.arabic(26)),
-        const SizedBox(height: 18),
-        if (z.translit != null) ...[
-          Text(z.translit!,
-              textAlign: TextAlign.center,
-              style: JType.reading(13.5,
-                  color: JPaper.translit, style: FontStyle.italic, h: 1.6)),
-          const SizedBox(height: 16),
-        ],
+        const SizedBox(height: 14),
+        // Сворачиваемые блоки: транскрипция / перевод / достоинство.
+        // Кому блок не нужен — сворачивает; выбор запоминается для всех зикров.
+        if (z.translit != null)
+          _Section(
+            title: s.translitTitle,
+            open: app.showTranslit,
+            onToggle: () => app.showTranslit = !app.showTranslit,
+            child: Text(z.translit!,
+                textAlign: TextAlign.center,
+                style: JType.reading(13.5,
+                    color: JPaper.translit, style: FontStyle.italic, h: 1.6)),
+          ),
         if (translation != null)
-          Text(translation,
-              textAlign: TextAlign.center,
-              style: JType.reading(14.5, color: JPaper.ink)),
-        const SizedBox(height: 22),
+          _Section(
+            title: s.translationTitle,
+            open: app.showTranslation,
+            onToggle: () => app.showTranslation = !app.showTranslation,
+            child: Text(translation,
+                textAlign: TextAlign.center,
+                style: JType.reading(14.5, color: JPaper.ink)),
+          ),
         if (faz != null)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: JPaper.fazPlate,
-              borderRadius: BorderRadius.circular(12),
-            ),
+          _Section(
+            title: s.fazTitle,
+            open: app.showFaz,
+            onToggle: () => app.showFaz = !app.showFaz,
+            plate: true,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(s.fazTitle, style: JType.caption(JPaper.accent, size: 10)),
-                const SizedBox(height: 8),
                 Text(faz, style: JType.reading(13.5, color: JPaper.ink, h: 1.6)),
                 const SizedBox(height: 8),
                 Text(z.source, style: JType.ui(11.5, color: JPaper.source)),
@@ -240,8 +247,66 @@ class _ZikrBody extends StatelessWidget {
             ),
           )
         else
-          Center(child: Text(z.source, style: JType.ui(11.5, color: JPaper.source))),
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Center(
+                child: Text(z.source, style: JType.ui(11.5, color: JPaper.source))),
+          ),
       ],
+    );
+  }
+}
+
+/// Сворачиваемый блок читалки: заголовок-капс + шеврон, тап по шапке
+/// открывает/закрывает. [plate] — на подложке (для «Достоинства»).
+class _Section extends StatelessWidget {
+  const _Section(
+      {required this.title,
+      required this.open,
+      required this.onToggle,
+      required this.child,
+      this.plate = false});
+  final String title;
+  final bool open;
+  final VoidCallback onToggle;
+  final Widget child;
+  final bool plate;
+
+  @override
+  Widget build(BuildContext context) {
+    final header = GestureDetector(
+      onTap: onToggle,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(title, style: JType.caption(JPaper.accent, size: 10)),
+            const SizedBox(width: 4),
+            Icon(open ? Icons.expand_less : Icons.expand_more,
+                size: 16, color: JPaper.accent),
+          ],
+        ),
+      ),
+    );
+    final body = AnimatedSize(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+      alignment: Alignment.topCenter,
+      child: open
+          ? Padding(padding: const EdgeInsets.only(top: 2, bottom: 10), child: child)
+          : const SizedBox(width: double.infinity),
+    );
+    if (!plate) return Column(children: [header, body]);
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      decoration: BoxDecoration(
+        color: JPaper.fazPlate,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(children: [header, body]),
     );
   }
 }
