@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../prayer/city.dart';
@@ -27,6 +28,35 @@ class AppState extends ChangeNotifier {
         _prefs.getString('cityLngStr') ?? kDefaultCity.lngStr,
         region: _prefs.getString('cityRegion') ?? kDefaultCity.region,
       );
+
+  // ── Настройки уведомлений ──────────────────────────────────────────────
+  /// Окна поклонения (по умолчанию все включены — решение владельца).
+  bool notifWindow(String id) => _prefs.getBool('nw:$id') ?? true;
+  void setNotifWindow(String id, bool v) => _set(() => _prefs.setBool('nw:$id', v));
+
+  /// Оповещение о каждом намазе отдельно (fajr/dhuhr/asr/maghrib/isha).
+  bool notifPrayer(String id) => _prefs.getBool('np:$id') ?? true;
+  void setNotifPrayer(String id, bool v) => _set(() => _prefs.setBool('np:$id', v));
+
+  /// Свои напоминания пользователя (конструктор).
+  List<CustomReminder> get customReminders {
+    final raw = _prefs.getString('customReminders');
+    if (raw == null) return const [];
+    return (jsonDecode(raw) as List)
+        .map((e) => CustomReminder.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  void _saveReminders(List<CustomReminder> list) => _set(() =>
+      _prefs.setString('customReminders', jsonEncode([for (final r in list) r.toJson()])));
+
+  void addReminder(CustomReminder r) => _saveReminders([...customReminders, r]);
+  void removeReminder(String id) =>
+      _saveReminders([for (final r in customReminders) if (r.id != id) r]);
+  void toggleReminder(String id, bool v) => _saveReminders([
+        for (final r in customReminders)
+          if (r.id == id) r.copyWith(enabled: v) else r
+      ]);
 
   /// Сворачиваемые блоки читалки (запоминаются глобально).
   bool get showTranslit => _prefs.getBool('showTranslit') ?? true;
@@ -93,4 +123,31 @@ class AppScope extends InheritedNotifier<AppState> {
 
   static AppState of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<AppScope>()!.notifier!;
+}
+
+/// Своё напоминание: «за N мин до / через N мин после намаза».
+class CustomReminder {
+  final String id, title;
+  final int prayer; // индекс Prayer (0 fajr … 5 isha)
+  final int offsetMin; // отрицательное — до намаза, положительное — после
+  final bool enabled;
+  const CustomReminder(
+      {required this.id,
+      required this.title,
+      required this.prayer,
+      required this.offsetMin,
+      this.enabled = true});
+
+  CustomReminder copyWith({bool? enabled}) => CustomReminder(
+      id: id, title: title, prayer: prayer, offsetMin: offsetMin,
+      enabled: enabled ?? this.enabled);
+
+  Map<String, dynamic> toJson() =>
+      {'id': id, 't': title, 'p': prayer, 'o': offsetMin, 'e': enabled};
+  factory CustomReminder.fromJson(Map<String, dynamic> j) => CustomReminder(
+      id: j['id'] as String,
+      title: j['t'] as String,
+      prayer: j['p'] as int,
+      offsetMin: j['o'] as int,
+      enabled: (j['e'] as bool?) ?? true);
 }

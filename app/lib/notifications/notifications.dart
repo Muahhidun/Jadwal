@@ -14,10 +14,18 @@ NotificationService? gNotifier;
 
 /// Перепланировать очередь из текущего состояния приложения.
 Future<void> syncNotifications(AppState app) async {
+  const five = [Prayer.fajr, Prayer.dhuhr, Prayer.asr, Prayer.maghrib, Prayer.isha];
   await gNotifier?.reschedule(
     lang: app.lang,
     city: app.city,
-    settings: const NotifSettings(),
+    settings: NotifSettings(
+      morning: app.notifWindow('morning'),
+      evening: app.notifWindow('evening'),
+      kahf: app.notifWindow('kahf'),
+      dua: app.notifWindow('dua'),
+      prayers: {for (final p in five) if (app.notifPrayer(p.name)) p},
+      custom: [for (final r in app.customReminders) if (r.enabled) r],
+    ),
     doneToday: {
       for (final id in TaskId.values)
         if (app.isDone(id.name)) id
@@ -28,13 +36,16 @@ Future<void> syncNotifications(AppState app) async {
 /// Настройки уведомлений (какие включены). По умолчанию всё включено —
 /// 4 окна поклонения + оповещение о намазах (решение владельца).
 class NotifSettings {
-  final bool morning, evening, kahf, dua, prayers;
+  final bool morning, evening, kahf, dua;
+  final Set<Prayer> prayers; // о каких намазах оповещать
+  final List<CustomReminder> custom;
   const NotifSettings({
     this.morning = true,
     this.evening = true,
     this.kahf = true,
     this.dua = true,
-    this.prayers = true,
+    this.prayers = const {Prayer.fajr, Prayer.dhuhr, Prayer.asr, Prayer.maghrib, Prayer.isha},
+    this.custom = const [],
   });
 }
 
@@ -155,23 +166,24 @@ class NotificationService {
         }
       }
 
-      // Оповещение о намазах (5 обязательных, без восхода).
-      if (settings.prayers) {
-        const prayers = [
-          Prayer.fajr,
-          Prayer.dhuhr,
-          Prayer.asr,
-          Prayer.maghrib,
-          Prayer.isha
-        ];
-        for (final (i, p) in prayers.indexed) {
-          if (count >= _cap) break;
-          final at = _at(date, t.times[p]!);
-          if (!at.isAfter(now)) continue;
-          final txt = _prayerText(lang, p);
-          await _schedule0(_id(d, 40 + i), at, txt, '', details);
-          count++;
-        }
+      // Оповещение о намазах — по каждому отдельно.
+      for (final p in settings.prayers) {
+        if (count >= _cap) break;
+        final at = _at(date, t.times[p]!);
+        if (!at.isAfter(now)) continue;
+        await _schedule0(_id(d, 40 + p.index), at, _prayerText(lang, p), '', details);
+        count++;
+      }
+
+      // Свои напоминания (конструктор): смещение от намаза.
+      for (final (ri, r) in settings.custom.indexed) {
+        if (count >= _cap) break;
+        final base = t.times[Prayer.values[r.prayer]]!;
+        final at = _at(date, base + r.offsetMin);
+        if (!at.isAfter(now)) continue;
+        await _schedule0(_id(d, 60 + ri), at,
+            _NotifText(r.title, _customBody(lang, r)), '', details);
+        count++;
       }
     }
   }
@@ -230,6 +242,18 @@ class NotificationService {
         return _NotifText(kz ? 'Дұға сағаты' : 'Час дуа',
             kz ? 'Жұма — Ақшам алдындағы дұға қабыл болатын сағат.' : 'Пятница — час принятия дуа перед Магрибом.');
     }
+  }
+
+  String _customBody(String lang, CustomReminder r) {
+    final kz = lang == 'kz';
+    final names = kz
+        ? ['Таң', 'Күн шығуы', 'Бесін', 'Екінті', 'Ақшам', 'Құптан']
+        : ['Фаджр', 'Восход', 'Зухр', 'Аср', 'Магриб', 'Иша'];
+    final n = names[r.prayer];
+    final m = r.offsetMin.abs();
+    if (r.offsetMin == 0) return kz ? '$n уақыты' : 'Время: $n';
+    if (r.offsetMin < 0) return kz ? '$n уақытына $m мин қалды' : 'До $n — $m мин';
+    return kz ? '$n кейін $m мин өтті' : '$m мин после $n';
   }
 
   _NotifText _prayerText(String lang, Prayer p) {

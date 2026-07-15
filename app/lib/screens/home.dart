@@ -10,6 +10,7 @@ import '../prayer/windows.dart';
 import '../theme/tokens.dart';
 import 'city_picker.dart';
 import 'reader.dart';
+import 'reminders.dart';
 import 'scene_background.dart';
 
 /// Главный экран = вертикальная лента из двух «страниц» (README §2–3).
@@ -766,11 +767,9 @@ class _DayLayer extends StatelessWidget {
                           child: _SmallOutlineButton(
                               label: s.remindersBtn,
                               c: c,
-                              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(app.lang == 'kz'
-                                          ? 'Жасалуда…'
-                                          : 'В разработке…'))))),
+                              onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                      builder: (_) => const RemindersScreen())))),
                       const SizedBox(width: 8),
                       Expanded(
                           child: _SmallOutlineButton(
