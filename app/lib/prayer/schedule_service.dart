@@ -46,6 +46,13 @@ class ScheduleService extends ChangeNotifier {
     });
   }
 
+  /// Принудительно загрузить данные для города на указанный год.
+  Future<void> ensureLoaded(City city, int year) async {
+    final ck = cityKey(city);
+    if (_loadedKey == ck && _loadedYear == year) return;
+    await _ensure(city, year);
+  }
+
   Future<void> _ensure(City city, int year) async {
     final ck = cityKey(city);
     if (_loading || (_loadedKey == ck && _loadedYear == year)) return;

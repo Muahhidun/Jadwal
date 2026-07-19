@@ -13,40 +13,29 @@ import '../prayer/windows.dart';
 NotificationService? gNotifier;
 
 /// Перепланировать очередь из текущего состояния приложения.
-Future<void> syncNotifications(AppState app) async {
-  const five = [Prayer.fajr, Prayer.dhuhr, Prayer.asr, Prayer.maghrib, Prayer.isha];
+Future<void> syncNotifications(AppState app, ScheduleService schedule) async {
+  final now = schedule.now();
+  // Асинхронно ожидаем загрузку данных ДУМК из кэша/сети, чтобы время не расходилось с Sajda.kz!
+  await schedule.ensureLoaded(app.city, now.year);
+  if (now.month == 12 && now.day >= 18) {
+    await schedule.ensureLoaded(app.city, now.year + 1);
+  }
+
+  final ids = ['morning', 'evening', 'kahf', 'dua', 'fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
+  final configs = [
+    for (final id in ids) app.getReminderConfig(id, app.lang),
+    ...app.customReminders,
+  ];
+
   await gNotifier?.reschedule(
     lang: app.lang,
     city: app.city,
-    settings: NotifSettings(
-      morning: app.notifWindow('morning'),
-      evening: app.notifWindow('evening'),
-      kahf: app.notifWindow('kahf'),
-      dua: app.notifWindow('dua'),
-      prayers: {for (final p in five) if (app.notifPrayer(p.name)) p},
-      custom: [for (final r in app.customReminders) if (r.enabled) r],
-    ),
+    configs: configs,
     doneToday: {
       for (final id in TaskId.values)
         if (app.isDone(id.name)) id
     },
   );
-}
-
-/// Настройки уведомлений (какие включены). По умолчанию всё включено —
-/// 4 окна поклонения + оповещение о намазах (решение владельца).
-class NotifSettings {
-  final bool morning, evening, kahf, dua;
-  final Set<Prayer> prayers; // о каких намазах оповещать
-  final List<CustomReminder> custom;
-  const NotifSettings({
-    this.morning = true,
-    this.evening = true,
-    this.kahf = true,
-    this.dua = true,
-    this.prayers = const {Prayer.fajr, Prayer.dhuhr, Prayer.asr, Prayer.maghrib, Prayer.isha},
-    this.custom = const [],
-  });
 }
 
 /// Локализованные тексты уведомлений (ru/kz).
@@ -133,7 +122,7 @@ class NotificationService {
   Future<void> reschedule({
     required String lang,
     required City city,
-    required NotifSettings settings,
+    required List<ReminderConfig> configs,
     required Set<TaskId> doneToday,
   }) async {
     await _plugin.cancelAll();
@@ -147,45 +136,91 @@ class NotificationService {
       if (t == null) continue;
       final isToday = d == 0;
 
-      // Окна поклонения: уведомление в начале + напоминание перед концом.
-      for (final w in windowsFor(t)) {
-        if (!_windowEnabled(w.id, settings)) continue;
-        if (isToday && doneToday.contains(w.id)) continue; // выполнено — молчим
-        final startAt = _at(date, w.start);
-        final remindAt = _at(date, w.end - _reminderBeforeEndMin);
-        final txt = _windowText(lang, w.id, opening: true);
-        final rTxt = _windowText(lang, w.id, opening: false);
-        final payload = _payloadFor(w.id);
-        if (startAt.isAfter(now) && count < _cap) {
-          await _schedule0(_id(d, w.id.index), startAt, txt, payload, details);
-          count++;
-        }
-        if (remindAt.isAfter(now) && remindAt.isAfter(startAt) && count < _cap) {
-          await _schedule0(_id(d, w.id.index + 20), remindAt, rTxt, payload, details);
-          count++;
-        }
-      }
+      for (final rc in configs) {
+        if (!rc.enabled) continue;
 
-      // Оповещение о намазах — по каждому отдельно.
-      for (final p in settings.prayers) {
-        if (count >= _cap) break;
-        final at = _at(date, t.times[p]!);
-        if (!at.isAfter(now)) continue;
-        await _schedule0(_id(d, 40 + p.index), at, _prayerText(lang, p), '', details);
-        count++;
-      }
+        // Фильтр по частоте повторения
+        if (rc.repeat == 'weekly') {
+          if (rc.id == 'kahf' || rc.id == 'dua') {
+            if (date.weekday != DateTime.friday) continue;
+          } else {
+            if (date.weekday != rc.weekday) continue;
+          }
+        } else if (rc.repeat == 'monthly') {
+          if (date.day != 1) continue;
+        }
 
-      // Свои напоминания (конструктор): смещение от намаза.
-      for (final (ri, r) in settings.custom.indexed) {
+        // Проверяем, выполнено ли сегодня
+        if (isToday) {
+          if (rc.id == 'morning' && doneToday.contains(TaskId.morning)) continue;
+          if (rc.id == 'evening' && doneToday.contains(TaskId.evening)) continue;
+          if (rc.id == 'kahf' && doneToday.contains(TaskId.kahf)) continue;
+          if (rc.id == 'dua' && doneToday.contains(TaskId.dua)) continue;
+        }
+
+        final basePrayer = Prayer.values[rc.prayer];
+        final baseTime = t.times[basePrayer];
+        if (baseTime == null) continue;
+
+        final scheduledTime = _at(date, baseTime + rc.offsetMin);
+        if (!scheduledTime.isAfter(now)) continue;
+
         if (count >= _cap) break;
-        final base = t.times[Prayer.values[r.prayer]]!;
-        final at = _at(date, base + r.offsetMin);
-        if (!at.isAfter(now)) continue;
-        await _schedule0(_id(d, 60 + ri), at,
-            _NotifText(r.title, _customBody(lang, r)), '', details);
+
+        final txt = _getNotificationText(lang, rc);
+        final payload = rc.id == 'morning' || rc.id == 'evening' ? rc.id : '';
+
+        final slot = _slotFor(rc.id, configs);
+        await _schedule0(_id(d, slot), scheduledTime, txt, payload, details);
         count++;
+
+        // Дополнительное напоминание перед завершением утреннего/вечернего окна (за 30 минут)
+        if ((rc.id == 'morning' || rc.id == 'evening') && rc.offsetMin == 0) {
+          final endPrayer = rc.id == 'morning' ? Prayer.sunrise : Prayer.maghrib;
+          final endTime = t.times[endPrayer];
+          if (endTime != null) {
+            final remindAt = _at(date, endTime - _reminderBeforeEndMin);
+            if (remindAt.isAfter(now) && remindAt.isAfter(scheduledTime) && count < _cap) {
+              final rTxt = _windowText(lang, rc.id == 'morning' ? TaskId.morning : TaskId.evening, opening: false);
+              await _schedule0(_id(d, slot + 20), remindAt, rTxt, payload, details);
+              count++;
+            }
+          }
+        }
       }
     }
+  }
+
+  int _slotFor(String id, List<ReminderConfig> configs) {
+    switch (id) {
+      case 'morning': return 0;
+      case 'evening': return 1;
+      case 'kahf': return 2;
+      case 'dua': return 3;
+      case 'fajr': return 4;
+      case 'sunrise': return 5;
+      case 'dhuhr': return 6;
+      case 'asr': return 7;
+      case 'maghrib': return 8;
+      case 'isha': return 9;
+      default:
+        final idx = configs.indexWhere((c) => c.id == id);
+        return 10 + (idx >= 0 ? idx : 0);
+    }
+  }
+
+  _NotifText _getNotificationText(String lang, ReminderConfig rc) {
+    if (rc.id == 'morning') return _windowText(lang, TaskId.morning, opening: true);
+    if (rc.id == 'evening') return _windowText(lang, TaskId.evening, opening: true);
+    if (rc.id == 'kahf') return _windowText(lang, TaskId.kahf, opening: true);
+    if (rc.id == 'dua') return _windowText(lang, TaskId.dua, opening: true);
+
+    final isBuiltInPrayer = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'].contains(rc.id);
+    if (isBuiltInPrayer && rc.offsetMin == 0) {
+      return _prayerText(lang, Prayer.values[rc.prayer]);
+    }
+
+    return _NotifText(rc.title, _customBody(lang, rc));
   }
 
   Future<void> _schedule0(int id, DateTime local, _NotifText txt, String payload,
@@ -207,18 +242,7 @@ class NotificationService {
 
   int _id(int day, int slot) => day * 100 + slot;
 
-  bool _windowEnabled(TaskId id, NotifSettings s) => switch (id) {
-        TaskId.morning => s.morning,
-        TaskId.evening => s.evening,
-        TaskId.kahf => s.kahf,
-        TaskId.dua => s.dua,
-      };
 
-  String _payloadFor(TaskId id) => switch (id) {
-        TaskId.morning => 'morning',
-        TaskId.evening => 'evening',
-        _ => '',
-      };
 
   _NotifText _windowText(String lang, TaskId id, {required bool opening}) {
     final kz = lang == 'kz';
@@ -244,7 +268,7 @@ class NotificationService {
     }
   }
 
-  String _customBody(String lang, CustomReminder r) {
+  String _customBody(String lang, ReminderConfig r) {
     final kz = lang == 'kz';
     final names = kz
         ? ['Таң', 'Күн шығуы', 'Бесін', 'Екінті', 'Ақшам', 'Құптан']

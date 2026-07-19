@@ -31,32 +31,135 @@ class AppState extends ChangeNotifier {
 
   // ── Настройки уведомлений ──────────────────────────────────────────────
   /// Окна поклонения (по умолчанию все включены — решение владельца).
-  bool notifWindow(String id) => _prefs.getBool('nw:$id') ?? true;
-  void setNotifWindow(String id, bool v) => _set(() => _prefs.setBool('nw:$id', v));
+  bool notifWindow(String id) => getReminderConfig(id, lang).enabled;
+  void setNotifWindow(String id, bool v) => saveReminderConfig(getReminderConfig(id, lang).copyWith(enabled: v));
 
   /// Оповещение о каждом намазе отдельно (fajr/dhuhr/asr/maghrib/isha).
-  bool notifPrayer(String id) => _prefs.getBool('np:$id') ?? true;
-  void setNotifPrayer(String id, bool v) => _set(() => _prefs.setBool('np:$id', v));
+  bool notifPrayer(String id) => getReminderConfig(id, lang).enabled;
+  void setNotifPrayer(String id, bool v) => saveReminderConfig(getReminderConfig(id, lang).copyWith(enabled: v));
 
   /// Свои напоминания пользователя (конструктор).
-  List<CustomReminder> get customReminders {
+  List<ReminderConfig> get customReminders {
     final raw = _prefs.getString('customReminders');
     if (raw == null) return const [];
     return (jsonDecode(raw) as List)
-        .map((e) => CustomReminder.fromJson(e as Map<String, dynamic>))
+        .map((e) => ReminderConfig.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
-  void _saveReminders(List<CustomReminder> list) => _set(() =>
+  void saveReminders(List<ReminderConfig> list) => _set(() =>
       _prefs.setString('customReminders', jsonEncode([for (final r in list) r.toJson()])));
 
-  void addReminder(CustomReminder r) => _saveReminders([...customReminders, r]);
+  void addReminder(ReminderConfig r) => saveReminders([...customReminders, r]);
   void removeReminder(String id) =>
-      _saveReminders([for (final r in customReminders) if (r.id != id) r]);
-  void toggleReminder(String id, bool v) => _saveReminders([
+      saveReminders([for (final r in customReminders) if (r.id != id) r]);
+  void toggleReminder(String id, bool v) => saveReminders([
         for (final r in customReminders)
           if (r.id == id) r.copyWith(enabled: v) else r
       ]);
+
+  ReminderConfig getReminderConfig(String id, String lang) {
+    final raw = _prefs.getString('rc:$id');
+    if (raw != null) {
+      try {
+        return ReminderConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      } catch (_) {}
+    }
+
+    final kz = lang == 'kz';
+    return switch (id) {
+      'morning' => ReminderConfig(
+          id: id,
+          title: kz ? 'Таңғы зікірлер' : 'Утренние зикры',
+          enabled: _prefs.getBool('nw:morning') ?? true,
+          prayer: 0,
+          offsetMin: 0,
+        ),
+      'evening' => ReminderConfig(
+          id: id,
+          title: kz ? 'Кешкі зікірлер' : 'Вечерние зикры',
+          enabled: _prefs.getBool('nw:evening') ?? true,
+          prayer: 3,
+          offsetMin: 0,
+        ),
+      'kahf' => ReminderConfig(
+          id: id,
+          title: kz ? '«әл-Кәһф» сүресі (жұма)' : 'Сура аль-Кахф (пятница)',
+          enabled: _prefs.getBool('nw:kahf') ?? true,
+          prayer: 2,
+          offsetMin: -120,
+          repeat: 'weekly',
+        ),
+      'dua' => ReminderConfig(
+          id: id,
+          title: kz ? 'Дұға сағаты (жұма)' : 'Час дуа (пятница)',
+          enabled: _prefs.getBool('nw:dua') ?? true,
+          prayer: 4,
+          offsetMin: -60,
+          repeat: 'weekly',
+        ),
+      'fajr' => ReminderConfig(
+          id: id,
+          title: kz ? 'Таң' : 'Фаджр',
+          enabled: _prefs.getBool('np:fajr') ?? true,
+          prayer: 0,
+          offsetMin: 0,
+        ),
+      'sunrise' => ReminderConfig(
+          id: id,
+          title: kz ? 'Күн шығуы' : 'Восход',
+          enabled: _prefs.getBool('np:sunrise') ?? true,
+          prayer: 1,
+          offsetMin: 0,
+        ),
+      'dhuhr' => ReminderConfig(
+          id: id,
+          title: kz ? 'Бесін' : 'Зухр',
+          enabled: _prefs.getBool('np:dhuhr') ?? true,
+          prayer: 2,
+          offsetMin: 0,
+        ),
+      'asr' => ReminderConfig(
+          id: id,
+          title: kz ? 'Екінті' : 'Аср',
+          enabled: _prefs.getBool('np:asr') ?? true,
+          prayer: 3,
+          offsetMin: 0,
+        ),
+      'maghrib' => ReminderConfig(
+          id: id,
+          title: kz ? 'Ақшам' : 'Магриб',
+          enabled: _prefs.getBool('np:maghrib') ?? true,
+          prayer: 4,
+          offsetMin: 0,
+        ),
+      'isha' => ReminderConfig(
+          id: id,
+          title: kz ? 'Құптан' : 'Иша',
+          enabled: _prefs.getBool('np:isha') ?? true,
+          prayer: 5,
+          offsetMin: 0,
+        ),
+      _ => ReminderConfig(
+          id: id,
+          title: 'Напоминание',
+          enabled: true,
+          prayer: 0,
+          offsetMin: 0,
+        ),
+    };
+  }
+
+  void saveReminderConfig(ReminderConfig rc) {
+    _set(() {
+      _prefs.setString('rc:${rc.id}', jsonEncode(rc.toJson()));
+      if (rc.id == 'morning' || rc.id == 'evening' || rc.id == 'kahf' || rc.id == 'dua') {
+        _prefs.setBool('nw:${rc.id}', rc.enabled);
+      } else if (rc.id == 'fajr' || rc.id == 'dhuhr' || rc.id == 'asr' || rc.id == 'maghrib' || rc.id == 'isha' || rc.id == 'sunrise') {
+        _prefs.setBool('np:${rc.id}', rc.enabled);
+      }
+    });
+  }
 
   /// Сворачиваемые блоки читалки (запоминаются глобально).
   bool get showTranslit => _prefs.getBool('showTranslit') ?? true;
@@ -125,29 +228,59 @@ class AppScope extends InheritedNotifier<AppState> {
       context.dependOnInheritedWidgetOfExactType<AppScope>()!.notifier!;
 }
 
-/// Своё напоминание: «за N мин до / через N мин после намаза».
-class CustomReminder {
+/// Описание настроек напоминания.
+class ReminderConfig {
   final String id, title;
   final int prayer; // индекс Prayer (0 fajr … 5 isha)
   final int offsetMin; // отрицательное — до намаза, положительное — после
   final bool enabled;
-  const CustomReminder(
-      {required this.id,
-      required this.title,
-      required this.prayer,
-      required this.offsetMin,
-      this.enabled = true});
+  final String repeat; // 'daily' / 'weekly' / 'monthly'
+  final int weekday; // день недели (1-7, default 5 = пятница)
 
-  CustomReminder copyWith({bool? enabled}) => CustomReminder(
-      id: id, title: title, prayer: prayer, offsetMin: offsetMin,
-      enabled: enabled ?? this.enabled);
+  const ReminderConfig({
+    required this.id,
+    required this.title,
+    required this.prayer,
+    required this.offsetMin,
+    this.enabled = true,
+    this.repeat = 'daily',
+    this.weekday = 5,
+  });
 
-  Map<String, dynamic> toJson() =>
-      {'id': id, 't': title, 'p': prayer, 'o': offsetMin, 'e': enabled};
-  factory CustomReminder.fromJson(Map<String, dynamic> j) => CustomReminder(
-      id: j['id'] as String,
-      title: j['t'] as String,
-      prayer: j['p'] as int,
-      offsetMin: j['o'] as int,
-      enabled: (j['e'] as bool?) ?? true);
+  ReminderConfig copyWith({
+    String? title,
+    bool? enabled,
+    int? prayer,
+    int? offsetMin,
+    String? repeat,
+    int? weekday,
+  }) => ReminderConfig(
+    id: id,
+    title: title ?? this.title,
+    prayer: prayer ?? this.prayer,
+    offsetMin: offsetMin ?? this.offsetMin,
+    enabled: enabled ?? this.enabled,
+    repeat: repeat ?? this.repeat,
+    weekday: weekday ?? this.weekday,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    't': title,
+    'p': prayer,
+    'o': offsetMin,
+    'e': enabled,
+    'r': repeat,
+    'w': weekday,
+  };
+
+  factory ReminderConfig.fromJson(Map<String, dynamic> j) => ReminderConfig(
+    id: j['id'] as String,
+    title: j['t'] as String,
+    prayer: j['p'] as int,
+    offsetMin: j['o'] as int,
+    enabled: (j['e'] as bool?) ?? true,
+    repeat: (j['r'] as String?) ?? 'daily',
+    weekday: (j['w'] as int?) ?? 5,
+  );
 }

@@ -24,9 +24,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final s = S.of(app.lang);
-    final c = app.themeMode == ThemeMode.light ? JColors.light : JColors.dark;
+    // Для онбординга используем светлую схему в цветах песка/крема из логотипа.
+    final c = JColors.light;
     final body = switch (step) {
-      0 => _LangStep(onPick: (lang) {
+      0 => _LangStep(c: c, onPick: (lang) {
           app.lang = lang;
           next();
         }),
@@ -43,31 +44,43 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           },
           onNext: next),
       3 => _ThemeStep(s: s, c: c, app: app, onNext: next),
-      _ => _PosterStep(s: s, onStart: () {
+      _ => _PosterStep(s: s, c: c, onStart: () {
           app.onboardingDone = true;
           Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (_) => const HomeScreen()));
         }),
     };
     return Scaffold(
-      backgroundColor: step == 0 || step == 4 ? jSplash : c.bg,
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 350),
-        transitionBuilder: (child, anim) => FadeTransition(
-          opacity: anim,
-          child: SlideTransition(
-            position: Tween(begin: const Offset(0, .02), end: Offset.zero).animate(anim),
-            child: child,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFFFFDF9), // Теплый молочный/белый цвет
+              Color(0xFFFBEFDD), // Светлый крем из логотипа
+            ],
           ),
         ),
-        child: KeyedSubtree(key: ValueKey(step), child: SafeArea(child: body)),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 350),
+          transitionBuilder: (child, anim) => FadeTransition(
+            opacity: anim,
+            child: SlideTransition(
+              position: Tween(begin: const Offset(0, .02), end: Offset.zero).animate(anim),
+              child: child,
+            ),
+          ),
+          child: KeyedSubtree(key: ValueKey(step), child: SafeArea(child: body)),
+        ),
       ),
     );
   }
 }
 
 class _LangStep extends StatelessWidget {
-  const _LangStep({required this.onPick});
+  const _LangStep({required this.c, required this.onPick});
+  final JColors c;
   final void Function(String) onPick;
 
   @override
@@ -77,18 +90,18 @@ class _LangStep extends StatelessWidget {
       child: Column(
         children: [
           const Spacer(flex: 2),
-          Text('دوام', style: JType.arabic(56, color: JColors.dark.gold)),
+          Text('دوام', style: JType.arabic(56, color: c.gold)),
           const SizedBox(height: 8),
           Text('Дауам',
-              style: JType.ui(30, w: FontWeight.w800, color: JColors.dark.ink)),
+              style: JType.ui(30, w: FontWeight.w800, color: c.ink)),
           const SizedBox(height: 10),
           Text('ғибадат серігі · ассистент поклонения',
               textAlign: TextAlign.center,
-              style: JType.ui(14, color: JColors.dark.sub)),
+              style: JType.ui(14, color: c.sub)),
           const Spacer(flex: 3),
-          _PillButton(label: 'Қазақша', onTap: () => onPick('kz')),
+          _PillButton(label: 'Қазақша', onTap: () => onPick('kz'), colors: c),
           const SizedBox(height: 12),
-          _PillButton(label: 'Русский', onTap: () => onPick('ru')),
+          _PillButton(label: 'Русский', onTap: () => onPick('ru'), colors: c),
           const SizedBox(height: 16),
         ],
       ),
@@ -343,13 +356,13 @@ class _ThemeStep extends StatelessWidget {
 }
 
 class _PosterStep extends StatelessWidget {
-  const _PosterStep({required this.s, required this.onStart});
+  const _PosterStep({required this.s, required this.c, required this.onStart});
   final S s;
+  final JColors c;
   final VoidCallback onStart;
 
   @override
   Widget build(BuildContext context) {
-    const ink = Color(0xFFECE9DF);
     return Padding(
       padding: const EdgeInsets.all(32),
       child: Column(
@@ -358,23 +371,23 @@ class _PosterStep extends StatelessWidget {
           Text('فَاذْكُرُونِي أَذْكُرْكُمْ',
               textAlign: TextAlign.center,
               textDirection: TextDirection.rtl,
-              style: JType.arabic(34, color: JColors.dark.gold)),
+              style: JType.arabic(34, color: c.gold)),
           const SizedBox(height: 16),
           Text(s.posterAyat,
               textAlign: TextAlign.center,
-              style: JType.reading(16, color: ink, style: FontStyle.italic)),
+              style: JType.reading(16, color: c.ink, style: FontStyle.italic)),
           const SizedBox(height: 6),
-          Text(s.posterAyatSrc, style: JType.ui(12, color: JColors.dark.faint)),
+          Text(s.posterAyatSrc, style: JType.ui(12, color: c.faint)),
           const SizedBox(height: 32),
-          Container(width: 40, height: 1, color: JColors.dark.hair),
+          Container(width: 40, height: 1, color: c.hair),
           const SizedBox(height: 32),
           Text(s.posterQuote,
               textAlign: TextAlign.center,
-              style: JType.reading(23, color: ink, style: FontStyle.italic, h: 1.5)),
+              style: JType.reading(23, color: c.ink, style: FontStyle.italic, h: 1.5)),
           const SizedBox(height: 8),
-          Text(s.posterSrc, style: JType.ui(12, color: JColors.dark.faint)),
+          Text(s.posterSrc, style: JType.ui(12, color: c.faint)),
           const Spacer(flex: 3),
-          _PillButton(label: s.start, onTap: onStart),
+          _PillButton(label: s.start, onTap: onStart, colors: c),
           const SizedBox(height: 16),
         ],
       ),

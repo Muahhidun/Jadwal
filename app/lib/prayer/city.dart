@@ -67,22 +67,84 @@ class CityRepository {
     return best;
   }
 
-  /// Поиск по названию (регистронезависимо).
+  static String _normalize(String s) {
+    return s.toLowerCase()
+        .replaceAll('ә', 'а')
+        .replaceAll('ғ', 'г')
+        .replaceAll('қ', 'к')
+        .replaceAll('ң', 'н')
+        .replaceAll('ө', 'о')
+        .replaceAll('ұ', 'у')
+        .replaceAll('ү', 'у')
+        .replaceAll('һ', 'х')
+        .replaceAll('і', 'и')
+        .replaceAll('э', 'е')
+        .replaceAll('ё', 'е')
+        .replaceAll('й', 'и')
+        .replaceAll('-', ' ')
+        .replaceAll(RegExp(r'[^a-zа-я0-9\s]'), '');
+  }
+
+  /// Поиск по названию (регистронезависимо с нормализацией и русскими синонимами).
   static Future<List<City>> search(String query, {int limit = 40}) async {
     final all = await load();
-    final q = query.trim().toLowerCase();
-    if (q.isEmpty) return const [];
+    final rawQ = query.trim().toLowerCase();
+    if (rawQ.isEmpty) return const [];
+
+    final qNorm = _normalize(rawQ);
+    final searchTerms = [qNorm];
+
+    // Синонимы для русскоязычного поиска городов Казахстана
+    const synonyms = {
+      'уральск': 'орал',
+      'петропавловск': 'петропавл',
+      'устькаменогорск': 'оскемен',
+      'усть каменогорск': 'оскемен',
+      'капчагай': 'капшагаи',
+      'кокчетав': 'кокшетау',
+      'семипалатинск': 'семеи',
+      'караганда': 'караганды',
+      'кустанай': 'костанаи',
+      'кустанаи': 'костанаи',
+      'чимкент': 'шымкент',
+      'джамбул': 'тараз',
+      'талдыкурган': 'талдыкорган',
+      'талды курган': 'талдыкорган',
+      'чу': 'шу',
+    };
+
+    for (final entry in synonyms.entries) {
+      if (qNorm.contains(entry.key) || entry.key.contains(qNorm)) {
+        searchTerms.add(entry.value);
+      }
+    }
+
     final starts = <City>[];
     final contains = <City>[];
+
     for (final c in all) {
-      final name = c.name.toLowerCase();
-      if (name.startsWith(q)) {
+      final nameNorm = _normalize(c.name);
+      final regionNorm = _normalize(c.region);
+
+      bool isStart = false;
+      bool isContain = false;
+
+      for (final term in searchTerms) {
+        if (nameNorm.startsWith(term)) {
+          isStart = true;
+          break;
+        } else if (nameNorm.contains(term) || regionNorm.contains(term)) {
+          isContain = true;
+        }
+      }
+
+      if (isStart) {
         starts.add(c);
-      } else if (name.contains(q)) {
+      } else if (isContain) {
         contains.add(c);
       }
-      if (starts.length >= limit) break;
     }
+
     return [...starts, ...contains].take(limit).toList();
   }
 

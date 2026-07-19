@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:hijri/hijri_calendar.dart';
 import '../data/app_state.dart';
@@ -41,7 +42,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       // прошёл онбординг на старом билде, попросим сейчас).
       await gNotifier?.requestPermission();
       if (!mounted) return;
-      syncNotifications(AppScope.of(context));
+      syncNotifications(AppScope.of(context), ScheduleScope.of(context));
       // По тапу на уведомление зикров — открыть соответствующий сборник.
       final pending = gNotifier?.pendingCollection;
       if (pending != null && pending.isNotEmpty && mounted) {
@@ -53,12 +54,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   /// Перепланировать уведомления, только когда изменилось что-то значимое
   /// (город / язык / набор выполненного за сегодня).
-  void _syncNotificationsIfNeeded(AppState app) {
+  void _syncNotificationsIfNeeded(AppState app, ScheduleService schedule) {
     final sig = '${app.city.name}|${app.lang}|'
         '${TaskId.values.where((id) => app.isDone(id.name)).join(",")}';
     if (sig == _lastNotifSig) return;
     _lastNotifSig = sig;
-    syncNotifications(app);
+    syncNotifications(app, schedule);
   }
 
   @override
@@ -99,7 +100,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final t = schedule.timesFor(app.city, now);
     final nowSec = now.hour * 3600 + now.minute * 60 + now.second;
     final nowMin = nowSec ~/ 60;
-    _syncNotificationsIfNeeded(app);
+    _syncNotificationsIfNeeded(app, schedule);
 
     return Scaffold(
       backgroundColor: c.bg,
@@ -576,13 +577,24 @@ class _GlassCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
-      padding: padding ?? const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1.0),
+      child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: padding ?? const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+                width: 1.0,
+              ),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: child,
+          ),
+        ),
       ),
-      child: child,
     );
   }
 }
@@ -858,39 +870,62 @@ class _DayTimesList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hl = nextPrayer(t, nowMin) ?? Prayer.fajr;
+    final app = AppScope.of(context);
+
     return Column(
       children: [
         for (final (i, prayer) in Prayer.values.indexed)
           Builder(
             builder: (context) {
               final isCurrent = prayer == hl;
-              return Container(
-                margin: const EdgeInsets.symmetric(vertical: 2),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  color: isCurrent ? c.gold.withValues(alpha: 0.12) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      s.prayers[i],
-                      style: JType.ui(
-                        14.5,
-                        w: isCurrent ? FontWeight.w700 : FontWeight.w400,
-                        color: isCurrent ? c.gold : c.ink.withValues(alpha: 0.85),
+              final rc = app.getReminderConfig(prayer.name, app.lang);
+              final isNotifEnabled = rc.enabled;
+
+              return GestureDetector(
+                onTap: () => _showQuickSettings(context, prayer.name, s.prayers[i], c),
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  margin: const EdgeInsets.symmetric(vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isCurrent ? c.gold.withValues(alpha: 0.12) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            isNotifEnabled
+                                ? Icons.notifications_active_outlined
+                                : Icons.notifications_off_outlined,
+                            size: 15,
+                            color: isNotifEnabled
+                                ? (isCurrent ? c.gold : c.ink.withValues(alpha: 0.85))
+                                : c.faint.withValues(alpha: 0.4),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            s.prayers[i],
+                            style: JType.ui(
+                              14.5,
+                              w: isCurrent ? FontWeight.w700 : FontWeight.w400,
+                              color: isCurrent ? c.gold : c.ink.withValues(alpha: 0.85),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    Text(
-                      t.fmt(prayer),
-                      style: JType.ui(
-                        15,
-                        w: isCurrent ? FontWeight.w700 : FontWeight.w500,
-                        color: isCurrent ? c.gold : c.ink,
+                      Text(
+                        t.fmt(prayer),
+                        style: JType.ui(
+                          15,
+                          w: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                          color: isCurrent ? c.gold : c.ink,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
@@ -1100,4 +1135,149 @@ class _SmallOutlineButton extends StatelessWidget {
       ),
     );
   }
+}
+
+void _showQuickSettings(BuildContext context, String configId, String titleName, JColors c) {
+  final app = AppScope.of(context);
+  final schedule = ScheduleScope.of(context);
+  final kz = app.lang == 'kz';
+  // Всегда используем темную цветовую схему для шторки на главном экране
+  const darkC = JColors.dark;
+
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: darkC.bg,
+    barrierColor: Colors.black.withValues(alpha: 0.5),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (context) {
+      return ListenableBuilder(
+        listenable: app,
+        builder: (context, _) {
+          final rc = app.getReminderConfig(configId, app.lang);
+          final offsetMinAbs = rc.offsetMin.abs();
+          final isBefore = rc.offsetMin <= 0;
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        titleName,
+                        style: JType.ui(20, w: FontWeight.w800, color: darkC.ink),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close, color: darkC.faint),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: darkC.card,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      children: [
+                        // Включение / выключение
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(rc.enabled ? Icons.notifications_active_outlined : Icons.notifications_off_outlined, color: darkC.gold, size: 20),
+                                const SizedBox(width: 12),
+                                Text(
+                                  kz ? 'Хабарландыру' : 'Уведомления',
+                                  style: JType.ui(15, w: FontWeight.w600, color: darkC.ink),
+                                ),
+                              ],
+                            ),
+                            Switch(
+                              value: rc.enabled,
+                              activeTrackColor: darkC.gold.withValues(alpha: 0.5),
+                              thumbColor: WidgetStatePropertyAll(rc.enabled ? darkC.gold : darkC.faint),
+                              onChanged: (v) {
+                                final updated = rc.copyWith(enabled: v);
+                                app.saveReminderConfig(updated);
+                                syncNotifications(app, schedule);
+                              },
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 24, thickness: 0.5, color: Colors.white10),
+                        // Регулировка времени
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.history_toggle_off_outlined, color: darkC.gold, size: 20),
+                                const SizedBox(width: 12),
+                                Text(
+                                  kz ? 'Түзету' : 'Регулировка времени',
+                                  style: JType.ui(15, w: FontWeight.w600, color: darkC.ink),
+                                ),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                Text(
+                                  rc.offsetMin == 0
+                                      ? (kz ? 'Дәл уақыты' : 'В момент')
+                                      : '${isBefore ? (kz ? 'дейін' : 'до') : (kz ? 'кейін' : 'после')} $offsetMinAbs мин',
+                                  style: JType.ui(14, color: darkC.faint),
+                                ),
+                                const SizedBox(width: 8),
+                                 Icon(Icons.chevron_right, size: 16, color: darkC.faint),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: darkC.gold,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(100),
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        // Перейти к детальному экрану
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ReminderDetailScreen(configId: configId),
+                          ),
+                        );
+                      },
+                      child: Text(
+                        kz ? 'Толығырақ баптау' : 'Другие настройки',
+                        style: JType.ui(15, w: FontWeight.w700, color: darkC.bg),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
 }

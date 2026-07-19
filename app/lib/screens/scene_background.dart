@@ -186,17 +186,19 @@ class SkyFg {
 /// выбор день/ночь + мягкая контрастная тень, сильнее всего в переходные фазы.
 SkyFg skyForeground(DayTimes t, int nowSec) {
   final sky = _skyAt(t, nowSec ~/ 60);
-  final bright = sky.day > 0.55; // день → тёмный текст
-  // Переходная зона (0.25–0.75): тень усиливается к середине.
-  final transition = (1 - ((sky.day - 0.5).abs() * 4)).clamp(0.0, 1.0);
-  final shadowColor = bright
-      ? Colors.white.withValues(alpha: 0.35 + 0.35 * transition)
-      : Colors.black.withValues(alpha: 0.35 + 0.45 * transition);
-  final shadows = [
-    Shadow(color: shadowColor, blurRadius: 14),
-    Shadow(color: shadowColor, blurRadius: 4),
-  ];
-  return bright
+  
+  // Вычисляем примерный цвет неба позади текста (верхняя треть экрана)
+  final textBgColor = Color.lerp(sky.top, sky.bottom, 0.25)!;
+  final bgLuminance = textBgColor.computeLuminance();
+  
+  // Если фон светлый (яркость > 0.43), используем темный контрастный текст.
+  // Иначе — светлый контрастный текст.
+  final useDarkText = bgLuminance > 0.43;
+  
+  // Тени полностью убираем по запросу пользователя
+  const shadows = <Shadow>[];
+  
+  return useDarkText
       ? SkyFg(const Color(0xFF1B2230), const Color(0xFF3A4657),
           const Color(0xFF8A5F10), shadows)
       : SkyFg(const Color(0xFFF2EFE6), const Color(0xFFC9CDC2),
@@ -275,9 +277,6 @@ class _ScenePainter extends CustomPainter {
     final cx = W * fracX;
     final cy = horizon * 0.92 - alt * horizon * 0.78;
 
-    // Солнце / луна по дуге
-    _celestial(canvas, cx, cy, horizon, isDay);
-
     // Земля/город ниже горизонта
     final groundTop = Color.lerp(sky.bottom, const Color(0xFF0B0F1C), 0.55)!;
     final groundBot = Color.lerp(const Color(0xFF0B0F1C), const Color(0xFF05070E), 0.6)!;
@@ -291,22 +290,25 @@ class _ScenePainter extends CustomPainter {
                   colors: [groundTop, groundBot])
               .createShader(groundRect));
 
-    // Силуэт дюн на горизонте с динамической физикой освещения
-    _city(canvas, W, horizon, H, sky, night, cx, cy, isDay, alt);
-
-    // Затемнение к низу — читаемость карточек «дня»
+    // Затемнение к низу — читаемость карточек «дня» (рисуется под солнцем и городом, чтобы не резать солнце)
     final scrim = Rect.fromLTRB(0, horizon, W, H);
     canvas.drawRect(
         scrim,
         Paint()
           ..shader = LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              const Color(0xFF05070E).withValues(alpha: 0.0),
-              const Color(0xFF05070E).withValues(alpha: 0.35),
-            ],
-          ).createShader(scrim));
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    const Color(0x000B1512),
+                    const Color(0xCC0B1512),
+                  ])
+              .createShader(scrim));
+
+    // Солнце / луна по дуге (рисуются поверх земли и затемнения, чтобы не срезаться прямой линией горизонта)
+    _celestial(canvas, cx, cy, horizon, isDay);
+
+    // Силуэт дюн на горизонте с динамической физикой освещения
+    _city(canvas, W, horizon, H, sky, night, cx, cy, isDay, alt);
   }
 
   void _stars(Canvas canvas, double W, double horizon, double night) {
@@ -383,7 +385,7 @@ class _ScenePainter extends CustomPainter {
     // 1. Атмосферное свечение за зданиями (sunset/sunrise glow)
     if (isDay && alt < 0.35) {
       final glowFactor = 1.0 - (alt / 0.35);
-      final glowRect = Rect.fromLTRB(0, base - 110, W, base + 10);
+      final glowRect = Rect.fromLTRB(0, 0, W, base + 10);
       final glowPaint = Paint()
         ..shader = ui.Gradient.radial(
           Offset(celX, base - 10),
@@ -398,7 +400,7 @@ class _ScenePainter extends CustomPainter {
       canvas.drawRect(glowRect, glowPaint);
     } else if (!isDay && alt > 0.1) {
       final glowFactor = (alt - 0.1) / 0.9;
-      final glowRect = Rect.fromLTRB(0, base - 90, W, base + 10);
+      final glowRect = Rect.fromLTRB(0, 0, W, base + 10);
       final glowPaint = Paint()
         ..shader = ui.Gradient.radial(
           Offset(celX, base - 10),

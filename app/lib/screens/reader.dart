@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../data/adhkar.dart';
 import '../data/app_state.dart';
 import '../i18n/strings.dart';
@@ -20,6 +21,7 @@ class ReaderScreen extends StatefulWidget {
 class _ReaderScreenState extends State<ReaderScreen> {
   ZikrCollection? collection;
   int idx = 0;
+  bool confirmed = false;
 
   @override
   void initState() {
@@ -125,7 +127,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
               child: Row(
                 children: [
                   GestureDetector(
-                    onTap: idx > 0 ? () => setState(() => idx--) : null,
+                    onTap: idx > 0
+                        ? () => setState(() {
+                              confirmed = false;
+                              idx--;
+                            })
+                        : null,
                     child: Container(
                       width: 52,
                       height: 52,
@@ -140,27 +147,29 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: GestureDetector(
-                      onTap: last ? _finish : () => setState(() => idx++),
-                      child: Container(
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: JPaper.button,
-                          borderRadius: BorderRadius.circular(100),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(countLabel(z.repeat, app.lang),
-                                style: JType.ui(10.5,
-                                    w: FontWeight.w400,
-                                    color: JPaper.bg.withValues(alpha: .6))),
-                            const SizedBox(height: 1),
-                            Text(last ? s.finishBtn : s.nextBtn,
-                                style: JType.ui(15, w: FontWeight.w700, color: JPaper.bg)),
-                          ],
-                        ),
-                      ),
+                    child: _ActionButton(
+                      isConfirmed: confirmed,
+                      topText: confirmed
+                          ? s.repeatConfirmTitle.replaceAll('{n}', '${z.repeat}')
+                          : countLabel(z.repeat, app.lang),
+                      bottomText: confirmed
+                          ? s.repeatConfirmBtn
+                          : (last ? s.finishBtn : s.nextBtn),
+                      onTap: () {
+                        if (z.repeat > 1 && !confirmed) {
+                          HapticFeedback.mediumImpact();
+                          setState(() => confirmed = true);
+                        } else {
+                          if (last) {
+                            _finish();
+                          } else {
+                            setState(() {
+                              confirmed = false;
+                              idx++;
+                            });
+                          }
+                        }
+                      },
                     ),
                   ),
                 ],
@@ -307,6 +316,98 @@ class _Section extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(children: [header, body]),
+    );
+  }
+}
+
+class _ActionButton extends StatefulWidget {
+  const _ActionButton({
+    required this.topText,
+    required this.bottomText,
+    required this.isConfirmed,
+    required this.onTap,
+  });
+  final String topText;
+  final String bottomText;
+  final bool isConfirmed;
+  final VoidCallback onTap;
+
+  @override
+  State<_ActionButton> createState() => _ActionButtonState();
+}
+
+class _ActionButtonState extends State<_ActionButton> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _offsetAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 350),
+      vsync: this,
+    );
+    _offsetAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 6.0).chain(CurveTween(curve: Curves.easeOut)), weight: 25),
+      TweenSequenceItem(tween: Tween(begin: 6.0, end: -6.0).chain(CurveTween(curve: Curves.easeInOut)), weight: 25),
+      TweenSequenceItem(tween: Tween(begin: -6.0, end: 4.0).chain(CurveTween(curve: Curves.easeInOut)), weight: 25),
+      TweenSequenceItem(tween: Tween(begin: 4.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)), weight: 25),
+    ]).animate(_controller);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ActionButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isConfirmed && !oldWidget.isConfirmed) {
+      _controller.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: AnimatedBuilder(
+        animation: _offsetAnimation,
+        builder: (context, child) {
+          return Transform.translate(
+            offset: Offset(_offsetAnimation.value, 0),
+            child: child,
+          );
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          height: 52,
+          decoration: BoxDecoration(
+            color: widget.isConfirmed ? JPaper.accent : JPaper.button,
+            borderRadius: BorderRadius.circular(100),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                style: JType.ui(10.5,
+                    w: FontWeight.w400,
+                    color: JPaper.bg.withValues(alpha: .6)),
+                child: Text(widget.topText),
+              ),
+              const SizedBox(height: 1),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                style: JType.ui(15, w: FontWeight.w700, color: JPaper.bg),
+                child: Text(widget.bottomText),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

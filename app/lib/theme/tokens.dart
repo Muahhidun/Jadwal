@@ -20,33 +20,33 @@ class JColors {
   });
 
   static const dark = JColors(
-    bg: Color(0xFF101714),
+    bg: Color(0xFF0C0C0E),
     ink: Color(0xFFECE9DF),
     sub: Color(0xFF9AA49B),
     faint: Color(0xFF6F7A72),
-    hair: Color(0xFF2A332D),
-    gold: Color(0xFFC99A3F),
+    hair: Color(0xFF222224),
+    gold: Color(0xFFC99A3F), // Премиальное золото вместо оранжевого акцента
     green: Color(0xFF5D7A66),
-    gdim: Color(0xFF33443A),
+    gdim: Color(0xFF222B25),
     red: Color(0xFFB4544A),
-    card: Color(0xFF1A221D),
+    card: Color(0xFF16161A),
     btnbg: Color(0xFFECE9DF),
-    btnink: Color(0xFF101714),
+    btnink: Color(0xFF0C0C0E),
   );
 
   static const light = JColors(
-    bg: Color(0xFFF5F2E9),
-    ink: Color(0xFF22302B),
-    sub: Color(0xFF7F857B),
-    faint: Color(0xFF94978C),
-    hair: Color(0xFFDCD8C9),
-    gold: Color(0xFFB8862F),
-    green: Color(0xFF4A5D50),
-    gdim: Color(0xFFCDD6C8),
+    bg: Color(0xFFF7F2E7),
+    ink: Color(0xFF2C2A24),
+    sub: Color(0xFF7B7461),
+    faint: Color(0xFF9A927E),
+    hair: Color(0xFFE3DCC9),
+    gold: Color(0xFF8C7A4E),
+    green: Color(0xFF8C7A4E),
+    gdim: Color(0xFFEFE8D6),
     red: Color(0xFFB4544A),
-    card: Color(0xFFFFFDF6),
-    btnbg: Color(0xFF22302B),
-    btnink: Color(0xFFF5F2E9),
+    card: Color(0xFFFFFFFF),
+    btnbg: Color(0xFF2C2A24),
+    btnink: Color(0xFFF7F2E7),
   );
 }
 
@@ -64,8 +64,8 @@ class JPaper {
   static const disabled = Color(0xFFD9D1BC);
 }
 
-/// Тёмно-зелёный сплэш/постер онбординга.
-const jSplash = Color(0xFF14241D);
+/// Фирменный терракотовый цвет из логотипа.
+const jSplash = Color(0xFFC4552D);
 
 class JType {
   // Вариативный Manrope: вес задаём и через fontWeight, и через ось wght

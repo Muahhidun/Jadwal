@@ -11,6 +11,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   final state = await AppState.load();
+  state.onboardingDone = false; // Временный сброс для скриншотов
   final schedule = ScheduleService(prefs);
   final notifier = NotificationService(schedule);
   gNotifier = notifier;
@@ -32,7 +33,7 @@ class JadwalApp extends StatelessWidget {
         child: ListenableBuilder(
           listenable: Listenable.merge([state, schedule]),
           builder: (context, _) => MaterialApp(
-            title: 'Дауам',
+            title: 'Dauam',
             debugShowCheckedModeBanner: false,
             themeMode: state.themeMode,
             theme: _theme(JColors.light, Brightness.light),
