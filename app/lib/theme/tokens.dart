@@ -34,6 +34,23 @@ class JColors {
     btnink: Color(0xFF0C0C0E),
   );
 
+  /// Экраны настроек: тёплый тёмно-синий (не чисто чёрный) + кремовый текст
+  /// с пониженным контрастом — не «прошивает» глаза, не зависит от времени.
+  static const night = JColors(
+    bg: Color(0xFF10151F),
+    ink: Color(0xFFE8E5DA),
+    sub: Color(0xFFB0B4BE),
+    faint: Color(0xFF7E8595),
+    hair: Color(0xFF2A3140),
+    gold: Color(0xFFC99A3F),
+    green: Color(0xFF5D7A66),
+    gdim: Color(0xFF222B31),
+    red: Color(0xFFB4544A),
+    card: Color(0xFF1A2029),
+    btnbg: Color(0xFFE8E5DA),
+    btnink: Color(0xFF10151F),
+  );
+
   static const light = JColors(
     bg: Color(0xFFF7F2E7),
     ink: Color(0xFF2C2A24),

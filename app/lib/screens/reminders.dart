@@ -19,8 +19,7 @@ class RemindersScreen extends StatelessWidget {
     final app = AppScope.of(context);
     final schedule = ScheduleScope.of(context);
     final kz = app.lang == 'kz';
-    final brightness = Theme.of(context).brightness;
-    final c = brightness == Brightness.light ? JColors.light : JColors.dark;
+    const c = JColors.night;
     final prayers = kz ? _prayersKz : _prayersRu;
 
     Widget categoryRow(String title, String sub, IconData icon, VoidCallback onTap) =>
@@ -69,68 +68,96 @@ class RemindersScreen extends StatelessWidget {
         builder: (context, _) {
           final customCount = app.customReminders.length;
           return ListView(
-            padding: const EdgeInsets.only(top: 8, bottom: 90),
+            padding: const EdgeInsets.only(top: 4, bottom: 40),
             children: [
-              categoryRow(
-                kz ? 'Намаз еске салулары' : 'Напоминания о молитвах',
-                kz ? 'Таң, Күн шығуы, Бесін, Екінті, Ақшам, Құптан' : 'Фаджр, Восход, Зухр, Аср, Магриб, Иша',
-                Icons.access_time_filled_outlined,
-                () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const PrayerRemindersScreen()),
-                ),
+              // Крупный заголовок в стиле iOS large title.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
+                child: Text(kz ? 'Еске салулар' : 'Напоминания',
+                    style: JType.ui(30, w: FontWeight.w800, color: c.ink)),
               ),
-              const Divider(height: 1, thickness: 0.5, indent: 24, endIndent: 24),
-              categoryRow(
-                kz ? 'Зікірлер мен дұғалар' : 'Напоминания о зикрах и дуа',
-                kz ? 'Таңғы және кешкі зікірлер, Кәһф сүресі, дұға сағаты' : 'Утренние и вечерние зикры, сура аль-Кахф, час дуа',
-                Icons.menu_book,
-                () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const WorshipRemindersScreen()),
+              _InsetGroup(c: c, children: [
+                categoryRow(
+                  kz ? 'Намаз еске салулары' : 'Напоминания о молитвах',
+                  kz ? 'Таң, Күн шығуы, Бесін, Екінті, Ақшам, Құптан' : 'Фаджр, Восход, Зухр, Аср, Магриб, Иша',
+                  Icons.access_time_filled_outlined,
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const PrayerRemindersScreen()),
+                  ),
                 ),
-              ),
-              const Divider(height: 1, thickness: 0.5, indent: 24, endIndent: 24),
-              categoryRow(
-                kz ? 'Менің еске салуларым' : 'Мои напоминания',
-                kz ? 'Қосылды: $customCount' : 'Добавлено: $customCount',
-                Icons.playlist_add_check,
-                () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const CustomRemindersScreen()),
+                categoryRow(
+                  kz ? 'Зікірлер мен дұғалар' : 'Напоминания о зикрах и дуа',
+                  kz ? 'Таңғы және кешкі зікірлер, Кәһф сүресі, дұға сағаты' : 'Утренние и вечерние зикры, сура аль-Кахф, час дуа',
+                  Icons.menu_book,
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const WorshipRemindersScreen()),
+                  ),
                 ),
-              ),
+                categoryRow(
+                  kz ? 'Менің еске салуларым' : 'Мои напоминания',
+                  kz ? 'Қосылды: $customCount' : 'Добавлено: $customCount',
+                  Icons.playlist_add_check,
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const CustomRemindersScreen()),
+                  ),
+                ),
+              ]),
+              // «+ Добавить» — строка-действие вместо FAB (iOS-паттерн).
+              _InsetGroup(c: c, children: [
+                GestureDetector(
+                  onTap: () => _addDialog(context, app, schedule, kz, prayers),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                    child: Row(children: [
+                      Icon(Icons.add_circle_outline, size: 20, color: c.gold),
+                      const SizedBox(width: 12),
+                      Text(kz ? 'Еске салу қосу' : 'Добавить напоминание',
+                          style: JType.ui(15, w: FontWeight.w600, color: c.gold)),
+                    ]),
+                  ),
+                ),
+              ]),
             ],
           );
         },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: c.gold,
-        foregroundColor: c.bg,
-        onPressed: () => _addDialog(context, app, schedule, kz, prayers),
-        icon: const Icon(Icons.add),
-        label: Text(kz ? 'Қосу' : 'Добавить',
-            style: JType.ui(14, w: FontWeight.w700, color: c.bg)),
       ),
     );
   }
 
   Future<void> _addDialog(
       BuildContext context, AppState app, ScheduleService schedule, bool kz, List<String> prayers) async {
-    final brightness = Theme.of(context).brightness;
-    final c = brightness == Brightness.light ? JColors.light : JColors.dark;
+    const c = JColors.night;
     final titleCtrl = TextEditingController();
     final minCtrl = TextEditingController(text: '15');
     var prayer = 0;
     var before = true;
 
-    await showDialog<void>(
+    await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: c.card,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
-          backgroundColor: brightness == Brightness.light ? Colors.white : c.card,
-          title: Text(kz ? 'Жаңа еске салу' : 'Новое напоминание',
-              style: JType.ui(17, w: FontWeight.w700, color: c.ink)),
-          content: Column(
+        builder: (ctx, setSt) => Padding(
+          padding: EdgeInsets.fromLTRB(
+              24, 12, 24, 24 + MediaQuery.of(ctx).viewInsets.bottom),
+          child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Center(
+                child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: c.hair, borderRadius: BorderRadius.circular(2))),
+              ),
+              const SizedBox(height: 16),
+              Text(kz ? 'Жаңа еске салу' : 'Новое напоминание',
+                  style: JType.ui(19, w: FontWeight.w800, color: c.ink)),
+              const SizedBox(height: 16),
               TextField(
                 controller: titleCtrl,
                 style: JType.ui(15, color: c.ink),
@@ -138,80 +165,88 @@ class RemindersScreen extends StatelessWidget {
                 decoration: InputDecoration(
                   hintText: kz ? 'Атауы (мыс.: Дұға)' : 'Название (напр.: Дуа)',
                   hintStyle: JType.ui(14, color: c.faint),
-                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: c.hair)),
-                  focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: c.gold)),
+                  enabledBorder:
+                      UnderlineInputBorder(borderSide: BorderSide(color: c.hair)),
+                  focusedBorder:
+                      UnderlineInputBorder(borderSide: BorderSide(color: c.gold)),
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               DropdownButton<int>(
                 value: prayer,
                 isExpanded: true,
-                dropdownColor: brightness == Brightness.light ? Colors.white : c.card,
+                dropdownColor: c.card,
                 style: JType.ui(15, color: c.ink),
+                underline: Container(height: 1, color: c.hair),
                 items: [
                   for (var i = 0; i < prayers.length; i++)
                     DropdownMenuItem(value: i, child: Text(prayers[i])),
                 ],
                 onChanged: (v) => setSt(() => prayer = v ?? 0),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               Row(children: [
                 Expanded(
                   child: SegmentedButton<bool>(
                     style: SegmentedButton.styleFrom(
                       selectedBackgroundColor: c.gold,
                       selectedForegroundColor: c.bg,
+                      foregroundColor: c.sub,
+                      side: BorderSide(color: c.hair),
                     ),
                     segments: [
                       ButtonSegment(value: true, label: Text(kz ? 'дейін' : 'до')),
                       ButtonSegment(value: false, label: Text(kz ? 'кейін' : 'после')),
                     ],
                     selected: {before},
-                    onSelectionChanged: (s) => setSt(() => before = s.first),
+                    onSelectionChanged: (sel) => setSt(() => before = sel.first),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 SizedBox(
-                  width: 56,
+                  width: 74,
                   child: TextField(
                     controller: minCtrl,
                     keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     style: JType.ui(15, color: c.ink),
                     cursorColor: c.gold,
-                    decoration:
-                        InputDecoration(
-                          suffixText: kz ? 'мин' : 'мин',
-                          enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: c.hair)),
-                          focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: c.gold)),
-                        ),
+                    decoration: InputDecoration(
+                      suffixText: 'мин',
+                      enabledBorder:
+                          UnderlineInputBorder(borderSide: BorderSide(color: c.hair)),
+                      focusedBorder:
+                          UnderlineInputBorder(borderSide: BorderSide(color: c.gold)),
+                    ),
                   ),
                 ),
               ]),
+              const SizedBox(height: 22),
+              GestureDetector(
+                onTap: () {
+                  final m = int.tryParse(minCtrl.text) ?? 0;
+                  final title = titleCtrl.text.trim();
+                  if (title.isEmpty) return;
+                  app.addReminder(ReminderConfig(
+                    id: DateTime.now().microsecondsSinceEpoch.toString(),
+                    title: title,
+                    prayer: prayer,
+                    offsetMin: before ? -m : m,
+                  ));
+                  syncNotifications(app, schedule);
+                  Navigator.pop(ctx);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  decoration: BoxDecoration(
+                      color: c.gold, borderRadius: BorderRadius.circular(14)),
+                  child: Center(
+                      child: Text(kz ? 'Қосу' : 'Добавить',
+                          style: JType.ui(15, w: FontWeight.w800, color: c.bg))),
+                ),
+              ),
             ],
           ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(kz ? 'Болдырмау' : 'Отмена',
-                    style: JType.ui(14, color: c.faint))),
-            TextButton(
-              onPressed: () {
-                final m = int.tryParse(minCtrl.text) ?? 0;
-                final title = titleCtrl.text.trim();
-                if (title.isEmpty) return;
-                app.addReminder(ReminderConfig(
-                  id: DateTime.now().microsecondsSinceEpoch.toString(),
-                  title: title,
-                  prayer: prayer,
-                  offsetMin: before ? -m : m,
-                ));
-                syncNotifications(app, schedule);
-                Navigator.pop(ctx);
-              },
-              child: Text(kz ? 'Қосу' : 'Добавить',
-                  style: JType.ui(14, w: FontWeight.w700, color: c.gold)),
-            ),
-          ],
         ),
       ),
     );
@@ -247,8 +282,7 @@ class PrayerRemindersScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final kz = app.lang == 'kz';
-    final brightness = Theme.of(context).brightness;
-    final c = brightness == Brightness.light ? JColors.light : JColors.dark;
+    const c = JColors.night;
     final prayers = kz ? _prayersKz : _prayersRu;
     final prayerIds = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
 
@@ -263,23 +297,24 @@ class PrayerRemindersScreen extends StatelessWidget {
       ),
       body: ListenableBuilder(
         listenable: app,
-        builder: (context, _) => ListView.separated(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: prayerIds.length,
-          separatorBuilder: (_, index) => const Divider(height: 1, thickness: 0.5, indent: 24, endIndent: 24),
-          itemBuilder: (context, i) {
-            final rc = app.getReminderConfig(prayerIds[i], app.lang);
-            return _ReminderRow(
-              title: prayers[i],
-              sub: RemindersScreen._configLabel(kz, rc, prayers),
-              c: c,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => ReminderDetailScreen(configId: prayerIds[i]),
+        builder: (context, _) => ListView(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          children: [
+            _InsetGroup(c: c, children: [
+              for (var i = 0; i < prayerIds.length; i++)
+                _ReminderRow(
+                  title: prayers[i],
+                  sub: RemindersScreen._configLabel(
+                      kz, app.getReminderConfig(prayerIds[i], app.lang), prayers),
+                  c: c,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ReminderDetailScreen(configId: prayerIds[i]),
+                    ),
+                  ),
                 ),
-              ),
-            );
-          },
+            ]),
+          ],
         ),
       ),
     );
@@ -297,8 +332,7 @@ class WorshipRemindersScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final kz = app.lang == 'kz';
-    final brightness = Theme.of(context).brightness;
-    final c = brightness == Brightness.light ? JColors.light : JColors.dark;
+    const c = JColors.night;
     final prayers = kz ? _prayersKz : _prayersRu;
 
     final windows = [
@@ -319,24 +353,24 @@ class WorshipRemindersScreen extends StatelessWidget {
       ),
       body: ListenableBuilder(
         listenable: app,
-        builder: (context, _) => ListView.separated(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: windows.length,
-          separatorBuilder: (_, index) => const Divider(height: 1, thickness: 0.5, indent: 24, endIndent: 24),
-          itemBuilder: (context, i) {
-            final (id, title) = windows[i];
-            final rc = app.getReminderConfig(id, app.lang);
-            return _ReminderRow(
-              title: title,
-              sub: RemindersScreen._configLabel(kz, rc, prayers),
-              c: c,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => ReminderDetailScreen(configId: id),
+        builder: (context, _) => ListView(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          children: [
+            _InsetGroup(c: c, children: [
+              for (final (id, title) in windows)
+                _ReminderRow(
+                  title: title,
+                  sub: RemindersScreen._configLabel(
+                      kz, app.getReminderConfig(id, app.lang), prayers),
+                  c: c,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ReminderDetailScreen(configId: id),
+                    ),
+                  ),
                 ),
-              ),
-            );
-          },
+            ]),
+          ],
         ),
       ),
     );
@@ -355,8 +389,7 @@ class CustomRemindersScreen extends StatelessWidget {
     final app = AppScope.of(context);
     final schedule = ScheduleScope.of(context);
     final kz = app.lang == 'kz';
-    final brightness = Theme.of(context).brightness;
-    final c = brightness == Brightness.light ? JColors.light : JColors.dark;
+    const c = JColors.night;
     final prayers = kz ? _prayersKz : _prayersRu;
 
     return Scaffold(
@@ -385,26 +418,24 @@ class CustomRemindersScreen extends StatelessWidget {
               ),
             );
           }
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: app.customReminders.length,
-            itemBuilder: (context, i) {
-              final r = app.customReminders[i];
-              return Dismissible(
-                key: ValueKey(r.id),
-                direction: DismissDirection.endToStart,
-                background: Container(
-                    color: c.red.withValues(alpha: .25),
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 24),
-                    child: Icon(Icons.delete_outline, color: c.red)),
-                onDismissed: (_) {
-                  app.removeReminder(r.id);
-                  syncNotifications(app, schedule);
-                },
-                child: Column(
-                  children: [
-                    _ReminderRow(
+          return ListView(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            children: [
+              _InsetGroup(c: c, children: [
+                for (final r in app.customReminders)
+                  Dismissible(
+                    key: ValueKey(r.id),
+                    direction: DismissDirection.endToStart,
+                    background: Container(
+                        color: c.red.withValues(alpha: .25),
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 24),
+                        child: Icon(Icons.delete_outline, color: c.red)),
+                    onDismissed: (_) {
+                      app.removeReminder(r.id);
+                      syncNotifications(app, schedule);
+                    },
+                    child: _ReminderRow(
                       title: r.title,
                       sub: RemindersScreen._configLabel(kz, r, prayers),
                       c: c,
@@ -414,15 +445,39 @@ class CustomRemindersScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (i < app.customReminders.length - 1)
-                      const Divider(height: 1, thickness: 0.5, indent: 24, endIndent: 24),
-                  ],
-                ),
-              );
-            },
+                  ),
+              ]),
+            ],
           );
         },
       ),
+    );
+  }
+}
+
+/// Скруглённая inset-группа (как в Настройках iOS).
+class _InsetGroup extends StatelessWidget {
+  const _InsetGroup({required this.c, required this.children});
+  final JColors c;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <Widget>[];
+    for (var i = 0; i < children.length; i++) {
+      rows.add(children[i]);
+      if (i < children.length - 1) {
+        rows.add(Divider(height: 1, thickness: 0.5, indent: 20, color: c.hair));
+      }
+    }
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(children: rows),
     );
   }
 }
@@ -539,8 +594,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final kz = app.lang == 'kz';
-    final brightness = Theme.of(context).brightness;
-    final c = brightness == Brightness.light ? JColors.light : JColors.dark;
+    const c = JColors.night;
     final prayers = kz ? _prayersKz : _prayersRu;
 
     Widget section(String title, Widget child) => Padding(
@@ -640,7 +694,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                 : DropdownButton<int>(
                     value: config.prayer,
                     isExpanded: true,
-                    dropdownColor: brightness == Brightness.light ? Colors.white : c.card,
+                    dropdownColor: c.card,
                     style: JType.ui(15, color: c.ink),
                     underline: Container(height: 1, color: c.hair),
                     items: [
@@ -711,7 +765,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
             DropdownButton<String>(
               value: config.repeat,
               isExpanded: true,
-              dropdownColor: brightness == Brightness.light ? Colors.white : c.card,
+              dropdownColor: c.card,
               style: JType.ui(15, color: c.ink),
               underline: Container(height: 1, color: c.hair),
               items: [
