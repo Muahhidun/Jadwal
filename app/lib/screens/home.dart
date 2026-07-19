@@ -1055,6 +1055,15 @@ class _Notebook extends StatelessWidget {
     );
   }
 
+  /// Сколько задач дня выполнено и сколько всего (пятница — 4, иначе 2).
+  (int, int) _progress(DateTime date) {
+    final tasks = date.weekday == DateTime.friday
+        ? const ['morning', 'evening', 'kahf', 'dua']
+        : const ['morning', 'evening'];
+    final done = app.doneOn(date);
+    return (tasks.where(done.contains).length, tasks.length);
+  }
+
   Widget _cell(DateTime date) {
     final today = DateTime(now.year, now.month, now.day);
     final isToday = date.year == today.year &&
@@ -1062,49 +1071,107 @@ class _Notebook extends StatelessWidget {
         date.day == today.day;
     final isFuture = date.isAfter(today);
 
-    if (isToday) {
-      return Container(
-        width: 22,
-        height: 22,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: c.gold),
-        child: Center(
-          child: Text(
-            '${date.day}',
-            style: JType.ui(11, w: FontWeight.w800, color: const Color(0xFF101510)),
-          ),
-        ),
-      );
-    }
     if (isFuture) {
       return SizedBox(
-        width: 22,
-        height: 22,
+        width: 26,
+        height: 26,
         child: Center(
-          child: Text(
-            '${date.day}',
-            style: JType.ui(11, w: FontWeight.w400, color: c.faint.withValues(alpha: 0.5)),
-          ),
+          child: Text('${date.day}',
+              style: JType.ui(11,
+                  w: FontWeight.w400, color: c.faint.withValues(alpha: 0.45))),
         ),
       );
     }
 
-    final done = app.dayCompleted(date);
-    return Container(
-      width: 22,
-      height: 22,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: done ? c.green : c.red,
-      ),
-      child: Center(
-        child: Icon(
-          done ? Icons.check : Icons.close,
-          size: 12,
-          color: Colors.white,
+    final (done, total) = _progress(date);
+    final frac = done / total;
+    return _RingCell(
+      day: date.day,
+      frac: frac,
+      isToday: isToday,
+      gold: c.gold,
+      faint: c.faint,
+    );
+  }
+}
+
+/// Ячейка тетради: кольцо прогресса дня. Пусто — неактивное серое кольцо
+/// (без «наказания»), частично — золотая дуга, полное — золотое кольцо с
+/// мягким сиянием и заливкой (чувство полноты). Сегодня — золотое число.
+class _RingCell extends StatelessWidget {
+  const _RingCell(
+      {required this.day,
+      required this.frac,
+      required this.isToday,
+      required this.gold,
+      required this.faint});
+  final int day;
+  final double frac;
+  final bool isToday;
+  final Color gold, faint;
+
+  @override
+  Widget build(BuildContext context) {
+    final full = frac >= 1.0;
+    return SizedBox(
+      width: 26,
+      height: 26,
+      child: CustomPaint(
+        painter: _RingPainter(frac: frac, gold: gold, faint: faint, full: full),
+        child: Center(
+          child: Text(
+            '$day',
+            style: JType.ui(10,
+                w: isToday || full ? FontWeight.w800 : FontWeight.w500,
+                color: isToday || full
+                    ? gold
+                    : (frac > 0 ? gold.withValues(alpha: 0.8) : faint)),
+          ),
         ),
       ),
     );
   }
+}
+
+class _RingPainter extends CustomPainter {
+  _RingPainter(
+      {required this.frac, required this.gold, required this.faint, required this.full});
+  final double frac;
+  final Color gold, faint;
+  final bool full;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cCenter = Offset(size.width / 2, size.height / 2);
+    final r = size.width / 2 - 1.5;
+    final base = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..color = Colors.white.withValues(alpha: 0.10);
+    canvas.drawCircle(cCenter, r, base);
+    if (frac <= 0) return;
+    if (full) {
+      // Сияние + лёгкая заливка — день полностью выполнен.
+      final glow = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5
+        ..color = gold.withValues(alpha: 0.35)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+      canvas.drawCircle(cCenter, r, glow);
+      canvas.drawCircle(
+          cCenter, r - 1, Paint()..color = gold.withValues(alpha: 0.14));
+    }
+    final arc = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round
+      ..color = gold;
+    canvas.drawArc(Rect.fromCircle(center: cCenter, radius: r), -1.5708,
+        6.2832 * frac.clamp(0.0, 1.0), false, arc);
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter o) => o.frac != frac || o.full != full;
 }
 
 class _SmallOutlineButton extends StatelessWidget {
