@@ -376,9 +376,15 @@ class _ScenePainter extends CustomPainter {
   }
 
   void _city(Canvas canvas, double W, double horizon, double H, _Sky sky, double night, double celX, double celY, bool isDay, double alt) {
-    final silNormal = Color.lerp(sky.bottom, const Color(0xFF0A0E1A), 0.72)!;
-    final silNight = const Color(0xFF70604A);
-    final sil = Color.lerp(silNormal, silNight, night)!;
+    // Гарантированный контраст силуэта с небом в ЛЮБОЙ фазе (жалоба владельца:
+    // «иногда видна, иногда нет»): по яркости неба за ним выбираем тёмный
+    // силуэт (светлое небо) или тёплый светлый (тёмное небо), с плавным
+    // переходом в сумерках — дельта яркости сохраняется всегда.
+    final bgLum = sky.bottom.computeLuminance();
+    final tt = ((bgLum - 0.08) / 0.22).clamp(0.0, 1.0);
+    final darkSil = Color.lerp(sky.bottom, const Color(0xFF06080F), 0.85)!;
+    final lightSil = Color.lerp(sky.bottom, const Color(0xFF9A8262), 0.75)!;
+    final sil = Color.lerp(lightSil, darkSil, tt)!;
     final base = horizon;
     final silOpacity = 1.0;
 

@@ -195,23 +195,61 @@ class _HeroTimer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final nowMin = nowSec ~/ 60;
-    final (caption, timer, _) = heroTimer(s, t, nowSec, nowMin, schedule, app);
-    // Таймер — только на главном: уезжает вверх и растворяется при прокрутке
-    // к «дню» (на втором экране его нет — там сетка времён вверху).
+    final (caption, secs, _) = heroTimer(s, t, nowSec, nowMin, schedule, app);
+    // Адаптивные цифры (дизайн-отчёт): >1ч — «1:54», <1ч — «45 мин»,
+    // последняя минута — «31 сек». Подпись смысла — НАД цифрами.
+    final String value;
+    final String? unit;
+    final v = secs < 0 ? 0 : secs;
+    if (v >= 3600) {
+      value = '${v ~/ 3600}:${((v % 3600) ~/ 60).toString().padLeft(2, '0')}';
+      unit = null;
+    } else if (v >= 60) {
+      value = '${v ~/ 60}';
+      unit = ' мин';
+    } else {
+      value = '$v';
+      unit = ' сек';
+    }
     final fade = (1 - p * 1.6).clamp(0.0, 1.0);
     return Positioned(
       left: 0,
       right: 0,
-      top: h * 0.40 - h * p,
+      top: h * 0.38 - h * p,
       child: IgnorePointer(
-        // Таймер — главный элемент; подпись (до восхода) под ним.
         child: Opacity(
           opacity: fade,
           child: Column(
             children: [
-              Text(timer, style: JType.timer(80, fg.text).copyWith(shadows: fg.shadows)),
-              const SizedBox(height: 4),
-              Text(caption, style: JType.caption(fg.accent, size: 14).copyWith(shadows: fg.shadows)),
+              Text(caption,
+                  style: JType.caption(fg.accent, size: 15).copyWith(shadows: fg.shadows)),
+              const SizedBox(height: 6),
+              // Перелистывание при смене значения (мягкий сдвиг+фейд).
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 350),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder: (child, anim) => FadeTransition(
+                  opacity: anim,
+                  child: SlideTransition(
+                    position: Tween(begin: const Offset(0, .18), end: Offset.zero)
+                        .animate(anim),
+                    child: child,
+                  ),
+                ),
+                child: Text.rich(
+                  TextSpan(children: [
+                    TextSpan(text: value),
+                    if (unit != null)
+                      TextSpan(
+                          text: unit,
+                          style: JType.ui(30, w: FontWeight.w300, color: fg.faint)),
+                  ]),
+                  key: ValueKey(value + (unit ?? '')),
+                  style: JType.timer(84, fg.text).copyWith(shadows: fg.shadows),
+                ),
+              ),
+              _DoneChips(app: app, s: s, fg: fg),
             ],
           ),
         ),
@@ -220,9 +258,53 @@ class _HeroTimer extends StatelessWidget {
   }
 }
 
+/// Заметный статус выполненного (дизайн-отчёт): стеклянные пилюли под
+/// таймером — «Вечерние зикры ✓» вместо незаметной строки внизу.
+class _DoneChips extends StatelessWidget {
+  const _DoneChips({required this.app, required this.s, required this.fg});
+  final AppState app;
+  final S s;
+  final SkyFg fg;
+
+  @override
+  Widget build(BuildContext context) {
+    final done = <String>[
+      if (app.isDone('morning')) s.morningTitle,
+      if (app.isDone('kahf')) s.kahfTitle,
+      if (app.isDone('evening')) s.eveningTitle,
+      if (app.isDone('dua')) s.duaTitle,
+    ];
+    if (done.isEmpty) return const SizedBox(height: 22);
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final name in done)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.07),
+                border: Border.all(color: fg.accent.withValues(alpha: 0.45)),
+                borderRadius: BorderRadius.circular(100),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.check, size: 14, color: fg.accent),
+                const SizedBox(width: 6),
+                Text(name, style: JType.ui(13, w: FontWeight.w600, color: fg.text)),
+              ]),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Единый «геройский» таймер: что показывает большой счётчик сейчас.
 /// В открытом окне — до конца окна; иначе — до следующей молитвы.
-(String, String, String) heroTimer(
+(String, int, String) heroTimer(
     S s, DayTimes t, int nowSec, int nowMin, ScheduleService schedule, AppState app) {
   final w = currentWindow(t, nowMin, (id) => app.isDone(id.name));
   if (w != null) {
@@ -233,7 +315,7 @@ class _HeroTimer extends StatelessWidget {
     };
     return (
       s.toPrayerCaps[endPrayer.index],
-      DayTimes.fmtHMS(t.times[endPrayer]! * 60 - nowSec),
+      t.times[endPrayer]! * 60 - nowSec,
       s.atTpl.replaceFirst('{p}', s.prayers[endPrayer.index]).replaceFirst('{t}', t.fmt(endPrayer)),
     );
   }
@@ -242,7 +324,7 @@ class _HeroTimer extends StatelessWidget {
     final next = nextPrayer(t, nowMin);
     return (
       s.afterAzanCaps[called.index],
-      DayTimes.fmtHMS(nowSec - t.times[called]! * 60),
+      nowSec - t.times[called]! * 60,
       next == null ? '' : s.atTpl.replaceFirst('{p}', s.prayers[next.index]).replaceFirst('{t}', t.fmt(next)),
     );
   }
@@ -250,7 +332,7 @@ class _HeroTimer extends StatelessWidget {
   if (next != null) {
     return (
       s.toPrayerCaps[next.index],
-      DayTimes.fmtHMS(t.times[next]! * 60 - nowSec),
+      t.times[next]! * 60 - nowSec,
       s.atTpl.replaceFirst('{p}', s.prayers[next.index]).replaceFirst('{t}', t.fmt(next)),
     );
   }
@@ -258,7 +340,7 @@ class _HeroTimer extends StatelessWidget {
   final fajr = tomorrow?.times[Prayer.fajr] ?? 0;
   return (
     s.toPrayerCaps[Prayer.fajr.index],
-    DayTimes.fmtHMS(24 * 3600 - nowSec + fajr * 60),
+    24 * 3600 - nowSec + fajr * 60,
     tomorrow == null ? '' : s.atTpl.replaceFirst('{p}', s.prayers[Prayer.fajr.index]).replaceFirst('{t}', tomorrow.fmt(Prayer.fajr)),
   );
 }
@@ -394,7 +476,6 @@ class _HomeLayer extends StatelessWidget {
                     ),
                   ),
                 ),
-              _AlreadyBar(s: s, fg: fg, app: app),
               _swipeHint(context),
             ],
           ),
@@ -527,47 +608,6 @@ class _BouncingHintState extends State<_BouncingHint>
   }
 }
 
-class _AlreadyBar extends StatelessWidget {
-  const _AlreadyBar({required this.s, required this.fg, required this.app});
-  final S s;
-  final SkyFg fg;
-  final AppState app;
-
-  @override
-  Widget build(BuildContext context) {
-    // Понятные строки полными названиями: «Утренние зикры ✓».
-    final done = <String>[
-      if (app.isDone('morning')) s.morningTitle,
-      if (app.isDone('kahf')) s.kahfTitle,
-      if (app.isDone('evening')) s.eveningTitle,
-      if (app.isDone('dua')) s.duaTitle,
-    ];
-    if (done.isEmpty) return const SizedBox.shrink();
-    return Positioned(
-      left: 28,
-      right: 28,
-      bottom: 44,
-      child: Column(
-        children: [
-          for (final name in done)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.check, size: 14, color: fg.accent),
-                  const SizedBox(width: 6),
-                  Text(name, style: JType.ui(13, color: fg.faint).copyWith(shadows: fg.shadows)),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Слой «день»: задачи, тетрадь, кнопки. Приезжает снизу ─────────────────────
 class _GlassCard extends StatelessWidget {
   const _GlassCard({required this.child, this.padding});
   final Widget child;

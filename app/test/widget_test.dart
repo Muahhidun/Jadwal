@@ -41,7 +41,7 @@ void main() {
     // В заголовке — неразрывный пробел ( ), как в дизайн-прототипе.
     expect(find.text('Вечерние зикры'), findsWidgets);
     expect(find.text('Читать зикры'), findsOneWidget);
-    expect(find.text('0:42:00'), findsOneWidget); // 20:53:00 − 20:11:00
+    expect(find.textContaining('42'), findsWidgets); // адаптивно: «42 мин»
   });
 
   testWidgets('после отметки вечерних появляется час дуа (пятница)',
