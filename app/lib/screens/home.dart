@@ -196,21 +196,14 @@ class _HeroTimer extends StatelessWidget {
   Widget build(BuildContext context) {
     final nowMin = nowSec ~/ 60;
     final (caption, secs, _) = heroTimer(s, t, nowSec, nowMin, schedule, app);
-    // Адаптивные цифры (дизайн-отчёт): >1ч — «1:54», <1ч — «45 мин»,
-    // последняя минута — «31 сек». Подпись смысла — НАД цифрами.
-    final String value;
-    final String? unit;
+    // Посекундный таймер; часы скрываются, когда их нет: «1:40:15» → «40:15»
+    // (решение владельца: без секунд непонятно, часы это или минуты).
     final v = secs < 0 ? 0 : secs;
-    if (v >= 3600) {
-      value = '${v ~/ 3600}:${((v % 3600) ~/ 60).toString().padLeft(2, '0')}';
-      unit = null;
-    } else if (v >= 60) {
-      value = '${v ~/ 60}';
-      unit = ' мин';
-    } else {
-      value = '$v';
-      unit = ' сек';
-    }
+    final ss = (v % 60).toString().padLeft(2, '0');
+    final mm = (v % 3600) ~/ 60;
+    final value = v >= 3600
+        ? '${v ~/ 3600}:${mm.toString().padLeft(2, '0')}:$ss'
+        : '$mm:$ss';
     final fade = (1 - p * 1.6).clamp(0.0, 1.0);
     return Positioned(
       left: 0,
@@ -224,31 +217,9 @@ class _HeroTimer extends StatelessWidget {
               Text(caption,
                   style: JType.caption(fg.accent, size: 15).copyWith(shadows: fg.shadows)),
               const SizedBox(height: 6),
-              // Перелистывание при смене значения (мягкий сдвиг+фейд).
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 350),
-                switchInCurve: Curves.easeOut,
-                switchOutCurve: Curves.easeIn,
-                transitionBuilder: (child, anim) => FadeTransition(
-                  opacity: anim,
-                  child: SlideTransition(
-                    position: Tween(begin: const Offset(0, .18), end: Offset.zero)
-                        .animate(anim),
-                    child: child,
-                  ),
-                ),
-                child: Text.rich(
-                  TextSpan(children: [
-                    TextSpan(text: value),
-                    if (unit != null)
-                      TextSpan(
-                          text: unit,
-                          style: JType.ui(30, w: FontWeight.w300, color: fg.faint)),
-                  ]),
-                  key: ValueKey(value + (unit ?? '')),
-                  style: JType.timer(84, fg.text).copyWith(shadows: fg.shadows),
-                ),
-              ),
+              Text(value,
+                  style: JType.timer(v >= 3600 ? 76 : 84, fg.text)
+                      .copyWith(shadows: fg.shadows)),
               _DoneChips(app: app, s: s, fg: fg),
             ],
           ),
@@ -741,7 +712,8 @@ class _DayLayer extends StatelessWidget {
                     left: 28,
                     right: 28,
                     top: 48,
-                    bottom: 34,
+                    // Низ — над закреплёнными кнопками (не налезать на них).
+                    bottom: 80,
                     child: SingleChildScrollView(
                       physics: const NeverScrollableScrollPhysics(),
                       child: Column(
@@ -1248,8 +1220,8 @@ void _showQuickSettings(BuildContext context, String configId, String titleName,
   final app = AppScope.of(context);
   final schedule = ScheduleScope.of(context);
   final kz = app.lang == 'kz';
-  // Всегда используем темную цветовую схему для шторки на главном экране
-  const darkC = JColors.dark;
+  // Общий стиль настроек: тёплая ночная палитра (как экраны «Напоминания»).
+  const darkC = JColors.night;
 
   showModalBottomSheet<void>(
     context: context,

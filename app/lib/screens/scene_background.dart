@@ -455,61 +455,9 @@ class _ScenePainter extends CustomPainter {
         silPaint,
       );
 
-      // Рисуем светящиеся зеленые (ночью) или золотые (днем) часы на башне по центру
-      final clockX = W * 0.5;
-      final clockY = (base - dstHeight) + (80 / 258) * dstHeight;
-      final clockRadius = dstWidth * (4.5 / 580);
-      
-      final clockColor = isDay 
-          ? const Color(0xFFFFF9C4) 
-          : const Color(0xFF4CAF50).withValues(alpha: 0.2 + 0.8 * night);
-      
-      canvas.drawCircle(
-        Offset(clockX, clockY),
-        clockRadius,
-        Paint()..color = clockColor..style = PaintingStyle.fill,
-      );
-
-      // Рисуем светящиеся золотистые окошки в зданиях ночью (эффект ночного живого города)
-      if (night > 0.1) {
-        final winPaint = Paint()
-          ..color = const Color(0xFFFFEE58).withValues(
-              alpha: (0.2 + 0.6 * (0.5 + 0.5 * sin(nowSec * 0.15))) * night);
-        
-        // Координаты окон подобраны под отельные крылья вокруг часовой башни
-        final windowPositions = [
-          // Левое крыло отеля
-          Offset(W * 0.41, base - dstHeight * 0.18),
-          Offset(W * 0.41, base - dstHeight * 0.26),
-          Offset(W * 0.41, base - dstHeight * 0.34),
-          Offset(W * 0.44, base - dstHeight * 0.20),
-          Offset(W * 0.44, base - dstHeight * 0.28),
-          Offset(W * 0.44, base - dstHeight * 0.36),
-          Offset(W * 0.44, base - dstHeight * 0.44),
-          
-          // Правое крыло отеля
-          Offset(W * 0.56, base - dstHeight * 0.20),
-          Offset(W * 0.56, base - dstHeight * 0.28),
-          Offset(W * 0.56, base - dstHeight * 0.36),
-          Offset(W * 0.56, base - dstHeight * 0.44),
-          Offset(W * 0.59, base - dstHeight * 0.18),
-          Offset(W * 0.59, base - dstHeight * 0.26),
-          Offset(W * 0.59, base - dstHeight * 0.34),
-          
-          // Мелкие огоньки в остальных зданиях Мекки
-          Offset(W * 0.25, base - dstHeight * 0.15),
-          Offset(W * 0.32, base - dstHeight * 0.12),
-          Offset(W * 0.68, base - dstHeight * 0.14),
-          Offset(W * 0.74, base - dstHeight * 0.11),
-        ];
-
-        for (final pos in windowPositions) {
-          canvas.drawRect(
-            Rect.fromCenter(center: pos, width: 2.2, height: 3.2),
-            winPaint,
-          );
-        }
-      }
+      // Накладные «часы» и окна-огоньки убраны (решение владельца 20.07:
+      // рисованные точки не совпадали с реальной башней/окнами на картинке —
+      // выглядели как случайные огни). Силуэт остаётся чистым.
     }
   }
 
