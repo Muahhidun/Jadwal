@@ -189,3 +189,18 @@ Antigravity и Codex сделали большой объём реальной �
 4. только после этого переводить следующий шаг в работу.
 
 Этот файл остаётся рабочим источником правды до синхронизации и обновления `PLAN.md`.
+
+## 7. Журнал выполнения
+
+### 28.07.2026 — шаг 1 завершён
+
+- Создана ветка `codex/stabilization-snapshot-2026-07-28`.
+- Контрольный коммит: `5faedf1` (`chore: snapshot Dauam before stabilization`).
+- Сохранены 93 файла: Flutter, iOS, WidgetKit, Apple Watch, AlarmKit, App Intents, Live Activity, TTS, тесты, изображения и документация.
+- В `.gitignore` добавлены `tmp/`, `app/ios/build/`, `app/test/failures/`, Xcode user data и build-продукты.
+- Крупные локальные артефакты не удалялись и не попали в Git.
+- Проверка секретов в staged-файлах пройдена.
+- `flutter analyze` — без замечаний.
+- `flutter test` — 27 из 27 тестов проходят.
+
+**Следующий активный шаг:** воспроизводимые release-сборки iOS и Android.
