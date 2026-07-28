@@ -1,3 +1,13 @@
 .DS_Store
 uploads/
 venv/
+
+# Local QA evidence, rollback copies, and generated captures.
+# These files remain on the Mac but are not source code.
+tmp/
+app/test/failures/
+
+# Native build products. Xcode recreates these from the project sources.
+app/ios/build/
+**/xcuserdata/
+*.xcuserstate

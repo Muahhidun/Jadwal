@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.0.0+6
 
 environment:
   sdk: ^3.11.5
@@ -71,6 +71,18 @@ flutter:
     - assets/data/cities.json
     - assets/images/scene_bg.png
     - assets/images/mecca_silhouette.png
+    - assets/images/mecca_master_v1.png
+    - assets/images/mecca_architecture_day.png
+    - assets/images/mecca_architecture_twilight.png
+    - assets/images/mecca_architecture_night.png
+    - assets/images/mecca_master_v2.png
+    - assets/images/mecca_architecture_day_v2.png
+    - assets/images/mecca_architecture_twilight_v2.png
+    - assets/images/mecca_architecture_night_v2.png
+    - assets/images/mecca_master_v3.png
+    - assets/images/mecca_architecture_day_v3.png
+    - assets/images/mecca_architecture_twilight_v3.png
+    - assets/images/mecca_architecture_night_v3.png
 
   # Вшитые шрифты — без рантайм-загрузки (иначе мелькание при старте).
   fonts:

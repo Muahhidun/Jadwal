@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../data/app_state.dart';
 import '../i18n/strings.dart';
 import '../notifications/notifications.dart';
 import '../prayer/city.dart';
 import '../prayer/geo.dart';
 import '../theme/tokens.dart';
+import '../theme/system_bars.dart';
 import 'home.dart';
 
 /// Онбординг, 5 шагов (README §1): язык → город → уведомления → тема → постер.
@@ -27,51 +29,72 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     // Для онбординга используем светлую схему в цветах песка/крема из логотипа.
     final c = JColors.light;
     final body = switch (step) {
-      0 => _LangStep(c: c, onPick: (lang) {
+      0 => _LangStep(
+        c: c,
+        onPick: (lang) {
           app.lang = lang;
           next();
-        }),
-      1 => _CityStep(s: s, c: c, onPick: (city) {
+        },
+      ),
+      1 => _CityStep(
+        s: s,
+        c: c,
+        onPick: (city) {
           app.setCity(city);
           Future.delayed(const Duration(milliseconds: 250), next);
-        }),
+        },
+      ),
       2 => _NotifStep(
-          s: s,
-          c: c,
-          onAllow: () async {
-            await gNotifier?.requestPermission();
-            next();
-          },
-          onNext: next),
-      3 => _ThemeStep(s: s, c: c, app: app, onNext: next),
-      _ => _PosterStep(s: s, c: c, onStart: () {
+        s: s,
+        c: c,
+        onAllow: () async {
+          await gNotifier?.requestPermission();
+          next();
+        },
+        onNext: next,
+      ),
+      _ => _PosterStep(
+        s: s,
+        c: c,
+        onStart: () {
           app.onboardingDone = true;
           Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const HomeScreen()));
-        }),
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+          );
+        },
+      ),
     };
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFFFFDF9), // Теплый молочный/белый цвет
-              Color(0xFFFBEFDD), // Светлый крем из логотипа
-            ],
-          ),
-        ),
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 350),
-          transitionBuilder: (child, anim) => FadeTransition(
-            opacity: anim,
-            child: SlideTransition(
-              position: Tween(begin: const Offset(0, .02), end: Offset.zero).animate(anim),
-              child: child,
+    return JSystemBars(
+      darkIcons: true,
+      child: Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xFFFFFDF9), // Теплый молочный/белый цвет
+                Color(0xFFFBEFDD), // Светлый крем из логотипа
+              ],
             ),
           ),
-          child: KeyedSubtree(key: ValueKey(step), child: SafeArea(child: body)),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 350),
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: SlideTransition(
+                position: Tween(
+                  begin: const Offset(0, .02),
+                  end: Offset.zero,
+                ).animate(anim),
+                child: child,
+              ),
+            ),
+            child: KeyedSubtree(
+              key: ValueKey(step),
+              child: SafeArea(child: body),
+            ),
+          ),
         ),
       ),
     );
@@ -92,12 +115,16 @@ class _LangStep extends StatelessWidget {
           const Spacer(flex: 2),
           Text('دوام', style: JType.arabic(56, color: c.gold)),
           const SizedBox(height: 8),
-          Text('Дауам',
-              style: JType.ui(30, w: FontWeight.w800, color: c.ink)),
+          Text(
+            'Дауам',
+            style: JType.ui(30, w: FontWeight.w800, color: c.ink),
+          ),
           const SizedBox(height: 10),
-          Text('ғибадат серігі · ассистент поклонения',
-              textAlign: TextAlign.center,
-              style: JType.ui(14, color: c.sub)),
+          Text(
+            'ғибадат серігі · ассистент поклонения',
+            textAlign: TextAlign.center,
+            style: JType.ui(14, color: c.sub),
+          ),
           const Spacer(flex: 3),
           _PillButton(label: 'Қазақша', onTap: () => onPick('kz'), colors: c),
           const SizedBox(height: 12),
@@ -124,6 +151,14 @@ class _CityStepState extends State<_CityStep> {
   List<City> _results = const [];
   bool _detecting = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _detect();
+    });
+  }
 
   @override
   void dispose() {
@@ -154,6 +189,7 @@ class _CityStepState extends State<_CityStep> {
         });
         return;
       }
+      HapticFeedback.mediumImpact();
       widget.onPick(city);
     } catch (_) {
       if (mounted) setState(() => _detecting = false);
@@ -170,14 +206,20 @@ class _CityStepState extends State<_CityStep> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${s.step} 1/3', style: JType.caption(c.gold)),
+          Text('${s.step} 1/2', style: JType.caption(c.gold)),
           const SizedBox(height: 12),
-          Text(s.cityTitle, style: JType.ui(30, w: FontWeight.w800, color: c.ink)),
+          Text(
+            s.cityTitle,
+            style: JType.ui(30, w: FontWeight.w800, color: c.ink),
+          ),
           const SizedBox(height: 8),
           Text(s.citySub, style: JType.ui(14, color: c.sub, h: 1.5)),
           const SizedBox(height: 20),
           _OutlineButton(
-              label: _detecting ? '…' : s.geo, color: c.gold, onTap: _detect),
+            label: _detecting ? '…' : s.geo,
+            color: c.gold,
+            onTap: _detect,
+          ),
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(_error!, style: JType.ui(12, color: c.red)),
@@ -194,11 +236,13 @@ class _CityStepState extends State<_CityStep> {
               prefixIcon: Icon(Icons.search, color: c.faint, size: 20),
               isDense: true,
               enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: c.hair)),
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: c.hair),
+              ),
               focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: c.gold)),
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: c.gold),
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -207,15 +251,22 @@ class _CityStepState extends State<_CityStep> {
               itemCount: list.length,
               separatorBuilder: (_, _) => Divider(color: c.hair, height: 1),
               itemBuilder: (_, i) => InkWell(
-                onTap: () => widget.onPick(list[i]),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  widget.onPick(list[i]);
+                },
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(list[i].name, style: JType.ui(16, color: c.ink)),
-                      if (list[i].region.isNotEmpty && list[i].region != list[i].name)
-                        Text(list[i].region, style: JType.ui(12, color: c.faint)),
+                      if (list[i].region.isNotEmpty &&
+                          list[i].region != list[i].name)
+                        Text(
+                          list[i].region,
+                          style: JType.ui(12, color: c.faint),
+                        ),
                     ],
                   ),
                 ),
@@ -229,8 +280,12 @@ class _CityStepState extends State<_CityStep> {
 }
 
 class _NotifStep extends StatelessWidget {
-  const _NotifStep(
-      {required this.s, required this.c, required this.onAllow, required this.onNext});
+  const _NotifStep({
+    required this.s,
+    required this.c,
+    required this.onAllow,
+    required this.onNext,
+  });
   final S s;
   final JColors c;
   final VoidCallback onAllow, onNext;
@@ -242,9 +297,12 @@ class _NotifStep extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${s.step} 2/3', style: JType.caption(c.gold)),
+          Text('${s.step} 2/2', style: JType.caption(c.gold)),
           const SizedBox(height: 12),
-          Text(s.notifTitle, style: JType.ui(30, w: FontWeight.w800, color: c.ink)),
+          Text(
+            s.notifTitle,
+            style: JType.ui(30, w: FontWeight.w800, color: c.ink),
+          ),
           const SizedBox(height: 8),
           Text(s.notifSub, style: JType.ui(14, color: c.sub, h: 1.5)),
           const SizedBox(height: 28),
@@ -264,10 +322,15 @@ class _NotifStep extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(s.notifDemoTitle,
-                          style: JType.ui(14, w: FontWeight.w700, color: c.ink)),
+                      Text(
+                        s.notifDemoTitle,
+                        style: JType.ui(14, w: FontWeight.w700, color: c.ink),
+                      ),
                       const SizedBox(height: 4),
-                      Text(s.notifDemoBody, style: JType.ui(13, color: c.sub, h: 1.4)),
+                      Text(
+                        s.notifDemoBody,
+                        style: JType.ui(13, color: c.sub, h: 1.4),
+                      ),
                     ],
                   ),
                 ),
@@ -279,76 +342,13 @@ class _NotifStep extends StatelessWidget {
           const SizedBox(height: 10),
           Center(
             child: TextButton(
-              onPressed: onNext,
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                onNext();
+              },
               child: Text(s.later, style: JType.ui(14, color: c.faint)),
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ThemeStep extends StatelessWidget {
-  const _ThemeStep({required this.s, required this.c, required this.app, required this.onNext});
-  final S s;
-  final JColors c;
-  final AppState app;
-  final VoidCallback onNext;
-
-  @override
-  Widget build(BuildContext context) {
-    final options = [
-      ('dark', s.themeDark, JColors.dark),
-      ('light', s.themeLight, JColors.light),
-      ('system', s.themeSystem, null),
-    ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('${s.step} 3/3', style: JType.caption(c.gold)),
-          const SizedBox(height: 12),
-          Text(s.themeTitle, style: JType.ui(30, w: FontWeight.w800, color: c.ink)),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              for (final (id, label, preview) in options) ...[
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => app.theme = id,
-                    child: Column(
-                      children: [
-                        Container(
-                          height: 96,
-                          decoration: BoxDecoration(
-                            color: preview?.bg ?? c.card,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: app.theme == id ? c.gold : c.hair,
-                              width: app.theme == id ? 2 : 1,
-                            ),
-                          ),
-                          child: preview == null
-                              ? Icon(Icons.brightness_auto, color: c.sub)
-                              : Center(
-                                  child: Text('0:42',
-                                      style: JType.timer(24, preview.ink)),
-                                ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(label, style: JType.ui(13, color: c.sub)),
-                      ],
-                    ),
-                  ),
-                ),
-                if (id != 'system') const SizedBox(width: 12),
-              ],
-            ],
-          ),
-          const Spacer(),
-          _PillButton(label: s.next, onTap: onNext, colors: c),
         ],
       ),
     );
@@ -368,22 +368,33 @@ class _PosterStep extends StatelessWidget {
       child: Column(
         children: [
           const Spacer(flex: 2),
-          Text('فَاذْكُرُونِي أَذْكُرْكُمْ',
-              textAlign: TextAlign.center,
-              textDirection: TextDirection.rtl,
-              style: JType.arabic(34, color: c.gold)),
+          Text(
+            'فَاذْكُرُونِي أَذْكُرْكُمْ',
+            textAlign: TextAlign.center,
+            textDirection: TextDirection.rtl,
+            style: JType.arabic(34, color: c.gold),
+          ),
           const SizedBox(height: 16),
-          Text(s.posterAyat,
-              textAlign: TextAlign.center,
-              style: JType.reading(16, color: c.ink, style: FontStyle.italic)),
+          Text(
+            s.posterAyat,
+            textAlign: TextAlign.center,
+            style: JType.reading(16, color: c.ink, style: FontStyle.italic),
+          ),
           const SizedBox(height: 6),
           Text(s.posterAyatSrc, style: JType.ui(12, color: c.faint)),
           const SizedBox(height: 32),
           Container(width: 40, height: 1, color: c.hair),
           const SizedBox(height: 32),
-          Text(s.posterQuote,
-              textAlign: TextAlign.center,
-              style: JType.reading(23, color: c.ink, style: FontStyle.italic, h: 1.5)),
+          Text(
+            s.posterQuote,
+            textAlign: TextAlign.center,
+            style: JType.reading(
+              23,
+              color: c.ink,
+              style: FontStyle.italic,
+              h: 1.5,
+            ),
+          ),
           const SizedBox(height: 8),
           Text(s.posterSrc, style: JType.ui(12, color: c.faint)),
           const Spacer(flex: 3),
@@ -405,14 +416,22 @@ class _PillButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = colors ?? JColors.dark;
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration:
-            BoxDecoration(color: c.btnbg, borderRadius: BorderRadius.circular(100)),
+        decoration: BoxDecoration(
+          color: c.btnbg,
+          borderRadius: BorderRadius.circular(100),
+        ),
         child: Center(
-          child: Text(label, style: JType.ui(15, w: FontWeight.w700, color: c.btnink)),
+          child: Text(
+            label,
+            style: JType.ui(15, w: FontWeight.w700, color: c.btnink),
+          ),
         ),
       ),
     );
@@ -420,7 +439,11 @@ class _PillButton extends StatelessWidget {
 }
 
 class _OutlineButton extends StatelessWidget {
-  const _OutlineButton({required this.label, required this.color, required this.onTap});
+  const _OutlineButton({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
   final String label;
   final Color color;
   final VoidCallback onTap;
@@ -428,7 +451,10 @@ class _OutlineButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -437,7 +463,10 @@ class _OutlineButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(100),
         ),
         child: Center(
-          child: Text(label, style: JType.ui(15, w: FontWeight.w700, color: color)),
+          child: Text(
+            label,
+            style: JType.ui(15, w: FontWeight.w700, color: color),
+          ),
         ),
       ),
     );

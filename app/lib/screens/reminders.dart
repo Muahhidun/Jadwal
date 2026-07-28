@@ -1,319 +1,181 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../data/app_state.dart';
 import '../notifications/notifications.dart';
-import '../theme/tokens.dart';
 import '../prayer/schedule_service.dart';
+import '../services/alarm_service.dart';
+import '../theme/tokens.dart';
+import 'settings_shell.dart';
 
-/// Главный экран настроек «Напоминания».
-/// Отображает 3 категории: о молитвах, о зикрах и дуа, мои напоминания.
-/// Содержит кнопку быстрого добавления своего напоминания на первом уровне.
+const _prayerIds = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
+const _prayersRu = ['Фаджр', 'Восход', 'Зухр', 'Аср', 'Магриб', 'Иша'];
+const _prayersKz = ['Таң', 'Күн шығуы', 'Бесін', 'Екінті', 'Ақшам', 'Құптан'];
+
+List<String> _prayers(bool kz) => kz ? _prayersKz : _prayersRu;
+
+String _repeatLabel(bool kz, String repeat) => switch (repeat) {
+  'weekly' => kz ? 'Әр аптада' : 'Каждую неделю',
+  'monthly' => kz ? 'Әр айда' : 'Каждый месяц',
+  _ => kz ? 'Күн сайын' : 'Каждый день',
+};
+
+String _offsetLabel(bool kz, int offset) {
+  if (offset == 0) return kz ? 'Дәл уақытында' : 'В момент события';
+  final minutes = offset.abs();
+  if (offset < 0) {
+    return kz ? '$minutes мин бұрын' : 'За $minutes мин до';
+  }
+  return kz ? '$minutes мин кейін' : 'Через $minutes мин после';
+}
+
+String _configLabel(bool kz, ReminderConfig config) {
+  if (!config.enabled) return kz ? 'Өшірулі' : 'Выключено';
+  return '${_offsetLabel(kz, config.offsetMin)} · ${_repeatLabel(kz, config.repeat)}';
+}
+
+/// Корневой центр напоминаний. Вся дальнейшая навигация происходит внутри
+/// одной модальной панели через CupertinoPageRoute.
 class RemindersScreen extends StatelessWidget {
   const RemindersScreen({super.key});
 
-  static const _prayersRu = ['Фаджр', 'Восход', 'Зухр', 'Аср', 'Магриб', 'Иша'];
-  static const _prayersKz = ['Таң', 'Күн шығуы', 'Бесін', 'Екінті', 'Ақшам', 'Құптан'];
+  static Future<void> open(
+    BuildContext context, {
+    String? initialConfigId,
+    bool isCustom = false,
+  }) => DauamSettingsSheet.open<void>(
+    context,
+    heightFactor: initialConfigId == null ? .93 : .72,
+    builder: (_) => initialConfigId == null
+        ? const RemindersScreen()
+        : ReminderDetailScreen(
+            configId: initialConfigId,
+            isCustom: isCustom,
+            root: true,
+          ),
+  );
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final schedule = ScheduleScope.of(context);
     final kz = app.lang == 'kz';
-    const c = JColors.night;
-    final prayers = kz ? _prayersKz : _prayersRu;
-
-    Widget categoryRow(String title, String sub, IconData icon, VoidCallback onTap) =>
-        GestureDetector(
-          onTap: onTap,
-          behavior: HitTestBehavior.opaque,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Row(children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: c.gold.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: c.gold, size: 20),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: JType.ui(16, color: c.ink, w: FontWeight.w600)),
-                    const SizedBox(height: 3),
-                    Text(sub, style: JType.ui(12.5, color: c.faint)),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, size: 20, color: c.faint),
-            ]),
-          ),
-        );
-
-    return Scaffold(
-      backgroundColor: c.bg,
-      appBar: AppBar(
-        backgroundColor: c.bg,
-        foregroundColor: c.ink,
-        elevation: 0,
-        title: Text(kz ? 'Еске салулар' : 'Напоминания',
-            style: JType.ui(17, w: FontWeight.w700, color: c.ink)),
-      ),
-      body: ListenableBuilder(
+    return DauamSettingsPage(
+      root: true,
+      title: kz ? 'Еске салулар' : 'Напоминания',
+      child: ListenableBuilder(
         listenable: app,
-        builder: (context, _) {
-          final customCount = app.customReminders.length;
-          return ListView(
-            padding: const EdgeInsets.only(top: 4, bottom: 40),
-            children: [
-              // Крупный заголовок в стиле iOS large title.
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
-                child: Text(kz ? 'Еске салулар' : 'Напоминания',
-                    style: JType.ui(30, w: FontWeight.w800, color: c.ink)),
-              ),
-              _InsetGroup(c: c, children: [
-                categoryRow(
-                  kz ? 'Намаз еске салулары' : 'Напоминания о молитвах',
-                  kz ? 'Таң, Күн шығуы, Бесін, Екінті, Ақшам, Құптан' : 'Фаджр, Восход, Зухр, Аср, Магриб, Иша',
-                  Icons.access_time_filled_outlined,
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const PrayerRemindersScreen()),
-                  ),
-                ),
-                categoryRow(
-                  kz ? 'Зікірлер мен дұғалар' : 'Напоминания о зикрах и дуа',
-                  kz ? 'Таңғы және кешкі зікірлер, Кәһф сүресі, дұға сағаты' : 'Утренние и вечерние зикры, сура аль-Кахф, час дуа',
-                  Icons.menu_book,
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const WorshipRemindersScreen()),
-                  ),
-                ),
-                categoryRow(
-                  kz ? 'Менің еске салуларым' : 'Мои напоминания',
-                  kz ? 'Қосылды: $customCount' : 'Добавлено: $customCount',
-                  Icons.playlist_add_check,
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const CustomRemindersScreen()),
-                  ),
-                ),
-              ]),
-              // «+ Добавить» — строка-действие вместо FAB (iOS-паттерн).
-              _InsetGroup(c: c, children: [
-                GestureDetector(
-                  onTap: () => _addDialog(context, app, schedule, kz, prayers),
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                    child: Row(children: [
-                      Icon(Icons.add_circle_outline, size: 20, color: c.gold),
-                      const SizedBox(width: 12),
-                      Text(kz ? 'Еске салу қосу' : 'Добавить напоминание',
-                          style: JType.ui(15, w: FontWeight.w600, color: c.gold)),
-                    ]),
-                  ),
-                ),
-              ]),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _addDialog(
-      BuildContext context, AppState app, ScheduleService schedule, bool kz, List<String> prayers) async {
-    const c = JColors.night;
-    final titleCtrl = TextEditingController();
-    final minCtrl = TextEditingController(text: '15');
-    var prayer = 0;
-    var before = true;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: c.card,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => Padding(
-          padding: EdgeInsets.fromLTRB(
-              24, 12, 24, 24 + MediaQuery.of(ctx).viewInsets.bottom),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                        color: c.hair, borderRadius: BorderRadius.circular(2))),
-              ),
-              const SizedBox(height: 16),
-              Text(kz ? 'Жаңа еске салу' : 'Новое напоминание',
-                  style: JType.ui(19, w: FontWeight.w800, color: c.ink)),
-              const SizedBox(height: 16),
-              TextField(
-                controller: titleCtrl,
-                style: JType.ui(15, color: c.ink),
-                cursorColor: c.gold,
-                decoration: InputDecoration(
-                  hintText: kz ? 'Атауы (мыс.: Дұға)' : 'Название (напр.: Дуа)',
-                  hintStyle: JType.ui(14, color: c.faint),
-                  enabledBorder:
-                      UnderlineInputBorder(borderSide: BorderSide(color: c.hair)),
-                  focusedBorder:
-                      UnderlineInputBorder(borderSide: BorderSide(color: c.gold)),
+        builder: (context, _) => ListView(
+          padding: const EdgeInsets.only(top: 4, bottom: 30),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(26, 3, 26, 14),
+              child: Text(
+                kz
+                    ? 'Намазға және ғибадатқа қатысты барлық хабарландырулар'
+                    : 'Все уведомления о молитвах и поклонении — в одном месте',
+                style: JType.ui(
+                  13.5,
+                  color: dauamSettingsPalette(context).colors.sub,
+                  h: 1.4,
                 ),
               ),
-              const SizedBox(height: 16),
-              DropdownButton<int>(
-                value: prayer,
-                isExpanded: true,
-                dropdownColor: c.card,
-                style: JType.ui(15, color: c.ink),
-                underline: Container(height: 1, color: c.hair),
-                items: [
-                  for (var i = 0; i < prayers.length; i++)
-                    DropdownMenuItem(value: i, child: Text(prayers[i])),
-                ],
-                onChanged: (v) => setSt(() => prayer = v ?? 0),
-              ),
-              const SizedBox(height: 12),
-              Row(children: [
-                Expanded(
-                  child: SegmentedButton<bool>(
-                    style: SegmentedButton.styleFrom(
-                      selectedBackgroundColor: c.gold,
-                      selectedForegroundColor: c.bg,
-                      foregroundColor: c.sub,
-                      side: BorderSide(color: c.hair),
-                    ),
-                    segments: [
-                      ButtonSegment(value: true, label: Text(kz ? 'дейін' : 'до')),
-                      ButtonSegment(value: false, label: Text(kz ? 'кейін' : 'после')),
-                    ],
-                    selected: {before},
-                    onSelectionChanged: (sel) => setSt(() => before = sel.first),
-                  ),
+            ),
+            DauamSection(
+              children: [
+                DauamSettingsRow(
+                  icon: CupertinoIcons.clock,
+                  title: kz ? 'Намаз уақыттары' : 'Времена молитв',
+                  subtitle: kz
+                      ? '6 уақыт · әрқайсысы бөлек бапталады'
+                      : '6 времён · каждое настраивается отдельно',
+                  onTap: () => Navigator.of(
+                    context,
+                  ).push(dauamSettingsRoute(const PrayerRemindersScreen())),
                 ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 74,
-                  child: TextField(
-                    controller: minCtrl,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    style: JType.ui(15, color: c.ink),
-                    cursorColor: c.gold,
-                    decoration: InputDecoration(
-                      suffixText: 'мин',
-                      enabledBorder:
-                          UnderlineInputBorder(borderSide: BorderSide(color: c.hair)),
-                      focusedBorder:
-                          UnderlineInputBorder(borderSide: BorderSide(color: c.gold)),
-                    ),
-                  ),
+                DauamSettingsRow(
+                  icon: CupertinoIcons.book,
+                  title: kz ? 'Зікірлер мен дұғалар' : 'Зикры и дуа',
+                  subtitle: kz
+                      ? 'Таң, кеш, Кәһф сүресі және жұма дұғасы'
+                      : 'Утро, вечер, сура аль-Кахф и дуа пятницы',
+                  onTap: () => Navigator.of(
+                    context,
+                  ).push(dauamSettingsRoute(const WorshipRemindersScreen())),
                 ),
-              ]),
-              const SizedBox(height: 22),
-              GestureDetector(
-                onTap: () {
-                  final m = int.tryParse(minCtrl.text) ?? 0;
-                  final title = titleCtrl.text.trim();
-                  if (title.isEmpty) return;
-                  app.addReminder(ReminderConfig(
-                    id: DateTime.now().microsecondsSinceEpoch.toString(),
-                    title: title,
-                    prayer: prayer,
-                    offsetMin: before ? -m : m,
-                  ));
-                  syncNotifications(app, schedule);
-                  Navigator.pop(ctx);
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  decoration: BoxDecoration(
-                      color: c.gold, borderRadius: BorderRadius.circular(14)),
-                  child: Center(
-                      child: Text(kz ? 'Қосу' : 'Добавить',
-                          style: JType.ui(15, w: FontWeight.w800, color: c.bg))),
+                DauamSettingsRow(
+                  icon: CupertinoIcons.list_bullet,
+                  title: kz ? 'Менің еске салуларым' : 'Мои напоминания',
+                  subtitle: kz
+                      ? '${app.customReminders.length} қосылды'
+                      : 'Добавлено: ${app.customReminders.length}',
+                  onTap: () => Navigator.of(
+                    context,
+                  ).push(dauamSettingsRoute(const CustomRemindersScreen())),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+            DauamSection(
+              label: kz ? 'ЖЫЛДАМ ӘРЕКЕТ' : 'БЫСТРОЕ ДЕЙСТВИЕ',
+              children: [
+                DauamSettingsRow(
+                  icon: CupertinoIcons.add,
+                  title: kz ? 'Еске салу қосу' : 'Добавить напоминание',
+                  subtitle: kz
+                      ? 'Намаз уақытына байланыстыру'
+                      : 'Привязать к одному из времён молитвы',
+                  onTap: () => Navigator.of(
+                    context,
+                  ).push(dauamSettingsRoute(const ReminderEditorScreen())),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
-
-  static String _configLabel(bool kz, ReminderConfig rc, List<String> prayers) {
-    if (!rc.enabled) return kz ? 'Өшірулі' : 'Отключено';
-    final repeatStr = switch (rc.repeat) {
-      'weekly' => kz ? 'Әр аптада' : 'Каждую неделю',
-      'monthly' => kz ? 'Әр айда' : 'Каждый месяц',
-      _ => kz ? 'Күн сайын' : 'Каждый день',
-    };
-    final offsetStr = _offsetLabel(kz, prayers[rc.prayer], rc.offsetMin);
-    return '$repeatStr · $offsetStr';
-  }
-
-  static String _offsetLabel(bool kz, String prayer, int off) {
-    final m = off.abs();
-    if (off == 0) return kz ? '$prayer уақытында' : 'в момент: $prayer';
-    if (off < 0) return kz ? '$prayer — $m мин бұрын' : 'за $m мин до: $prayer';
-    return kz ? '$prayer — $m мин кейін' : 'через $m мин после: $prayer';
-  }
 }
 
-/// Экран категории «Напоминания о молитвах».
 class PrayerRemindersScreen extends StatelessWidget {
   const PrayerRemindersScreen({super.key});
 
-  static const _prayersRu = ['Фаджр', 'Восход', 'Зухр', 'Аср', 'Магриб', 'Иша'];
-  static const _prayersKz = ['Таң', 'Күн шығуы', 'Бесін', 'Екінті', 'Ақшам', 'Құптан'];
-
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final kz = app.lang == 'kz';
-    const c = JColors.night;
-    final prayers = kz ? _prayersKz : _prayersRu;
-    final prayerIds = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
-
-    return Scaffold(
-      backgroundColor: c.bg,
-      appBar: AppBar(
-        backgroundColor: c.bg,
-        foregroundColor: c.ink,
-        elevation: 0,
-        title: Text(kz ? 'Намаз уақыттары' : 'Напоминания о молитвах',
-            style: JType.ui(17, w: FontWeight.w700, color: c.ink)),
-      ),
-      body: ListenableBuilder(
+    final prayers = _prayers(kz);
+    return DauamSettingsPage(
+      title: kz ? 'Намаз уақыттары' : 'Времена молитв',
+      child: ListenableBuilder(
         listenable: app,
         builder: (context, _) => ListView(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.only(top: 8, bottom: 24),
           children: [
-            _InsetGroup(c: c, children: [
-              for (var i = 0; i < prayerIds.length; i++)
-                _ReminderRow(
-                  title: prayers[i],
-                  sub: RemindersScreen._configLabel(
-                      kz, app.getReminderConfig(prayerIds[i], app.lang), prayers),
-                  c: c,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ReminderDetailScreen(configId: prayerIds[i]),
+            DauamSection(
+              footer: kz
+                  ? 'Күн шығуы намаз емес, бірақ уақыт белгісі ретінде бапталады.'
+                  : 'Восход — не молитва, но остаётся настраиваемой временной точкой.',
+              children: [
+                for (var i = 0; i < _prayerIds.length; i++)
+                  DauamSettingsRow(
+                    title: prayers[i],
+                    subtitle: _configLabel(
+                      kz,
+                      app.getReminderConfig(_prayerIds[i], app.lang),
+                    ),
+                    value:
+                        app.getReminderConfig(_prayerIds[i], app.lang).enabled
+                        ? (kz ? 'Қосулы' : 'Вкл.')
+                        : null,
+                    onTap: () => Navigator.of(context).push(
+                      dauamSettingsRoute(
+                        ReminderDetailScreen(configId: _prayerIds[i]),
+                      ),
                     ),
                   ),
-                ),
-            ]),
+              ],
+            ),
           ],
         ),
       ),
@@ -321,55 +183,43 @@ class PrayerRemindersScreen extends StatelessWidget {
   }
 }
 
-/// Экран категории «Напоминания о зикрах и дуа».
 class WorshipRemindersScreen extends StatelessWidget {
   const WorshipRemindersScreen({super.key});
 
-  static const _prayersRu = ['Фаджр', 'Восход', 'Зухр', 'Аср', 'Магриб', 'Иша'];
-  static const _prayersKz = ['Таң', 'Күн шығуы', 'Бесін', 'Екінті', 'Ақшам', 'Құптан'];
-
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final kz = app.lang == 'kz';
-    const c = JColors.night;
-    final prayers = kz ? _prayersKz : _prayersRu;
-
-    final windows = [
+    final items = [
       ('morning', kz ? 'Таңғы зікірлер' : 'Утренние зикры'),
       ('evening', kz ? 'Кешкі зікірлер' : 'Вечерние зикры'),
-      ('kahf', kz ? '«әл-Кәһф» сүресі (жұма)' : 'Сура аль-Кахф (пятница)'),
-      ('dua', kz ? 'Дұға сағаты (жұма)' : 'Час дуа (пятница)'),
+      ('kahf', kz ? '«әл-Кәһф» сүресі' : 'Сура аль-Кахф'),
+      ('dua', kz ? 'Жұма күнгі дұға сағаты' : 'Час дуа в пятницу'),
     ];
-
-    return Scaffold(
-      backgroundColor: c.bg,
-      appBar: AppBar(
-        backgroundColor: c.bg,
-        foregroundColor: c.ink,
-        elevation: 0,
-        title: Text(kz ? 'Зікірлер мен дұғалар' : 'Зикры и дуа',
-            style: JType.ui(17, w: FontWeight.w700, color: c.ink)),
-      ),
-      body: ListenableBuilder(
+    return DauamSettingsPage(
+      title: kz ? 'Зікірлер мен дұғалар' : 'Зикры и дуа',
+      child: ListenableBuilder(
         listenable: app,
         builder: (context, _) => ListView(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.only(top: 8, bottom: 24),
           children: [
-            _InsetGroup(c: c, children: [
-              for (final (id, title) in windows)
-                _ReminderRow(
-                  title: title,
-                  sub: RemindersScreen._configLabel(
-                      kz, app.getReminderConfig(id, app.lang), prayers),
-                  c: c,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ReminderDetailScreen(configId: id),
+            DauamSection(
+              children: [
+                for (final item in items)
+                  DauamSettingsRow(
+                    title: item.$2,
+                    subtitle: _configLabel(
+                      kz,
+                      app.getReminderConfig(item.$1, app.lang),
+                    ),
+                    onTap: () => Navigator.of(context).push(
+                      dauamSettingsRoute(
+                        ReminderDetailScreen(configId: item.$1),
+                      ),
                     ),
                   ),
-                ),
-            ]),
+              ],
+            ),
           ],
         ),
       ),
@@ -377,76 +227,95 @@ class WorshipRemindersScreen extends StatelessWidget {
   }
 }
 
-/// Экран категории «Мои напоминания».
 class CustomRemindersScreen extends StatelessWidget {
   const CustomRemindersScreen({super.key});
-
-  static const _prayersRu = ['Фаджр', 'Восход', 'Зухр', 'Аср', 'Магриб', 'Иша'];
-  static const _prayersKz = ['Таң', 'Күн шығуы', 'Бесін', 'Екінті', 'Ақшам', 'Құптан'];
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final schedule = ScheduleScope.of(context);
     final kz = app.lang == 'kz';
-    const c = JColors.night;
-    final prayers = kz ? _prayersKz : _prayersRu;
-
-    return Scaffold(
-      backgroundColor: c.bg,
-      appBar: AppBar(
-        backgroundColor: c.bg,
-        foregroundColor: c.ink,
-        elevation: 0,
-        title: Text(kz ? 'Менің еске салуларым' : 'Мои напоминания',
-            style: JType.ui(17, w: FontWeight.w700, color: c.ink)),
+    final c = dauamSettingsPalette(context).colors;
+    final accent = dauamSettingsAccent(context);
+    return DauamSettingsPage(
+      title: kz ? 'Менің еске салуларым' : 'Мои напоминания',
+      trailing: DauamRoundButton(
+        icon: CupertinoIcons.add,
+        semanticLabel: kz ? 'Қосу' : 'Добавить',
+        onTap: () => Navigator.of(
+          context,
+        ).push(dauamSettingsRoute(const ReminderEditorScreen())),
       ),
-      body: ListenableBuilder(
+      child: ListenableBuilder(
         listenable: app,
         builder: (context, _) {
-          if (app.customReminders.isEmpty) {
+          final reminders = app.customReminders;
+          if (reminders.isEmpty) {
             return Center(
               child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  kz
-                      ? 'Әлі ешқандай еске салу қосылмаған.'
-                      : 'Еще не добавлено ни одного напоминания.',
-                  textAlign: TextAlign.center,
-                  style: JType.ui(14, color: c.faint, h: 1.4),
+                padding: const EdgeInsets.symmetric(horizontal: 38),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 68,
+                      height: 68,
+                      decoration: BoxDecoration(
+                        color: accent.withValues(alpha: .1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(CupertinoIcons.bell, color: accent, size: 28),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      kz ? 'Еске салулар жоқ' : 'Пока пусто',
+                      style: JType.ui(20, w: FontWeight.w700, color: c.ink),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      kz
+                          ? 'Намаз уақытына байланысты жеке еске салу қосыңыз.'
+                          : 'Создайте личное напоминание и привяжите его ко времени молитвы.',
+                      textAlign: TextAlign.center,
+                      style: JType.ui(13.5, color: c.sub, h: 1.45),
+                    ),
+                    const SizedBox(height: 22),
+                    SizedBox(
+                      width: 260,
+                      child: DauamPrimaryButton(
+                        label: kz ? 'Қосу' : 'Добавить',
+                        onTap: () => Navigator.of(context).push(
+                          dauamSettingsRoute(const ReminderEditorScreen()),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             );
           }
           return ListView(
-            padding: const EdgeInsets.symmetric(vertical: 10),
+            padding: const EdgeInsets.only(top: 8, bottom: 24),
             children: [
-              _InsetGroup(c: c, children: [
-                for (final r in app.customReminders)
-                  Dismissible(
-                    key: ValueKey(r.id),
-                    direction: DismissDirection.endToStart,
-                    background: Container(
-                        color: c.red.withValues(alpha: .25),
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 24),
-                        child: Icon(Icons.delete_outline, color: c.red)),
-                    onDismissed: (_) {
-                      app.removeReminder(r.id);
-                      syncNotifications(app, schedule);
-                    },
-                    child: _ReminderRow(
-                      title: r.title,
-                      sub: RemindersScreen._configLabel(kz, r, prayers),
-                      c: c,
+              DauamSection(
+                footer: kz
+                    ? 'Жою үшін еске салуды ашыңыз.'
+                    : 'Удалить напоминание можно внутри его настроек.',
+                children: [
+                  for (final reminder in reminders)
+                    DauamSettingsRow(
+                      title: reminder.title,
+                      subtitle: _configLabel(kz, reminder),
                       onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ReminderDetailScreen(configId: r.id, isCustom: true),
+                        dauamSettingsRoute(
+                          ReminderDetailScreen(
+                            configId: reminder.id,
+                            isCustom: true,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ]),
+                ],
+              ),
             ],
           );
         },
@@ -455,135 +324,234 @@ class CustomRemindersScreen extends StatelessWidget {
   }
 }
 
-/// Скруглённая inset-группа (как в Настройках iOS).
-class _InsetGroup extends StatelessWidget {
-  const _InsetGroup({required this.c, required this.children});
-  final JColors c;
-  final List<Widget> children;
+/// Создание напоминания — самостоятельная страница внутри текущей панели,
+/// а не ещё один bottom sheet.
+class ReminderEditorScreen extends StatefulWidget {
+  const ReminderEditorScreen({super.key});
+
+  @override
+  State<ReminderEditorScreen> createState() => _ReminderEditorScreenState();
+}
+
+class _ReminderEditorScreenState extends State<ReminderEditorScreen> {
+  final _title = TextEditingController();
+  int _prayer = 0;
+  int _offset = -15;
+  String _repeat = 'daily';
+  int _weekday = DateTime.friday;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    super.dispose();
+  }
+
+  Future<void> _selectPrayer() async {
+    final result = await Navigator.of(
+      context,
+    ).push<int>(dauamSettingsRoute(PrayerChoiceScreen(selected: _prayer)));
+    if (mounted && result != null) setState(() => _prayer = result);
+  }
+
+  Future<void> _selectOffset() async {
+    final result = await Navigator.of(
+      context,
+    ).push<int>(dauamSettingsRoute(OffsetChoiceScreen(offset: _offset)));
+    if (mounted && result != null) setState(() => _offset = result);
+  }
+
+  Future<void> _selectRepeat() async {
+    final result = await Navigator.of(
+      context,
+    ).push<String>(dauamSettingsRoute(RepeatChoiceScreen(selected: _repeat)));
+    if (mounted && result != null) setState(() => _repeat = result);
+  }
+
+  void _add() {
+    final title = _title.text.trim();
+    if (title.isEmpty) return;
+    final app = AppScope.of(context);
+    final schedule = ScheduleScope.of(context);
+    app.addReminder(
+      ReminderConfig(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        title: title,
+        prayer: _prayer,
+        offsetMin: _offset,
+        repeat: _repeat,
+        weekday: _weekday,
+      ),
+    );
+    syncNotifications(app, schedule);
+    HapticFeedback.mediumImpact();
+    Navigator.of(context).pop();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final rows = <Widget>[];
-    for (var i = 0; i < children.length; i++) {
-      rows.add(children[i]);
-      if (i < children.length - 1) {
-        rows.add(Divider(height: 1, thickness: 0.5, indent: 20, color: c.hair));
-      }
-    }
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(14),
+    final app = AppScope.of(context);
+    final kz = app.lang == 'kz';
+    final c = dauamSettingsPalette(context).colors;
+    final accent = dauamSettingsAccent(context);
+    final prayers = _prayers(kz);
+    return DauamSettingsPage(
+      title: kz ? 'Жаңа еске салу' : 'Новое напоминание',
+      trailing: DauamTextAction(
+        label: kz ? 'Қосу' : 'Добавить',
+        enabled: _title.text.trim().isNotEmpty,
+        onTap: _add,
       ),
-      child: Column(children: rows),
+      bottom: DauamPrimaryButton(
+        label: kz ? 'Еске салуды қосу' : 'Добавить напоминание',
+        enabled: _title.text.trim().isNotEmpty,
+        onTap: _add,
+      ),
+      child: ListView(
+        padding: const EdgeInsets.only(top: 8, bottom: 24),
+        children: [
+          DauamSection(
+            label: kz ? 'АТАУЫ' : 'НАЗВАНИЕ',
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                child: TextField(
+                  controller: _title,
+                  autofocus: true,
+                  onChanged: (_) => setState(() {}),
+                  cursorColor: accent,
+                  style: JType.ui(16, color: c.ink),
+                  decoration: InputDecoration(
+                    hintText: kz ? 'Мысалы: Дұға' : 'Например: Дуа',
+                    hintStyle: JType.ui(15, color: c.faint),
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          DauamSection(
+            label: kz ? 'КЕСТЕ' : 'РАСПИСАНИЕ',
+            children: [
+              DauamSettingsRow(
+                title: kz ? 'Намазға байлау' : 'Привязка к событию',
+                value: prayers[_prayer],
+                onTap: _selectPrayer,
+              ),
+              DauamSettingsRow(
+                title: kz ? 'Қашан еске салу' : 'Когда напомнить',
+                value: _offsetLabel(kz, _offset),
+                onTap: _selectOffset,
+              ),
+              DauamSettingsRow(
+                title: kz ? 'Қайталау' : 'Повторение',
+                value: _repeatLabel(kz, _repeat),
+                onTap: _selectRepeat,
+              ),
+              if (_repeat == 'weekly')
+                DauamSettingsRow(
+                  title: kz ? 'Апта күні' : 'День недели',
+                  value: _weekdayLabel(kz, _weekday),
+                  onTap: () async {
+                    final result = await Navigator.of(context).push<int>(
+                      dauamSettingsRoute(
+                        WeekdayChoiceScreen(selected: _weekday),
+                      ),
+                    );
+                    if (mounted && result != null) {
+                      setState(() => _weekday = result);
+                    }
+                  },
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
 
-/// Виджет строки в списке напоминаний.
-class _ReminderRow extends StatelessWidget {
-  const _ReminderRow({
-    required this.title,
-    required this.sub,
-    required this.c,
-    required this.onTap,
+class ReminderDetailScreen extends StatefulWidget {
+  const ReminderDetailScreen({
+    super.key,
+    required this.configId,
+    this.isCustom = false,
+    this.root = false,
   });
 
-  final String title;
-  final String sub;
-  final JColors c;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-        child: Row(children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: JType.ui(15, color: c.ink, w: FontWeight.w500)),
-                const SizedBox(height: 2),
-                Text(sub, style: JType.ui(12.5, color: c.faint)),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right, size: 20, color: c.faint),
-        ]),
-      ),
-    );
-  }
-}
-
-/// Экран детальных настроек конкретного напоминания.
-class ReminderDetailScreen extends StatefulWidget {
-  const ReminderDetailScreen({super.key, required this.configId, this.isCustom = false});
   final String configId;
   final bool isCustom;
+  final bool root;
 
   @override
   State<ReminderDetailScreen> createState() => _ReminderDetailScreenState();
 }
 
 class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
-  late ReminderConfig config;
-  late TextEditingController titleCtrl;
-  late TextEditingController offsetCtrl;
-  bool before = true;
-  bool isInitialized = false;
+  ReminderConfig? _config;
+  TextEditingController? _title;
+  String? _activeConfigId;
 
-  static const _prayersRu = ['Фаджр', 'Восход', 'Зухр', 'Аср', 'Магриб', 'Иша'];
-  static const _prayersKz = ['Таң', 'Күн шығуы', 'Бесін', 'Екінті', 'Ақшам', 'Құптан'];
+  bool get _isPrayerPreset =>
+      !widget.isCustom && _prayerIds.contains(_activeConfigId);
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!isInitialized) {
-      final app = AppScope.of(context);
-      if (widget.isCustom) {
-        config = app.customReminders.firstWhere((r) => r.id == widget.configId);
-      } else {
-        config = app.getReminderConfig(widget.configId, app.lang);
-      }
-      titleCtrl = TextEditingController(text: config.title);
-      offsetCtrl = TextEditingController(text: config.offsetMin.abs().toString());
-      before = config.offsetMin <= 0;
-      isInitialized = true;
+    if (_config != null) return;
+    _loadConfig(widget.configId);
+  }
+
+  void _loadConfig(String id) {
+    final app = AppScope.of(context);
+    _activeConfigId = id;
+    _config = widget.isCustom
+        ? app.customReminders.firstWhere((r) => r.id == id)
+        : app.getReminderConfig(id, app.lang);
+    _title?.dispose();
+    _title = TextEditingController(text: _config!.title);
+  }
+
+  void _movePrayer(int delta) {
+    final current = _prayerIds.indexOf(_activeConfigId!);
+    if (current < 0) return;
+    final next = (current + delta).clamp(0, _prayerIds.length - 1);
+    if (next == current) {
+      HapticFeedback.heavyImpact();
+      return;
     }
+    HapticFeedback.selectionClick();
+    setState(() => _loadConfig(_prayerIds[next]));
+  }
+
+  void _stepOffset(int delta) {
+    final config = _config!;
+    final next = (config.offsetMin + delta).clamp(-120, 120);
+    if (next == config.offsetMin) {
+      HapticFeedback.heavyImpact();
+      return;
+    }
+    HapticFeedback.selectionClick();
+    _persist(config.copyWith(offsetMin: next));
   }
 
   @override
   void dispose() {
-    titleCtrl.dispose();
-    offsetCtrl.dispose();
+    _title?.dispose();
     super.dispose();
   }
 
-  void _save() {
+  void _persist(ReminderConfig updated) {
     final app = AppScope.of(context);
     final schedule = ScheduleScope.of(context);
-    final m = int.tryParse(offsetCtrl.text) ?? 0;
-    final finalOffset = before ? -m : m;
-
-    final updated = config.copyWith(
-      title: titleCtrl.text.trim().isEmpty ? config.title : titleCtrl.text.trim(),
-      offsetMin: finalOffset,
-    );
-
+    setState(() => _config = updated);
     if (widget.isCustom) {
-      final list = app.customReminders;
-      final idx = list.indexWhere((r) => r.id == widget.configId);
-      if (idx >= 0) {
-        final newList = List<ReminderConfig>.from(list);
-        newList[idx] = updated;
-        app.saveReminders(newList);
-      }
+      app.saveReminders([
+        for (final item in app.customReminders)
+          if (item.id == updated.id) updated else item,
+      ]);
     } else {
       app.saveReminderConfig(updated);
     }
@@ -594,203 +562,714 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final kz = app.lang == 'kz';
-    const c = JColors.night;
-    final prayers = kz ? _prayersKz : _prayersRu;
+    final c = dauamSettingsPalette(context).colors;
+    final accent = dauamSettingsAccent(context);
+    final config = _config!;
+    final prayers = _prayers(kz);
 
-    Widget section(String title, Widget child) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return DauamSettingsPage(
+      root: widget.root,
+      title: config.title,
+      trailing: widget.isCustom
+          ? DauamTextAction(
+              label: kz ? 'Дайын' : 'Готово',
+              onTap: () {
+                final title = _title!.text.trim();
+                if (title.isNotEmpty) _persist(config.copyWith(title: title));
+                Navigator.of(context).pop();
+              },
+            )
+          : _isPrayerPreset
+          ? _PrayerPagerControls(
+              canGoBack: _prayerIds.indexOf(_activeConfigId!) > 0,
+              canGoForward:
+                  _prayerIds.indexOf(_activeConfigId!) < _prayerIds.length - 1,
+              onBack: () => _movePrayer(-1),
+              onForward: () => _movePrayer(1),
+            )
+          : null,
+      child: ListView(
+        padding: const EdgeInsets.only(top: 8, bottom: 30),
+        children: [
+          DauamSection(
             children: [
-              Text(title, style: JType.ui(12, color: c.faint, w: FontWeight.w700)),
-              const SizedBox(height: 8),
-              child,
+              DauamSwitchRow(
+                icon: CupertinoIcons.bell,
+                title: kz ? 'Хабарландырулар' : 'Уведомления',
+                subtitle: config.enabled
+                    ? (kz ? 'Қосулы' : 'Включены')
+                    : (kz ? 'Өшірулі' : 'Выключены'),
+                value: config.enabled,
+                onChanged: (value) => _persist(config.copyWith(enabled: value)),
+              ),
+              if (!widget.isCustom && config.enabled)
+                _InlineOffsetStepper(
+                  offset: config.offsetMin,
+                  kz: kz,
+                  onMinus: () => _stepOffset(-5),
+                  onPlus: () => _stepOffset(5),
+                  onReset: config.offsetMin == 0
+                      ? null
+                      : () {
+                          HapticFeedback.selectionClick();
+                          _persist(config.copyWith(offsetMin: 0));
+                        },
+                ),
             ],
           ),
-        );
-
-    final showTitleField = widget.isCustom;
-    // Блокируем смену намаза для суры Аль-Кахф и Часа Дуа, так как они имеют жесткую привязку к Джума (Dhuhr/Maghrib)
-    final disablePrayerSelection = widget.configId == 'kahf' || widget.configId == 'dua';
-
-    return Scaffold(
-      backgroundColor: c.bg,
-      appBar: AppBar(
-        backgroundColor: c.bg,
-        foregroundColor: c.ink,
-        elevation: 0,
-        title: Text(config.title, style: JType.ui(17, w: FontWeight.w700, color: c.ink)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.check),
-            onPressed: () {
-              _save();
-              Navigator.of(context).pop();
-            },
-          )
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.only(top: 10, bottom: 40),
-        children: [
-          // Включено / Выключено
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            child: Row(
+          if (_activeConfigId == 'fajr')
+            DauamSection(
+              label: kz ? 'ОЯТУ БУДИЛЬНИГІ' : 'БУДИЛЬНИК ДЛЯ ПРОБУЖДЕНИЯ',
+              footer: kz
+                  ? 'Таң намазына ояну үшін жүйелік будильник қосылады.'
+                  : 'Системный будильник iOS сработает даже в режиме «Не беспокоить».',
               children: [
-                Expanded(
-                  child: Text(
-                    kz ? 'Хабарландыру қосулы' : 'Напоминание включено',
-                    style: JType.ui(15, color: c.ink, w: FontWeight.w600),
+                DauamSwitchRow(
+                  icon: CupertinoIcons.alarm,
+                  title: kz ? 'Будильник' : 'Будильник',
+                  subtitle: app.fajrAlarmEnabled
+                      ? (kz ? 'Қосулы' : 'Включен')
+                      : (kz ? 'Өшірулі' : 'Выключен'),
+                  value: app.fajrAlarmEnabled,
+                  onChanged: (val) {
+                    app.fajrAlarmEnabled = val;
+                    AlarmService.sync(app, ScheduleScope.of(context));
+                    HapticFeedback.selectionClick();
+                  },
+                ),
+                if (app.fajrAlarmEnabled) ...[
+                  _InlineOffsetStepper(
+                    offset: app.fajrAlarmOffsetMinutes,
+                    kz: kz,
+                    onMinus: () {
+                      final next = (app.fajrAlarmOffsetMinutes - 5).clamp(-60, 30);
+                      if (next != app.fajrAlarmOffsetMinutes) {
+                        app.fajrAlarmOffsetMinutes = next;
+                        AlarmService.sync(app, ScheduleScope.of(context));
+                        HapticFeedback.selectionClick();
+                      }
+                    },
+                    onPlus: () {
+                      final next = (app.fajrAlarmOffsetMinutes + 5).clamp(-60, 30);
+                      if (next != app.fajrAlarmOffsetMinutes) {
+                        app.fajrAlarmOffsetMinutes = next;
+                        AlarmService.sync(app, ScheduleScope.of(context));
+                        HapticFeedback.selectionClick();
+                      }
+                    },
+                    onReset: app.fajrAlarmOffsetMinutes == -15
+                        ? null
+                        : () {
+                            app.fajrAlarmOffsetMinutes = -15;
+                            AlarmService.sync(app, ScheduleScope.of(context));
+                            HapticFeedback.selectionClick();
+                          },
+                  ),
+                  DauamSettingsRow(
+                    icon: CupertinoIcons.play_circle_fill,
+                    title: kz ? 'Будильникті тексеру (10 с)' : 'Проверить будильник (10 сек)',
+                    subtitle: kz
+                        ? '10 секундтан кейін дабыл соғады. Енді экранды бұғаттаңыз.'
+                        : 'Будильник сработает через 10 секунд. Заблокируйте экран для проверки.',
+                    onTap: () async {
+                      HapticFeedback.mediumImpact();
+                      final test = await AlarmService.testAlarm(
+                        seconds: 10,
+                        title: kz ? 'Таң намазы (Тест)' : 'Фаджр (Тест)',
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              test.success
+                                  ? (kz
+                                        ? 'Жүйелік будильник 10 секундтан кейін соғады. Экранды бұғаттаңыз.'
+                                        : 'Системный будильник сработает через 10 секунд. Заблокируйте экран.')
+                                  : _alarmErrorText(kz, test),
+                            ),
+                            duration: Duration(
+                              seconds: test.success ? 4 : 7,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ],
+            ),
+          if (widget.isCustom) ...[
+            DauamSection(
+              label: kz ? 'АТАУЫ' : 'НАЗВАНИЕ',
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 5,
+                  ),
+                  child: TextField(
+                    controller: _title,
+                    cursorColor: accent,
+                    style: JType.ui(16, color: c.ink),
+                    decoration: InputDecoration(
+                      border: InputBorder.none,
+                      hintText: kz ? 'Атауы' : 'Название',
+                      hintStyle: JType.ui(15, color: c.faint),
+                    ),
                   ),
                 ),
-                Switch(
-                  value: config.enabled,
-                  activeTrackColor: c.gold.withValues(alpha: .5),
-                  thumbColor: WidgetStatePropertyAll(config.enabled ? c.gold : c.faint),
-                  onChanged: (v) {
-                    setState(() {
-                      config = config.copyWith(enabled: v);
-                    });
-                    _save();
+              ],
+            ),
+            DauamSection(
+              label: kz ? 'КЕСТЕ' : 'РАСПИСАНИЕ',
+              children: [
+                DauamSettingsRow(
+                  title: kz ? 'Оқиға' : 'Событие',
+                  value: prayers[config.prayer],
+                  onTap: () async {
+                    final result = await Navigator.of(context).push<int>(
+                      dauamSettingsRoute(
+                        PrayerChoiceScreen(selected: config.prayer),
+                      ),
+                    );
+                    if (mounted && result != null) {
+                      _persist(config.copyWith(prayer: result));
+                    }
+                  },
+                ),
+                DauamSettingsRow(
+                  title: kz ? 'Қашан еске салу' : 'Когда напомнить',
+                  value: _offsetLabel(kz, config.offsetMin),
+                  onTap: () async {
+                    final result = await Navigator.of(context).push<int>(
+                      dauamSettingsRoute(
+                        OffsetChoiceScreen(offset: config.offsetMin),
+                      ),
+                    );
+                    if (mounted && result != null) {
+                      _persist(config.copyWith(offsetMin: result));
+                    }
+                  },
+                ),
+                DauamSettingsRow(
+                  title: kz ? 'Қайталау' : 'Повторение',
+                  value: _repeatLabel(kz, config.repeat),
+                  onTap: () async {
+                    final result = await Navigator.of(context).push<String>(
+                      dauamSettingsRoute(
+                        RepeatChoiceScreen(selected: config.repeat),
+                      ),
+                    );
+                    if (mounted && result != null) {
+                      _persist(config.copyWith(repeat: result));
+                    }
+                  },
+                ),
+                if (config.repeat == 'weekly')
+                  DauamSettingsRow(
+                    title: kz ? 'Апта күні' : 'День недели',
+                    value: _weekdayLabel(kz, config.weekday),
+                    onTap: () async {
+                      final result = await Navigator.of(context).push<int>(
+                        dauamSettingsRoute(
+                          WeekdayChoiceScreen(selected: config.weekday),
+                        ),
+                      );
+                      if (mounted && result != null) {
+                        _persist(config.copyWith(weekday: result));
+                      }
+                    },
+                  ),
+              ],
+            ),
+          ],
+          if (widget.isCustom)
+            DauamSection(
+              children: [
+                DauamSettingsRow(
+                  title: kz ? 'Еске салуды жою' : 'Удалить напоминание',
+                  icon: CupertinoIcons.trash,
+                  destructive: true,
+                  onTap: () {
+                    app.removeReminder(config.id);
+                    syncNotifications(app, ScheduleScope.of(context));
+                    HapticFeedback.heavyImpact();
+                    Navigator.of(context).pop();
                   },
                 ),
               ],
             ),
-          ),
-          const Divider(height: 24, thickness: 0.5),
+        ],
+      ),
+    );
+  }
+}
 
-          // Название (только для кастомных)
-          if (showTitleField) ...[
-            section(
-              kz ? 'АТАУЫ' : 'НАЗВАНИЕ',
-              TextField(
-                controller: titleCtrl,
-                style: JType.ui(15, color: c.ink),
-                cursorColor: c.gold,
-                decoration: InputDecoration(
-                  hintText: kz ? 'Атауы' : 'Название',
-                  hintStyle: JType.ui(14, color: c.faint),
-                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: c.hair)),
-                  focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: c.gold)),
+String _alarmErrorText(bool kz, AlarmOperationResult result) {
+  switch (result.errorCode) {
+    case 'ALARM_PERMISSION_DENIED':
+      return kz
+          ? 'Dauam үшін жүйелік будильниктерге рұқсат беріңіз.'
+          : 'Разрешите системные будильники для Dauam в настройках iPhone.';
+    case 'ALARMKIT_UNAVAILABLE':
+      return kz
+          ? 'Жүйелік будильник үшін iOS 26 немесе жаңарақ нұсқа қажет.'
+          : 'Для системного будильника требуется iOS 26 или новее.';
+    default:
+      return kz
+          ? 'Будильникті орнату мүмкін болмады: ${result.message ?? 'белгісіз қате'}'
+          : 'Не удалось поставить будильник: ${result.message ?? 'неизвестная ошибка'}';
+  }
+}
+
+class _PrayerPagerControls extends StatelessWidget {
+  const _PrayerPagerControls({
+    required this.canGoBack,
+    required this.canGoForward,
+    required this.onBack,
+    required this.onForward,
+  });
+
+  final bool canGoBack, canGoForward;
+  final VoidCallback onBack, onForward;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = dauamSettingsPalette(context);
+    final c = p.colors;
+    final accent = dauamSettingsAccent(context);
+
+    Widget button({
+      required IconData icon,
+      required bool enabled,
+      required VoidCallback onTap,
+      required String label,
+    }) => Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
+      child: Material(
+        color: c.ink.withValues(alpha: enabled ? .055 : .025),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: enabled ? onTap : null,
+          child: SizedBox(
+            width: 38,
+            height: 38,
+            child: Icon(
+              icon,
+              size: 18,
+              color: enabled ? accent : c.faint.withValues(alpha: .32),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        button(
+          icon: CupertinoIcons.chevron_left,
+          enabled: canGoBack,
+          onTap: onBack,
+          label: 'Предыдущее время',
+        ),
+        const SizedBox(width: 5),
+        button(
+          icon: CupertinoIcons.chevron_right,
+          enabled: canGoForward,
+          onTap: onForward,
+          label: 'Следующее время',
+        ),
+      ],
+    );
+  }
+}
+
+class _InlineOffsetStepper extends StatelessWidget {
+  const _InlineOffsetStepper({
+    required this.offset,
+    required this.kz,
+    required this.onMinus,
+    required this.onPlus,
+    this.onReset,
+  });
+
+  final int offset;
+  final bool kz;
+  final VoidCallback onMinus, onPlus;
+  final VoidCallback? onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = dauamSettingsPalette(context).colors;
+    final accent = dauamSettingsAccent(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 13, 16, 15),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  kz ? 'Қашан еске салу' : 'Когда напомнить',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: JType.ui(15, w: FontWeight.w600, color: c.ink),
                 ),
-                onChanged: (v) => _save(),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: Text(
+                    _offsetLabel(kz, offset),
+                    key: ValueKey(offset),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: JType.ui(13, w: FontWeight.w600, color: accent),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          Row(
+            children: [
+              _OffsetStepButton(
+                icon: CupertinoIcons.minus,
+                enabled: offset > -120,
+                onTap: onMinus,
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      child: Text(
+                        offset == 0 ? '0' : '${offset.abs()}',
+                        key: ValueKey(offset),
+                        style: JType.ui(
+                          30,
+                          w: FontWeight.w600,
+                          color: accent,
+                          ls: -.8,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      kz ? '5 минут қадам' : 'шаг 5 минут',
+                      style: JType.ui(10.5, color: c.faint),
+                    ),
+                  ],
+                ),
+              ),
+              _OffsetStepButton(
+                icon: CupertinoIcons.plus,
+                enabled: offset < 120,
+                onTap: onPlus,
+              ),
+            ],
+          ),
+          if (onReset != null) ...[
+            const SizedBox(height: 7),
+            DauamTextAction(
+              label: kz ? 'Дәл уақытында' : 'Вернуть «в момент»',
+              onTap: onReset!,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class PrayerChoiceScreen extends StatelessWidget {
+  const PrayerChoiceScreen({super.key, required this.selected});
+  final int selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final kz = app.lang == 'kz';
+    final prayers = _prayers(kz);
+    return DauamSettingsPage(
+      title: kz ? 'Оқиғаны таңдаңыз' : 'Выберите событие',
+      child: ListView(
+        padding: const EdgeInsets.only(top: 8, bottom: 24),
+        children: [
+          DauamSection(
+            children: [
+              for (var i = 0; i < prayers.length; i++)
+                DauamChoiceRow(
+                  title: prayers[i],
+                  subtitle: i == 1 && !kz
+                      ? 'Временная точка, не молитва'
+                      : null,
+                  selected: selected == i,
+                  onTap: () => Navigator.of(context).pop(i),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class OffsetChoiceScreen extends StatefulWidget {
+  const OffsetChoiceScreen({super.key, required this.offset});
+  final int offset;
+
+  @override
+  State<OffsetChoiceScreen> createState() => _OffsetChoiceScreenState();
+}
+
+class _OffsetChoiceScreenState extends State<OffsetChoiceScreen> {
+  late int _result = (((widget.offset / 5).round() * 5).clamp(-120, 120));
+
+  void _step(int delta) {
+    final next = (_result + delta).clamp(-120, 120);
+    if (next == _result) {
+      HapticFeedback.heavyImpact();
+      return;
+    }
+    HapticFeedback.selectionClick();
+    setState(() => _result = next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final kz = app.lang == 'kz';
+    final p = dauamSettingsPalette(context);
+    final c = p.colors;
+    final accent = dauamSettingsAccent(context);
+    return DauamSettingsPage(
+      title: kz ? 'Еске салу уақыты' : 'Когда напомнить',
+      trailing: DauamTextAction(
+        label: kz ? 'Дайын' : 'Готово',
+        onTap: () => Navigator.of(context).pop(_result),
+      ),
+      child: ListView(
+        padding: const EdgeInsets.only(top: 28, bottom: 24),
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 26),
+            child: Column(
+              children: [
+                Text(
+                  kz ? 'ОҚИҒАҒА ҚАТЫСТЫ' : 'ОТНОСИТЕЛЬНО СОБЫТИЯ',
+                  style: JType.caption(c.faint, size: 10.5),
+                ),
+                const SizedBox(height: 12),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(
+                      scale: Tween(begin: .97, end: 1.0).animate(animation),
+                      child: child,
+                    ),
+                  ),
+                  child: Text(
+                    _offsetLabel(kz, _result),
+                    key: ValueKey(_result),
+                    textAlign: TextAlign.center,
+                    style: JType.ui(
+                      23,
+                      w: FontWeight.w700,
+                      color: c.ink,
+                      ls: -.3,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  kz ? '− бұрын · + кейін' : '− раньше · + позже',
+                  style: JType.ui(12.5, color: c.sub),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 26),
+          DauamSection(
+            label: kz ? '5 МИНУТТЫҚ ҚАДАМ' : 'ШАГ 5 МИНУТ',
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 18,
+                ),
+                child: Row(
+                  children: [
+                    _OffsetStepButton(
+                      icon: CupertinoIcons.minus,
+                      enabled: _result > -120,
+                      onTap: () => _step(-5),
+                    ),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Text(
+                            _result == 0 ? '0' : '${_result.abs()}',
+                            style: JType.ui(
+                              36,
+                              w: FontWeight.w600,
+                              color: accent,
+                              ls: -1,
+                            ),
+                          ),
+                          Text(
+                            kz ? 'минут' : 'минут',
+                            style: JType.ui(12.5, color: c.sub),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _OffsetStepButton(
+                      icon: CupertinoIcons.plus,
+                      enabled: _result < 120,
+                      onTap: () => _step(5),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (_result != 0)
+            Center(
+              child: DauamTextAction(
+                label: kz ? 'Дәл уақытында' : 'В момент события',
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _result = 0);
+                },
               ),
             ),
-            const Divider(height: 24, thickness: 0.5),
-          ],
+        ],
+      ),
+    );
+  }
+}
 
-          // Привязка к намазу
-          section(
-            kz ? 'НАМАЗҒА ПРИВЯЗКА' : 'ПРИВЯЗКА К СОБЫТИЮ',
-            disablePrayerSelection
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      prayers[config.prayer],
-                      style: JType.ui(15, color: c.ink, w: FontWeight.w500),
-                    ),
-                  )
-                : DropdownButton<int>(
-                    value: config.prayer,
-                    isExpanded: true,
-                    dropdownColor: c.card,
-                    style: JType.ui(15, color: c.ink),
-                    underline: Container(height: 1, color: c.hair),
-                    items: [
-                      for (var i = 0; i < prayers.length; i++)
-                        DropdownMenuItem(value: i, child: Text(prayers[i])),
-                    ],
-                    onChanged: (v) {
-                      if (v != null) {
-                        setState(() {
-                          config = config.copyWith(prayer: v);
-                        });
-                        _save();
-                      }
-                    },
-                  ),
-          ),
-          const Divider(height: 24, thickness: 0.5),
+class _OffsetStepButton extends StatelessWidget {
+  const _OffsetStepButton({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
 
-          // Коррекция / Смещение в минутах
-          section(
-            kz ? 'УАҚЫТТЫ ТҮЗЕТУ (МИНУТ)' : 'КОРРЕКЦИЯ ВРЕМЕНИ (МИНУТ)',
-            Row(
-              children: [
-                Expanded(
-                  child: SegmentedButton<bool>(
-                    style: SegmentedButton.styleFrom(
-                      selectedBackgroundColor: c.gold,
-                      selectedForegroundColor: c.bg,
-                    ),
-                    segments: [
-                      ButtonSegment(value: true, label: Text(kz ? 'дейін' : 'до')),
-                      ButtonSegment(value: false, label: Text(kz ? 'кейін' : 'после')),
-                    ],
-                    selected: {before},
-                    onSelectionChanged: (s) {
-                      setState(() {
-                        before = s.first;
-                      });
-                      _save();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 16),
-                SizedBox(
-                  width: 70,
-                  child: TextField(
-                    controller: offsetCtrl,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    style: JType.ui(15, color: c.ink),
-                    cursorColor: c.gold,
-                    decoration: InputDecoration(
-                      suffixText: kz ? 'мин' : 'мин',
-                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: c.hair)),
-                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: c.gold)),
-                    ),
-                    onChanged: (v) => _save(),
-                  ),
-                ),
-              ],
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = dauamSettingsPalette(context);
+    final c = p.colors;
+    final accent = dauamSettingsAccent(context);
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: Material(
+        color: enabled
+            ? accent.withValues(alpha: p.isLight ? .11 : .16)
+            : c.ink.withValues(alpha: .035),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: enabled ? onTap : null,
+          child: SizedBox(
+            width: 58,
+            height: 58,
+            child: Icon(
+              icon,
+              size: 24,
+              color: enabled ? accent : c.faint.withValues(alpha: .45),
             ),
           ),
-          const Divider(height: 24, thickness: 0.5),
+        ),
+      ),
+    );
+  }
+}
 
-          // Повторение
-          section(
-            kz ? 'ҚАЙТАЛАУ' : 'ПОВТОРЕНИЕ',
-            DropdownButton<String>(
-              value: config.repeat,
-              isExpanded: true,
-              dropdownColor: c.card,
-              style: JType.ui(15, color: c.ink),
-              underline: Container(height: 1, color: c.hair),
-              items: [
-                DropdownMenuItem(
-                  value: 'daily',
-                  child: Text(kz ? 'Күн сайын' : 'Каждый день'),
+class RepeatChoiceScreen extends StatelessWidget {
+  const RepeatChoiceScreen({super.key, required this.selected});
+  final String selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final kz = AppScope.of(context).lang == 'kz';
+    const values = ['daily', 'weekly', 'monthly'];
+    return DauamSettingsPage(
+      title: kz ? 'Қайталау' : 'Повторение',
+      child: ListView(
+        padding: const EdgeInsets.only(top: 8, bottom: 24),
+        children: [
+          DauamSection(
+            children: [
+              for (final value in values)
+                DauamChoiceRow(
+                  title: _repeatLabel(kz, value),
+                  selected: selected == value,
+                  onTap: () => Navigator.of(context).pop(value),
                 ),
-                DropdownMenuItem(
-                  value: 'weekly',
-                  child: Text(kz ? 'Каждую неделю' : 'Каждую неделю'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _weekdayLabel(bool kz, int day) {
+  const ru = [
+    'Понедельник',
+    'Вторник',
+    'Среда',
+    'Четверг',
+    'Пятница',
+    'Суббота',
+    'Воскресенье',
+  ];
+  const kk = [
+    'Дүйсенбі',
+    'Сейсенбі',
+    'Сәрсенбі',
+    'Бейсенбі',
+    'Жұма',
+    'Сенбі',
+    'Жексенбі',
+  ];
+  return (kz ? kk : ru)[day.clamp(1, 7) - 1];
+}
+
+class WeekdayChoiceScreen extends StatelessWidget {
+  const WeekdayChoiceScreen({super.key, required this.selected});
+  final int selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final kz = AppScope.of(context).lang == 'kz';
+    return DauamSettingsPage(
+      title: kz ? 'Апта күні' : 'День недели',
+      child: ListView(
+        padding: const EdgeInsets.only(top: 8, bottom: 24),
+        children: [
+          DauamSection(
+            children: [
+              for (var day = 1; day <= 7; day++)
+                DauamChoiceRow(
+                  title: _weekdayLabel(kz, day),
+                  selected: selected == day,
+                  onTap: () => Navigator.of(context).pop(day),
                 ),
-                DropdownMenuItem(
-                  value: 'monthly',
-                  child: Text(kz ? 'Каждый месяц' : 'Каждый месяц'),
-                ),
-              ],
-              onChanged: (v) {
-                if (v != null) {
-                  setState(() {
-                    config = config.copyWith(repeat: v);
-                  });
-                  _save();
-                }
-              },
-            ),
+            ],
           ),
         ],
       ),

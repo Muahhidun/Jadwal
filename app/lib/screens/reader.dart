@@ -6,13 +6,21 @@ import '../i18n/strings.dart';
 import '../prayer/schedule.dart';
 import '../prayer/schedule_service.dart';
 import '../theme/tokens.dart';
+import '../theme/system_bars.dart';
 import 'celebration.dart';
+import '../services/live_activity_service.dart';
+import '../services/zikr_speech_service.dart';
 
 /// Чтение зикров — «книга» (README §4). Фон-«бумага» в обеих темах,
 /// один зикр на экран, сегментированный прогресс. Никаких счётчиков нажатий.
 class ReaderScreen extends StatefulWidget {
-  const ReaderScreen({super.key, required this.collectionId});
+  const ReaderScreen({
+    super.key,
+    required this.collectionId,
+    this.autoStartSpeech = false,
+  });
   final String collectionId;
+  final bool autoStartSpeech;
 
   @override
   State<ReaderScreen> createState() => _ReaderScreenState();
@@ -22,20 +30,126 @@ class _ReaderScreenState extends State<ReaderScreen> {
   ZikrCollection? collection;
   int idx = 0;
   bool confirmed = false;
+  bool isSpeaking = false;
 
   @override
   void initState() {
     super.initState();
+    ZikrSpeechService.init(
+      onZikrStarted: (i, total) {
+        if (mounted) {
+          setState(() {
+            idx = i;
+            isSpeaking = true;
+          });
+          _syncZikrLiveActivity();
+        }
+      },
+      onReadingCompleted: () {
+        if (mounted) {
+          setState(() => isSpeaking = false);
+          _finish();
+        }
+      },
+    );
+
+    LiveActivityService.init(
+      nextZikrHandler: () {
+        if (mounted &&
+            collection != null &&
+            idx < collection!.items.length - 1) {
+          setState(() => idx++);
+          _syncZikrLiveActivity();
+        }
+      },
+      prevZikrHandler: () {
+        if (mounted && collection != null && idx > 0) {
+          setState(() => idx--);
+          _syncZikrLiveActivity();
+        }
+      },
+      tickZikrHandler: () {
+        if (mounted && collection != null) {
+          if (idx < collection!.items.length - 1) {
+            setState(() => idx++);
+            _syncZikrLiveActivity();
+          } else {
+            _finish();
+          }
+        }
+      },
+    );
+
     AdhkarRepository.load().then((all) {
-      if (mounted) setState(() => collection = all[widget.collectionId]);
+      if (mounted) {
+        final col = all[widget.collectionId];
+        setState(() => collection = col);
+        _syncZikrLiveActivity();
+        if (widget.autoStartSpeech && col != null) {
+          _startSpeech(col);
+        }
+      }
     });
   }
 
+  void _startSpeech(ZikrCollection col) async {
+    setState(() => isSpeaking = true);
+    await ZikrSpeechService.speakCollection(col);
+  }
+
+  void _toggleSpeech() async {
+    final col = collection;
+    if (col == null) return;
+    if (isSpeaking) {
+      await ZikrSpeechService.stop();
+      setState(() => isSpeaking = false);
+    } else {
+      _startSpeech(col);
+    }
+  }
+
+  void _syncZikrLiveActivity() async {
+    final col = collection;
+    if (col == null || idx >= col.items.length) return;
+    final item = col.items[idx];
+    final title = widget.collectionId == 'morning'
+        ? 'Утренние зикры'
+        : 'Вечерние зикры';
+    final res = await LiveActivityService.startZikrSession(
+      title: title,
+      counterCurrent: idx + 1,
+      counterTotal: col.items.length,
+      zikrArabic: item.ar,
+      zikrTranslation: item.ru ?? '',
+    );
+    if (mounted && res.startsWith('ERR:')) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('LiveActivity status: $res'),
+          backgroundColor: Colors.redAccent,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    ZikrSpeechService.stop();
+    super.dispose();
+  }
+
   void _finish() {
+    ZikrSpeechService.stop();
+    LiveActivityService.stopActivity();
     final app = AppScope.of(context);
     app.markDone(widget.collectionId);
-    Navigator.of(context).pushReplacement(MaterialPageRoute(
-        builder: (_) => CelebrationScreen(collectionId: widget.collectionId)));
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => CelebrationScreen(collectionId: widget.collectionId),
+      ),
+    );
   }
 
   @override
@@ -44,9 +158,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final s = S.of(app.lang);
     final col = collection;
     if (col == null) {
-      return const Scaffold(
-        backgroundColor: JPaper.bg,
-        body: Center(child: CircularProgressIndicator(color: JPaper.accent)),
+      return const JSystemBars(
+        darkIcons: true,
+        child: Scaffold(
+          backgroundColor: JPaper.bg,
+          body: Center(child: CircularProgressIndicator(color: JPaper.accent)),
+        ),
       );
     }
     final z = col.items[idx];
@@ -55,127 +172,173 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final now = schedule.now();
     final nowMin = now.hour * 60 + now.minute;
     final t = schedule.timesFor(app.city, now);
-    final endPrayer =
-        widget.collectionId == 'morning' ? Prayer.sunrise : Prayer.maghrib;
-    final title = widget.collectionId == 'morning' ? s.readerMorning : s.readerEvening;
-    final timerCaption = widget.collectionId == 'morning' ? s.toSunrise : s.toMaghrib;
+    final endPrayer = widget.collectionId == 'morning'
+        ? Prayer.sunrise
+        : Prayer.maghrib;
+    final title = widget.collectionId == 'morning'
+        ? s.readerMorning
+        : s.readerEvening;
+    final timerCaption = widget.collectionId == 'morning'
+        ? s.toSunrise
+        : s.toMaghrib;
     final remainingMin = t == null ? 0 : t.times[endPrayer]! - nowMin;
     final remaining = DayTimes.fmtDuration(remainingMin);
 
-    return Scaffold(
-      backgroundColor: JPaper.bg,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
-                    child: const Padding(
-                      padding: EdgeInsets.all(6),
-                      child: Icon(Icons.close, size: 22, color: JPaper.source),
-                    ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        Text(title, style: JType.caption(JPaper.accent)),
-                        const SizedBox(height: 2),
-                        if (remainingMin > 0)
-                          Text('$timerCaption · $remaining',
-                              style: JType.ui(11, color: JPaper.source)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 34),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  for (var i = 0; i < col.items.length; i++) ...[
-                    Expanded(
-                      child: Container(
-                        height: 3,
-                        decoration: BoxDecoration(
-                          color: i <= idx ? JPaper.accent : JPaper.divider,
-                          borderRadius: BorderRadius.circular(2),
+    return JSystemBars(
+      darkIcons: true,
+      child: Scaffold(
+        backgroundColor: JPaper.bg,
+        body: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        ZikrSpeechService.stop();
+                        LiveActivityService.stopActivity();
+                        Navigator.of(context).pop();
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.all(6),
+                        child: Icon(
+                          Icons.close,
+                          size: 22,
+                          color: JPaper.source,
                         ),
                       ),
                     ),
-                    if (i < col.items.length - 1) const SizedBox(width: 4),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text('${idx + 1} ${s.of_} ${col.items.length}',
-                style: JType.ui(11, color: JPaper.source)),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-                child: _ZikrBody(z: z, s: s, lang: app.lang),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: idx > 0
-                        ? () => setState(() {
-                              confirmed = false;
-                              idx--;
-                            })
-                        : null,
-                    child: Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                            color: idx > 0 ? JPaper.button : JPaper.disabled),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Text(title, style: JType.caption(JPaper.accent)),
+                          const SizedBox(height: 2),
+                          if (remainingMin > 0)
+                            Text(
+                              '$timerCaption · $remaining',
+                              style: JType.ui(11, color: JPaper.source),
+                            ),
+                        ],
                       ),
-                      child: Icon(Icons.arrow_back,
-                          size: 20, color: idx > 0 ? JPaper.button : JPaper.disabled),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _ActionButton(
-                      isConfirmed: confirmed,
-                      topText: confirmed
-                          ? s.repeatConfirmTitle.replaceAll('{n}', '${z.repeat}')
-                          : countLabel(z.repeat, app.lang),
-                      bottomText: confirmed
-                          ? s.repeatConfirmBtn
-                          : (last ? s.finishBtn : s.nextBtn),
-                      onTap: () {
-                        if (z.repeat > 1 && !confirmed) {
-                          HapticFeedback.mediumImpact();
-                          setState(() => confirmed = true);
-                        } else {
-                          if (last) {
-                            _finish();
-                          } else {
-                            setState(() {
-                              confirmed = false;
-                              idx++;
-                            });
-                          }
-                        }
-                      },
+                    GestureDetector(
+                      onTap: _toggleSpeech,
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Icon(
+                          isSpeaking
+                              ? Icons.volume_up_rounded
+                              : Icons.volume_off_rounded,
+                          size: 22,
+                          color: isSpeaking ? JPaper.accent : JPaper.source,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    for (var i = 0; i < col.items.length; i++) ...[
+                      Expanded(
+                        child: Container(
+                          height: 3,
+                          decoration: BoxDecoration(
+                            color: i <= idx ? JPaper.accent : JPaper.divider,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      if (i < col.items.length - 1) const SizedBox(width: 4),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${idx + 1} ${s.of_} ${col.items.length}',
+                style: JType.ui(11, color: JPaper.source),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 28,
+                    vertical: 20,
+                  ),
+                  child: _ZikrBody(z: z, s: s, lang: app.lang),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: idx > 0
+                          ? () {
+                              setState(() {
+                                confirmed = false;
+                                idx--;
+                              });
+                              _syncZikrLiveActivity();
+                            }
+                          : null,
+                      child: Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: idx > 0 ? JPaper.button : JPaper.disabled,
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.arrow_back,
+                          size: 20,
+                          color: idx > 0 ? JPaper.button : JPaper.disabled,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _ActionButton(
+                        isConfirmed: confirmed,
+                        topText: confirmed
+                            ? s.repeatConfirmTitle.replaceAll(
+                                '{n}',
+                                '${z.repeat}',
+                              )
+                            : countLabel(z.repeat, app.lang),
+                        bottomText: confirmed
+                            ? s.repeatConfirmBtn
+                            : (last ? s.finishBtn : s.nextBtn),
+                        onTap: () {
+                          if (z.repeat > 1 && !confirmed) {
+                            HapticFeedback.mediumImpact();
+                            setState(() => confirmed = true);
+                          } else {
+                            if (last) {
+                              _finish();
+                            } else {
+                              setState(() {
+                                confirmed = false;
+                                idx++;
+                              });
+                              _syncZikrLiveActivity();
+                            }
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -214,10 +377,12 @@ class _ZikrBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(z.ar,
-            textAlign: TextAlign.center,
-            textDirection: TextDirection.rtl,
-            style: JType.arabic(26)),
+        Text(
+          z.ar,
+          textAlign: TextAlign.center,
+          textDirection: TextDirection.rtl,
+          style: JType.arabic(26),
+        ),
         const SizedBox(height: 14),
         // Сворачиваемые блоки: транскрипция / перевод / достоинство.
         // Кому блок не нужен — сворачивает; выбор запоминается для всех зикров.
@@ -226,19 +391,27 @@ class _ZikrBody extends StatelessWidget {
             title: s.translitTitle,
             open: app.showTranslit,
             onToggle: () => app.showTranslit = !app.showTranslit,
-            child: Text(z.translit!,
-                textAlign: TextAlign.center,
-                style: JType.reading(13.5,
-                    color: JPaper.translit, style: FontStyle.italic, h: 1.6)),
+            child: Text(
+              z.translit!,
+              textAlign: TextAlign.center,
+              style: JType.reading(
+                13.5,
+                color: JPaper.translit,
+                style: FontStyle.italic,
+                h: 1.6,
+              ),
+            ),
           ),
         if (translation != null)
           _Section(
             title: s.translationTitle,
             open: app.showTranslation,
             onToggle: () => app.showTranslation = !app.showTranslation,
-            child: Text(translation,
-                textAlign: TextAlign.center,
-                style: JType.reading(14.5, color: JPaper.ink)),
+            child: Text(
+              translation,
+              textAlign: TextAlign.center,
+              style: JType.reading(14.5, color: JPaper.ink),
+            ),
           ),
         if (faz != null)
           _Section(
@@ -249,7 +422,10 @@ class _ZikrBody extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(faz, style: JType.reading(13.5, color: JPaper.ink, h: 1.6)),
+                Text(
+                  faz,
+                  style: JType.reading(13.5, color: JPaper.ink, h: 1.6),
+                ),
                 const SizedBox(height: 8),
                 Text(z.source, style: JType.ui(11.5, color: JPaper.source)),
               ],
@@ -259,7 +435,11 @@ class _ZikrBody extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: Center(
-                child: Text(z.source, style: JType.ui(11.5, color: JPaper.source))),
+              child: Text(
+                z.source,
+                style: JType.ui(11.5, color: JPaper.source),
+              ),
+            ),
           ),
       ],
     );
@@ -269,12 +449,13 @@ class _ZikrBody extends StatelessWidget {
 /// Сворачиваемый блок читалки: заголовок-капс + шеврон, тап по шапке
 /// открывает/закрывает. [plate] — на подложке (для «Достоинства»).
 class _Section extends StatelessWidget {
-  const _Section(
-      {required this.title,
-      required this.open,
-      required this.onToggle,
-      required this.child,
-      this.plate = false});
+  const _Section({
+    required this.title,
+    required this.open,
+    required this.onToggle,
+    required this.child,
+    this.plate = false,
+  });
   final String title;
   final bool open;
   final VoidCallback onToggle;
@@ -293,8 +474,11 @@ class _Section extends StatelessWidget {
           children: [
             Text(title, style: JType.caption(JPaper.accent, size: 10)),
             const SizedBox(width: 4),
-            Icon(open ? Icons.expand_less : Icons.expand_more,
-                size: 16, color: JPaper.accent),
+            Icon(
+              open ? Icons.expand_less : Icons.expand_more,
+              size: 16,
+              color: JPaper.accent,
+            ),
           ],
         ),
       ),
@@ -304,7 +488,10 @@ class _Section extends StatelessWidget {
       curve: Curves.easeOut,
       alignment: Alignment.topCenter,
       child: open
-          ? Padding(padding: const EdgeInsets.only(top: 2, bottom: 10), child: child)
+          ? Padding(
+              padding: const EdgeInsets.only(top: 2, bottom: 10),
+              child: child,
+            )
           : const SizedBox(width: double.infinity),
     );
     if (!plate) return Column(children: [header, body]);
@@ -336,7 +523,8 @@ class _ActionButton extends StatefulWidget {
   State<_ActionButton> createState() => _ActionButtonState();
 }
 
-class _ActionButtonState extends State<_ActionButton> with SingleTickerProviderStateMixin {
+class _ActionButtonState extends State<_ActionButton>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _offsetAnimation;
 
@@ -348,10 +536,34 @@ class _ActionButtonState extends State<_ActionButton> with SingleTickerProviderS
       vsync: this,
     );
     _offsetAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 6.0).chain(CurveTween(curve: Curves.easeOut)), weight: 25),
-      TweenSequenceItem(tween: Tween(begin: 6.0, end: -6.0).chain(CurveTween(curve: Curves.easeInOut)), weight: 25),
-      TweenSequenceItem(tween: Tween(begin: -6.0, end: 4.0).chain(CurveTween(curve: Curves.easeInOut)), weight: 25),
-      TweenSequenceItem(tween: Tween(begin: 4.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)), weight: 25),
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 0.0,
+          end: 6.0,
+        ).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 25,
+      ),
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 6.0,
+          end: -6.0,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 25,
+      ),
+      TweenSequenceItem(
+        tween: Tween(
+          begin: -6.0,
+          end: 4.0,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 25,
+      ),
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 4.0,
+          end: 0.0,
+        ).chain(CurveTween(curve: Curves.easeIn)),
+        weight: 25,
+      ),
     ]).animate(_controller);
   }
 
@@ -393,9 +605,11 @@ class _ActionButtonState extends State<_ActionButton> with SingleTickerProviderS
             children: [
               AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 200),
-                style: JType.ui(10.5,
-                    w: FontWeight.w400,
-                    color: JPaper.bg.withValues(alpha: .6)),
+                style: JType.ui(
+                  10.5,
+                  w: FontWeight.w400,
+                  color: JPaper.bg.withValues(alpha: .6),
+                ),
                 child: Text(widget.topText),
               ),
               const SizedBox(height: 1),

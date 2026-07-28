@@ -8,6 +8,7 @@ import '../prayer/city.dart';
 import '../prayer/schedule.dart';
 import '../prayer/schedule_service.dart';
 import '../prayer/windows.dart';
+import '../services/alarm_service.dart';
 
 /// Глобальный сервис уведомлений (создаётся в main; null в тестах).
 NotificationService? gNotifier;
@@ -36,6 +37,7 @@ Future<void> syncNotifications(AppState app, ScheduleService schedule) async {
         if (app.isDone(id.name)) id
     },
   );
+  await AlarmService.sync(app, schedule);
 }
 
 /// Локализованные тексты уведомлений (ru/kz).
@@ -163,16 +165,15 @@ class NotificationService {
         if (baseTime == null) continue;
 
         final scheduledTime = _at(date, baseTime + rc.offsetMin);
-        if (!scheduledTime.isAfter(now)) continue;
-
-        if (count >= _cap) break;
-
-        final txt = _getNotificationText(lang, rc);
+        final slot = _slotFor(rc.id, configs);
         final payload = rc.id == 'morning' || rc.id == 'evening' ? rc.id : '';
 
-        final slot = _slotFor(rc.id, configs);
-        await _schedule0(_id(d, slot), scheduledTime, txt, payload, details);
-        count++;
+        // Первичное напоминание (в момент наступления события)
+        if (scheduledTime.isAfter(now) && count < _cap) {
+          final txt = _getNotificationText(lang, rc);
+          await _schedule0(_id(d, slot), scheduledTime, txt, payload, details);
+          count++;
+        }
 
         // Дополнительное напоминание перед завершением утреннего/вечернего окна (за 30 минут)
         if ((rc.id == 'morning' || rc.id == 'evening') && rc.offsetMin == 0) {
@@ -180,7 +181,7 @@ class NotificationService {
           final endTime = t.times[endPrayer];
           if (endTime != null) {
             final remindAt = _at(date, endTime - _reminderBeforeEndMin);
-            if (remindAt.isAfter(now) && remindAt.isAfter(scheduledTime) && count < _cap) {
+            if (remindAt.isAfter(now) && count < _cap) {
               final rTxt = _windowText(lang, rc.id == 'morning' ? TaskId.morning : TaskId.evening, opening: false);
               await _schedule0(_id(d, slot + 20), remindAt, rTxt, payload, details);
               count++;

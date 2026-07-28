@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../prayer/schedule.dart';
+import '../prayer/city.dart';
+import '../theme/tokens.dart';
 
 /// Динамическое «живое небо», привязанное к реальному времени суток
 /// (через времена молитв города): солнце/луна плавно идут по дуге, цвета неба
@@ -16,23 +18,30 @@ class SceneBackground extends StatefulWidget {
     required this.screenHeight,
     required this.times,
     required this.nowSec,
+    required this.city,
   });
 
   final double progress; // 0 — главный (небо), 1 — «день» (город внизу)
   final double screenHeight;
   final DayTimes times;
   final int nowSec;
+  final City city;
 
   @override
   State<SceneBackground> createState() => _SceneBackgroundState();
 }
 
-class _SceneBackgroundState extends State<SceneBackground> with SingleTickerProviderStateMixin {
+class _SceneBackgroundState extends State<SceneBackground>
+    with TickerProviderStateMixin {
   late AnimationController _controller;
+  late AnimationController _introController;
+  late Animation<double> _introAnimation;
   double _startX = 0;
   double _startY = 0;
   double _len = 80;
-  ui.Image? _meccaImage;
+  ui.Image? _meccaDayImage;
+  ui.Image? _meccaTwilightImage;
+  ui.Image? _meccaNightImage;
 
   @override
   void initState() {
@@ -41,30 +50,53 @@ class _SceneBackgroundState extends State<SceneBackground> with SingleTickerProv
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
+    _introController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+    _introAnimation = CurvedAnimation(
+      parent: _introController,
+      curve: Curves.easeOutCubic,
+    );
     if (widget.nowSec % 24 == 0) {
-      _startShootingStar();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _startShootingStar();
+      });
     }
-    _loadMeccaImage();
+    _loadMeccaImages();
+    _introController.forward(from: 0.0);
   }
 
-  Future<void> _loadMeccaImage() async {
+  Future<ui.Image> _loadImage(String asset) async {
+    final data = await rootBundle.load(asset);
+    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+    final frame = await codec.getNextFrame();
+    return frame.image;
+  }
+
+  Future<void> _loadMeccaImages() async {
     try {
-      final data = await rootBundle.load('assets/images/mecca_silhouette.png');
-      final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
-      final frame = await codec.getNextFrame();
+      final images = await Future.wait([
+        _loadImage('assets/images/mecca_architecture_day_v3.png'),
+        _loadImage('assets/images/mecca_architecture_twilight_v3.png'),
+        _loadImage('assets/images/mecca_architecture_night_v3.png'),
+      ]);
       if (mounted) {
         setState(() {
-          _meccaImage = frame.image;
+          _meccaDayImage = images[0];
+          _meccaTwilightImage = images[1];
+          _meccaNightImage = images[2];
         });
       }
     } catch (e) {
-      debugPrint("Error loading mecca image: $e");
+      debugPrint('Error loading Mecca architecture: $e');
     }
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _introController.dispose();
     super.dispose();
   }
 
@@ -73,6 +105,10 @@ class _SceneBackgroundState extends State<SceneBackground> with SingleTickerProv
     super.didUpdateWidget(oldWidget);
     if (widget.nowSec != oldWidget.nowSec && widget.nowSec % 24 == 0) {
       _startShootingStar();
+    }
+    if (widget.city.name != oldWidget.city.name ||
+        widget.times.date != oldWidget.times.date) {
+      _introController.forward(from: 0.0);
     }
   }
 
@@ -89,30 +125,80 @@ class _SceneBackgroundState extends State<SceneBackground> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
+    // Вся двухэкранная сцена едет за пальцем 1:1 — как вертикальная лента.
+    // Мекку намеренно не замедляем отдельно: при классическом параллаксе она
+    // задерживалась и оказывалась под карточками экрана «дня».
     final dy = -widget.progress * widget.screenHeight;
+    final transitionSky = _skyAt(widget.times, widget.nowSec ~/ 60);
+    final horizonVeil = Color.lerp(
+      transitionSky.bottom,
+      const Color(0xFF0B0F1C),
+      0.62,
+    )!;
+    final transitionOpacity = sin(pi * widget.progress).clamp(0.0, 1.0);
     return Positioned(
       left: 0,
       right: 0,
       top: dy,
       height: widget.screenHeight * 2,
-      child: RepaintBoundary(
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, _) {
-            return CustomPaint(
-              painter: _ScenePainter(
-                times: widget.times,
-                nowSec: widget.nowSec,
-                shootingStarVal: _controller.value,
-                startX: _startX,
-                startY: _startY,
-                len: _len,
-                meccaImage: _meccaImage,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: Listenable.merge([_controller, _introAnimation]),
+                builder: (context, _) {
+                  return CustomPaint(
+                    painter: _ScenePainter(
+                      times: widget.times,
+                      nowSec: widget.nowSec,
+                      shootingStarVal: _controller.value,
+                      startX: _startX,
+                      startY: _startY,
+                      len: _len,
+                      meccaDayImage: _meccaDayImage,
+                      meccaTwilightImage: _meccaTwilightImage,
+                      meccaNightImage: _meccaNightImage,
+                      introVal: _introAnimation.value,
+                    ),
+                    size: Size.infinite,
+                  );
+                },
               ),
-              size: Size.infinite,
-            );
-          },
-        ),
+            ),
+          ),
+          // Дымка существует только во время жеста. Она закрывает математическую
+          // границу двух кадров, но сама едет вместе со сценой, поэтому свайп
+          // по-прежнему ощущается как перелистывание целого экрана.
+          Positioned(
+            left: 0,
+            right: 0,
+            top: widget.screenHeight - 150,
+            height: 300,
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: transitionOpacity,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        horizonVeil.withValues(alpha: 0.0),
+                        horizonVeil.withValues(alpha: 0.18),
+                        horizonVeil.withValues(alpha: 0.72),
+                        horizonVeil.withValues(alpha: 0.88),
+                        horizonVeil.withValues(alpha: 0.52),
+                        horizonVeil.withValues(alpha: 0.0),
+                      ],
+                      stops: const [0.0, 0.22, 0.42, 0.54, 0.72, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -138,7 +224,12 @@ List<_SkyKey> _skyKeys(DayTimes t) {
   return [
     _SkyKey(0, const Color(0xFF090D1C), const Color(0xFF10182C), 0),
     _SkyKey(fajr, const Color(0xFF161A34), const Color(0xFF3A2E50), 0.06),
-    _SkyKey((fajr + sun) ~/ 2, const Color(0xFF2A3560), const Color(0xFF9A6E7A), 0.18),
+    _SkyKey(
+      (fajr + sun) ~/ 2,
+      const Color(0xFF2A3560),
+      const Color(0xFF9A6E7A),
+      0.18,
+    ),
     _SkyKey(sun, const Color(0xFF4E74B4), const Color(0xFFE7B078), 0.4),
     _SkyKey(dhuhr, const Color(0xFF4F93D8), const Color(0xFFCFE3F2), 1.0),
     _SkyKey(asr, const Color(0xFF5A93CE), const Color(0xFFD8E0EA), 0.85),
@@ -181,28 +272,186 @@ class SkyFg {
   const SkyFg(this.text, this.faint, this.accent, this.shadows);
 }
 
+/// Палитра второго экрана. Она использует ту же фазу суток, что и небо,
+/// но намеренно не повторяет солнце, луну и город: только свет, глубину и
+/// оттенок атмосферы. Так два экрана принадлежат одной сцене без перегруза.
+class DaySurfacePalette {
+  const DaySurfacePalette({
+    required this.colors,
+    required this.isLight,
+    required this.top,
+    required this.middle,
+    required this.bottom,
+    required this.glow,
+    required this.surface,
+    required this.border,
+    required this.dock,
+    required this.dockBorder,
+    required this.shadow,
+  });
+
+  final JColors colors;
+  final bool isLight;
+  final Color top, middle, bottom, glow;
+  final Color surface, border, dock, dockBorder, shadow;
+}
+
+double _smoothStep(double edge0, double edge1, double value) {
+  final x = ((value - edge0) / (edge1 - edge0)).clamp(0.0, 1.0).toDouble();
+  return x * x * (3 - 2 * x);
+}
+
+JColors _lerpJColors(JColors a, JColors b, double t) {
+  Color mix(Color x, Color y) => Color.lerp(x, y, t)!;
+  return JColors(
+    bg: mix(a.bg, b.bg),
+    ink: mix(a.ink, b.ink),
+    sub: mix(a.sub, b.sub),
+    faint: mix(a.faint, b.faint),
+    hair: mix(a.hair, b.hair),
+    gold: mix(a.gold, b.gold),
+    green: mix(a.green, b.green),
+    gdim: mix(a.gdim, b.gdim),
+    red: mix(a.red, b.red),
+    card: mix(a.card, b.card),
+    btnbg: mix(a.btnbg, b.btnbg),
+    btnink: mix(a.btnink, b.btnink),
+  );
+}
+
+DaySurfacePalette daySurfacePalette(DayTimes t, int nowSec) {
+  final sky = _skyAt(t, nowSec ~/ 60);
+  // Раньше весь нижний экран мгновенно переключался между двумя готовыми
+  // палитрами. Теперь дневная, предзакатная, закатная, сумеречная и ночная
+  // атмосферы непрерывно интерполируются из того же `sky.day`, что рисует
+  // главное небо. Поэтому за 10 минут до Магриба оба экрана уже находятся
+  // в одной фазе, а после Магриба нет скачка в тёмно-синий.
+  final daylight = _smoothStep(0.08, 0.72, sky.day);
+  final nightBlend = 1 - daylight;
+  final surfaceBlend = _smoothStep(0.18, 0.92, nightBlend);
+
+  // Текст меняет полярность позже фона, когда сумеречная подложка уже
+  // достаточно тёмная. Сам цвет тоже перетекает, а не переключается.
+  final contentNightBlend = _smoothStep(0.62, 0.82, nightBlend);
+  final isLight = contentNightBlend < 0.5;
+
+  final lightTop = Color.lerp(const Color(0xFFDDE8ED), sky.bottom, 0.38)!;
+  final lightMiddle = Color.lerp(const Color(0xFFCAD8DE), sky.top, 0.16)!;
+  final lightBottom = Color.lerp(lightMiddle, const Color(0xFFB8C9C8), 0.64)!;
+
+  final darkTop = Color.lerp(const Color(0xFF172235), sky.bottom, 0.30)!;
+  final darkMiddle = Color.lerp(const Color(0xFF101B24), sky.top, 0.18)!;
+  final darkBottom = Color.lerp(darkMiddle, const Color(0xFF061112), 0.78)!;
+
+  const lightColors = JColors(
+    bg: Color(0xFFD7E2E4),
+    ink: Color(0xFF1E2830),
+    sub: Color(0xFF40505A),
+    faint: Color(0xFF63717A),
+    hair: Color(0xFFB6C1C4),
+    gold: Color(0xFF855B0B),
+    green: Color(0xFF4F7460),
+    gdim: Color(0xFFD8E4DC),
+    red: Color(0xFF9E4B43),
+    card: Color(0xFFF7F4EC),
+    btnbg: Color(0xFF1E2830),
+    btnink: Color(0xFFF7F4EC),
+  );
+  const darkColors = JColors(
+    bg: Color(0xFF0D171D),
+    ink: Color(0xFFF1EFE7),
+    sub: Color(0xFFBEC5C2),
+    faint: Color(0xFF899590),
+    hair: Color(0xFF35423F),
+    gold: Color(0xFFE0AE4A),
+    green: Color(0xFF678A74),
+    gdim: Color(0xFF26362E),
+    red: Color(0xFFB45B52),
+    card: Color(0xFF172127),
+    btnbg: Color(0xFFF1EFE7),
+    btnink: Color(0xFF10191E),
+  );
+
+  final top = Color.lerp(lightTop, darkTop, nightBlend)!;
+  final middle = Color.lerp(lightMiddle, darkMiddle, nightBlend)!;
+  final bottom = Color.lerp(lightBottom, darkBottom, nightBlend)!;
+
+  return DaySurfacePalette(
+    colors: _lerpJColors(lightColors, darkColors, contentNightBlend),
+    isLight: isLight,
+    top: top,
+    middle: middle,
+    bottom: bottom,
+    glow: sky.bottom,
+    surface: Color.lerp(
+      const Color(0xB8FFFFFF),
+      const Color(0xA6172228),
+      surfaceBlend,
+    )!,
+    border: Color.lerp(
+      const Color(0x8AFFFFFF),
+      const Color(0x1FFFFFFF),
+      surfaceBlend,
+    )!,
+    dock: Color.lerp(
+      const Color(0xC7F8F7F2),
+      const Color(0xB518232A),
+      surfaceBlend,
+    )!,
+    dockBorder: Color.lerp(
+      const Color(0xA8FFFFFF),
+      const Color(0x2BFFFFFF),
+      surfaceBlend,
+    )!,
+    shadow: Color.lerp(
+      const Color(0x260D1B22),
+      const Color(0x66000000),
+      surfaceBlend,
+    )!,
+  );
+}
+
 /// Днём — тёмный текст, ночью — светлый. Без бледных промежуточных цветов:
 /// на пёстром небе (закат/рассвет) они нечитаемы. Вместо этого — жёсткий
 /// выбор день/ночь + мягкая контрастная тень, сильнее всего в переходные фазы.
 SkyFg skyForeground(DayTimes t, int nowSec) {
   final sky = _skyAt(t, nowSec ~/ 60);
-  
+
   // Вычисляем примерный цвет неба позади текста (верхняя треть экрана)
   final textBgColor = Color.lerp(sky.top, sky.bottom, 0.25)!;
-  final bgLuminance = textBgColor.computeLuminance();
-  
-  // Если фон светлый (яркость > 0.43), используем темный контрастный текст.
-  // Иначе — светлый контрастный текст.
-  final useDarkText = bgLuminance > 0.43;
-  
+
+  const darkText = Color(0xFF1B2230);
+  const lightText = Color(0xFFF2EFE6);
+
+  double contrastRatio(Color foreground, Color background) {
+    final a = foreground.computeLuminance();
+    final b = background.computeLuminance();
+    return (max(a, b) + 0.05) / (min(a, b) + 0.05);
+  }
+
+  // Старый фиксированный порог 0.43 ошибочно считал полуденное голубое небо
+  // «тёмным» и оставлял белую ночную палитру. Выбираем тот вариант, который
+  // реально даёт больший контраст на текущем небе.
+  final useDarkText =
+      contrastRatio(darkText, textBgColor) >=
+      contrastRatio(lightText, textBgColor);
+
   // Тени полностью убираем по запросу пользователя
   const shadows = <Shadow>[];
-  
+
   return useDarkText
-      ? SkyFg(const Color(0xFF1B2230), const Color(0xFF3A4657),
-          const Color(0xFF8A5F10), shadows)
-      : SkyFg(const Color(0xFFF2EFE6), const Color(0xFFC9CDC2),
-          const Color(0xFFE2B85E), shadows);
+      ? SkyFg(
+          darkText,
+          const Color(0xFF34445A),
+          const Color(0xFF7A540B),
+          shadows,
+        )
+      : SkyFg(
+          lightText,
+          const Color(0xFFC9CDC2),
+          const Color(0xFFE2B85E),
+          shadows,
+        );
 }
 
 // ── Художник сцены ───────────────────────────────────────────────────────────
@@ -215,7 +464,10 @@ class _ScenePainter extends CustomPainter {
     required this.startX,
     required this.startY,
     required this.len,
-    this.meccaImage,
+    required this.introVal,
+    this.meccaDayImage,
+    this.meccaTwilightImage,
+    this.meccaNightImage,
   });
   final DayTimes times;
   final int nowSec;
@@ -223,26 +475,72 @@ class _ScenePainter extends CustomPainter {
   final double startX;
   final double startY;
   final double len;
-  final ui.Image? meccaImage;
+  final double introVal;
+  final ui.Image? meccaDayImage;
+  final ui.Image? meccaTwilightImage;
+  final ui.Image? meccaNightImage;
 
   @override
   void paint(Canvas canvas, Size size) {
     final W = size.width, H = size.height;
     final horizon = H * 0.5; // низ главного экрана / линия горизонта
     final nowMin = nowSec ~/ 60;
-    final sky = _skyAt(times, nowMin);
-    final night = (1 - sky.day * 2).clamp(0.0, 1.0); // 1 глубокая ночь … 0 день
 
-    // Небо
-    final skyRect = Rect.fromLTRB(0, 0, W, horizon);
+    // Вычисляем времена молитв для определения фаз дня и ночи
+    final sun = times.times[Prayer.sunrise]!;
+    final dhuhr = times.times[Prayer.dhuhr]!;
+    final magh = times.times[Prayer.maghrib]!;
+    final isDay = nowMin >= sun && nowMin <= magh;
+
+    // 1. Интерполяция неба (таймлапс эффект при старте/смене города)
+    // Стартуем от восхода (днем) или заката (ночью) и перетекаем к целевому цвету
+    final startMin = isDay ? sun : magh;
+    final startSky = _skyAt(times, startMin);
+    final targetSky = _skyAt(times, nowMin);
+
+    final skyTop = Color.lerp(startSky.top, targetSky.top, introVal)!;
+    final skyBottom = Color.lerp(startSky.bottom, targetSky.bottom, introVal)!;
+    final skyDay = startSky.day + (targetSky.day - startSky.day) * introVal;
+    final night = (1 - skyDay * 2).clamp(0.0, 1.0); // 1 глубокая ночь … 0 день
+    final sky = _Sky(skyTop, skyBottom, skyDay);
+    final daySurface = daySurfacePalette(times, nowSec);
+
+    // Небо и нижний экран — один непрерывный градиент на всю высоту сцены.
+    // Отдельные прямоугольники раньше давали заметный горизонтальный стык
+    // после свайпа, особенно на светлом дневном небе.
+    final sceneRect = Rect.fromLTRB(0, 0, W, H);
     canvas.drawRect(
-        skyRect,
-        Paint()
-          ..shader = LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [sky.top, sky.bottom])
-              .createShader(skyRect));
+      sceneRect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            skyTop,
+            skyBottom,
+            daySurface.top,
+            daySurface.middle,
+            daySurface.bottom,
+          ],
+          stops: const [0.0, 0.43, 0.53, 0.72, 1.0],
+        ).createShader(sceneRect),
+    );
+
+    // На втором экране движется только атмосферный свет: большой мягкий
+    // отблеск того же горизонта, что и на главном, без новых объектов.
+    final lowerRect = Rect.fromLTRB(0, horizon, W, H);
+    canvas.drawRect(
+      lowerRect,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          Offset(W * 0.78, horizon + (H - horizon) * 0.08),
+          W * 1.05,
+          [
+            daySurface.glow.withValues(alpha: daySurface.isLight ? 0.28 : 0.20),
+            daySurface.glow.withValues(alpha: 0.0),
+          ],
+        ),
+    );
 
     // Звёзды и падающая звезда — ночью
     if (night > 0.15) {
@@ -250,61 +548,49 @@ class _ScenePainter extends CustomPainter {
       _shootingStar(canvas, night);
     }
 
-    // Вычисляем координаты солнца/луны для совместного использования в _celestial и _city
-    final sun = times.times[Prayer.sunrise]!;
-    final dhuhr = times.times[Prayer.dhuhr]!;
-    final magh = times.times[Prayer.maghrib]!;
-    final isDay = nowMin >= sun && nowMin <= magh;
-    
-    double fracX, alt; // alt: 0 у горизонта … 1 зенит
+    // 2. Координаты солнца/луны (расчет целевых значений)
+    double targetFracX, targetAlt; // targetAlt: 0 у горизонта … 1 зенит
     if (isDay) {
       if (nowMin <= dhuhr) {
         final f = (nowMin - sun) / max(1, dhuhr - sun);
-        fracX = 0.12 + f * 0.38;
-        alt = f;
+        targetFracX = 0.12 + f * 0.38;
+        targetAlt = f;
       } else {
         final f = (nowMin - dhuhr) / max(1, magh - dhuhr);
-        fracX = 0.5 + f * 0.38;
-        alt = 1.0 - f;
+        targetFracX = 0.5 + f * 0.38;
+        targetAlt = 1.0 - f;
       }
     } else {
       final total = (1440 - magh) + sun;
       final nm = nowMin >= magh ? nowMin - magh : nowMin + (1440 - magh);
       final f = nm / max(1, total);
-      fracX = 0.12 + f * 0.76;
-      alt = sin(f * pi);
+      targetFracX = 0.12 + f * 0.76;
+      targetAlt = sin(f * pi);
     }
+
+    // 3. Интерполяция координат (восхождение солнца/луны от горизонта по дуге)
+    // Анимируем координаты от старта (горизонт: 0.12, 0.0) до цели
+    final fracX = 0.12 + (targetFracX - 0.12) * introVal;
+    final alt = 0.0 + (targetAlt - 0.0) * introVal;
+
     final cx = W * fracX;
     final cy = horizon * 0.92 - alt * horizon * 0.78;
 
-    // Земля/город ниже горизонта
-    final groundTop = Color.lerp(sky.bottom, const Color(0xFF0B0F1C), 0.55)!;
-    final groundBot = Color.lerp(const Color(0xFF0B0F1C), const Color(0xFF05070E), 0.6)!;
-    final groundRect = Rect.fromLTRB(0, horizon, W, H);
-    canvas.drawRect(
-        groundRect,
-        Paint()
-          ..shader = LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [groundTop, groundBot])
-              .createShader(groundRect));
-
-    // Затемнение к низу — читаемость карточек «дня» (рисуется под солнцем и городом, чтобы не резать солнце)
+    // Затемнение к низу — читаемость карточек «дня»
     final scrim = Rect.fromLTRB(0, horizon, W, H);
     canvas.drawRect(
-        scrim,
-        Paint()
-          ..shader = LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    const Color(0x000B1512),
-                    const Color(0xCC0B1512),
-                  ])
-              .createShader(scrim));
+      scrim,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: daySurface.isLight
+              ? [const Color(0x00FFFFFF), const Color(0x12FFFFFF)]
+              : [const Color(0x00061112), const Color(0x52061112)],
+        ).createShader(scrim),
+    );
 
-    // Солнце / луна по дуге (рисуются поверх земли и затемнения, чтобы не срезаться прямой линией горизонта)
+    // Солнце / луна по дуге
     _celestial(canvas, cx, cy, horizon, isDay);
 
     // Силуэт дюн на горизонте с динамической физикой освещения
@@ -318,14 +604,16 @@ class _ScenePainter extends CustomPainter {
       final x = rnd.nextDouble() * W;
       final y = rnd.nextDouble() * horizon * 0.85;
       final tw = 0.4 + 0.6 * (0.5 + 0.5 * sin((nowSec / 3 + i) * 0.7));
-      p.color = Colors.white.withValues(alpha: (0.15 + rnd.nextDouble() * 0.5) * night * tw);
+      p.color = Colors.white.withValues(
+        alpha: (0.15 + rnd.nextDouble() * 0.5) * night * tw,
+      );
       canvas.drawCircle(Offset(x, y), rnd.nextDouble() * 1.2 + 0.4, p);
     }
   }
 
   void _shootingStar(Canvas canvas, double night) {
     if (shootingStarVal <= 0.0 || shootingStarVal >= 1.0) return;
-    
+
     final prog = shootingStarVal;
     final dx = startX + prog * 120.0;
     final dy = startY + prog * 60.0;
@@ -338,55 +626,79 @@ class _ScenePainter extends CustomPainter {
     final paint = Paint()
       ..strokeWidth = 2.0
       ..strokeCap = StrokeCap.round
-      ..shader = ui.Gradient.linear(
-        head,
-        tail,
-        [
-          Colors.white.withValues(alpha: a),
-          Colors.white.withValues(alpha: 0.0),
-        ],
-      );
+      ..shader = ui.Gradient.linear(head, tail, [
+        Colors.white.withValues(alpha: a),
+        Colors.white.withValues(alpha: 0.0),
+      ]);
 
     canvas.drawLine(head, tail, paint);
   }
 
-  void _celestial(Canvas canvas, double cx, double cy, double horizon, bool isDay) {
+  void _celestial(
+    Canvas canvas,
+    double cx,
+    double cy,
+    double horizon,
+    bool isDay,
+  ) {
     if (isDay) {
       // солнце с мягким свечением
       final glow = Paint()
-        ..shader = RadialGradient(colors: [
-          const Color(0xFFFFF3C8).withValues(alpha: 0.85),
-          const Color(0xFFFFE29A).withValues(alpha: 0.0)
-        ]).createShader(Rect.fromCircle(center: Offset(cx, cy), radius: horizon * 0.22));
+        ..shader =
+            RadialGradient(
+              colors: [
+                const Color(0xFFFFF3C8).withValues(alpha: 0.85),
+                const Color(0xFFFFE29A).withValues(alpha: 0.0),
+              ],
+            ).createShader(
+              Rect.fromCircle(center: Offset(cx, cy), radius: horizon * 0.22),
+            );
       canvas.drawCircle(Offset(cx, cy), horizon * 0.22, glow);
-      canvas.drawCircle(Offset(cx, cy), horizon * 0.06, Paint()..color = const Color(0xFFFFF0C0));
+      canvas.drawCircle(
+        Offset(cx, cy),
+        horizon * 0.06,
+        Paint()..color = const Color(0xFFFFF0C0),
+      );
     } else {
       final glow = Paint()
-        ..shader = RadialGradient(colors: [
-          const Color(0xFFE9E2C2).withValues(alpha: 0.35),
-          const Color(0xFFE9E2C2).withValues(alpha: 0.0)
-        ]).createShader(Rect.fromCircle(center: Offset(cx, cy), radius: horizon * 0.16));
+        ..shader =
+            RadialGradient(
+              colors: [
+                const Color(0xFFE9E2C2).withValues(alpha: 0.35),
+                const Color(0xFFE9E2C2).withValues(alpha: 0.0),
+              ],
+            ).createShader(
+              Rect.fromCircle(center: Offset(cx, cy), radius: horizon * 0.16),
+            );
       canvas.drawCircle(Offset(cx, cy), horizon * 0.16, glow);
       final r = horizon * 0.052;
-      final path1 = Path()..addOval(Rect.fromCircle(center: Offset(cx, cy), radius: r));
-      final path2 = Path()..addOval(Rect.fromCircle(center: Offset(cx + r * 0.55, cy - r * 0.25), radius: r));
+      final path1 = Path()
+        ..addOval(Rect.fromCircle(center: Offset(cx, cy), radius: r));
+      final path2 = Path()
+        ..addOval(
+          Rect.fromCircle(
+            center: Offset(cx + r * 0.55, cy - r * 0.25),
+            radius: r,
+          ),
+        );
       final crescent = Path.combine(PathOperation.difference, path1, path2);
       canvas.drawPath(crescent, Paint()..color = const Color(0xFFDCCB8E));
     }
   }
 
-  void _city(Canvas canvas, double W, double horizon, double H, _Sky sky, double night, double celX, double celY, bool isDay, double alt) {
-    // Гарантированный контраст силуэта с небом в ЛЮБОЙ фазе (жалоба владельца:
-    // «иногда видна, иногда нет»): по яркости неба за ним выбираем тёмный
-    // силуэт (светлое небо) или тёплый светлый (тёмное небо), с плавным
-    // переходом в сумерках — дельта яркости сохраняется всегда.
-    final bgLum = sky.bottom.computeLuminance();
-    final tt = ((bgLum - 0.08) / 0.22).clamp(0.0, 1.0);
-    final darkSil = Color.lerp(sky.bottom, const Color(0xFF06080F), 0.85)!;
-    final lightSil = Color.lerp(sky.bottom, const Color(0xFF9A8262), 0.75)!;
-    final sil = Color.lerp(lightSil, darkSil, tt)!;
+  void _city(
+    Canvas canvas,
+    double W,
+    double horizon,
+    double H,
+    _Sky sky,
+    double night,
+    double celX,
+    double celY,
+    bool isDay,
+    double alt,
+  ) {
     final base = horizon;
-    final silOpacity = 1.0;
 
     // 1. Атмосферное свечение за зданиями (sunset/sunrise glow)
     if (isDay && alt < 0.35) {
@@ -408,60 +720,92 @@ class _ScenePainter extends CustomPainter {
       final glowFactor = (alt - 0.1) / 0.9;
       final glowRect = Rect.fromLTRB(0, 0, W, base + 10);
       final glowPaint = Paint()
-        ..shader = ui.Gradient.radial(
-          Offset(celX, base - 10),
-          W * 0.3,
-          [
-            const Color(0xFFB0BEC5).withValues(alpha: 0.12 * glowFactor),
-            const Color(0x00000000),
-          ],
-        );
+        ..shader = ui.Gradient.radial(Offset(celX, base - 10), W * 0.3, [
+          const Color(0xFFB0BEC5).withValues(alpha: 0.12 * glowFactor),
+          const Color(0x00000000),
+        ]);
       canvas.drawRect(glowRect, glowPaint);
     }
 
-    // 2. Мягкие фоновые дюны пустыни позади города для создания глубины горизонта (5-8% высоты)
-    final d1Color = Color.lerp(sky.bottom, const Color(0xFF070B14), 0.45)!;
-    final path1 = Path()
-      ..moveTo(0, base)
-      ..quadraticBezierTo(W * 0.35, base - 25, W * 0.7, base - 8)
-      ..quadraticBezierTo(W * 0.85, base - 2, W, base - 4)
-      ..lineTo(W, base + 20)
-      ..lineTo(0, base + 20)
-      ..close();
-    canvas.drawPath(path1, Paint()..color = d1Color);
-
-    final d2Color = Color.lerp(sky.bottom, const Color(0xFF070B14), 0.58)!;
-    final path2 = Path()
-      ..moveTo(0, base - 4)
-      ..quadraticBezierTo(W * 0.2, base - 6, W * 0.45, base - 18)
-      ..quadraticBezierTo(W * 0.75, base - 32, W, base - 10)
-      ..lineTo(W, base + 30)
-      ..lineTo(0, base + 30)
-      ..close();
-    canvas.drawPath(path2, Paint()..color = d2Color);
-
-    // 3. Рисунок города Мекка из ассета с наложением динамического тонирования и светящимися часами
-    if (meccaImage != null) {
-      final dstWidth = W;
-      final dstHeight = W * (meccaImage!.height / meccaImage!.width);
-      final destRect = Rect.fromLTWH(0, base - dstHeight + 2, dstWidth, dstHeight);
-      
-      final silPaint = Paint()
-        ..colorFilter = ColorFilter.mode(sil.withValues(alpha: silOpacity), BlendMode.srcIn);
-      canvas.drawImageRect(
-        meccaImage!,
-        Rect.fromLTWH(0, 0, meccaImage!.width.toDouble(), meccaImage!.height.toDouble()),
-        destRect,
-        silPaint,
+    // 2. Один фиксированный ракурс Мекки. День, переходный свет и ночь
+    // сделаны из одного мастера и совпадают по пикселям: архитектура не
+    // «прыгает», плавно меняется только освещение.
+    final nightImage = meccaNightImage;
+    final twilightImage = meccaTwilightImage;
+    final dayImage = meccaDayImage;
+    if (nightImage != null && twilightImage != null && dayImage != null) {
+      // V3 содержит не только полную Каабу, но и площадь до нижней кромки.
+      // Нижнюю кромку совмещаем с краем первого экрана: под изображением не
+      // остаётся ни прозрачной, ни цветной полосы.
+      final dstWidth = W * 1.11;
+      final dstHeight = dstWidth * (nightImage.height / nightImage.width);
+      final destRect = Rect.fromLTWH(
+        (W - dstWidth) / 2,
+        base - dstHeight,
+        dstWidth,
+        dstHeight,
+      );
+      final sourceRect = Rect.fromLTWH(
+        0,
+        0,
+        nightImage.width.toDouble(),
+        nightImage.height.toDouble(),
       );
 
-      // Накладные «часы» и окна-огоньки убраны (решение владельца 20.07:
-      // рисованные точки не совпадали с реальной башней/окнами на картинке —
-      // выглядели как случайные огни). Силуэт остаётся чистым.
+      double smoothStep(double edge0, double edge1, double value) {
+        final x = ((value - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+        return x * x * (3 - 2 * x);
+      }
+
+      // Полдень даёт нейтральный фасад, у горизонта появляется тепло,
+      // после Иша остаются только реальные огни арок, минаретов и башни.
+      final dayBlend = smoothStep(0.32, 0.70, sky.day);
+      final twilightBlend = smoothStep(0.04, 0.28, sky.day) * (1 - dayBlend);
+
+      // Последние пиксели площади раньше заканчивались ровной границей
+      // изображения и выдавали стык двух экранов. Растушёвываем только
+      // нижние ~9% площади в уже нарисованный общий градиент; Кааба и
+      // архитектура выше этой зоны остаются полностью резкими.
+      canvas.saveLayer(destRect, Paint());
+      canvas.drawImageRect(nightImage, sourceRect, destRect, Paint());
+      if (twilightBlend > 0.001) {
+        canvas.drawImageRect(
+          twilightImage,
+          sourceRect,
+          destRect,
+          Paint()..color = Colors.white.withValues(alpha: twilightBlend),
+        );
+      }
+      if (dayBlend > 0.001) {
+        canvas.drawImageRect(
+          dayImage,
+          sourceRect,
+          destRect,
+          Paint()..color = Colors.white.withValues(alpha: dayBlend),
+        );
+      }
+      canvas.drawRect(
+        destRect,
+        Paint()
+          ..blendMode = BlendMode.dstIn
+          ..shader = const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.white, Colors.white, Colors.transparent],
+            stops: [0.0, 0.91, 1.0],
+          ).createShader(destRect),
+      );
+      canvas.restore();
     }
   }
 
   @override
   bool shouldRepaint(_ScenePainter old) =>
-      old.nowSec != nowSec || old.times != times || old.meccaImage != meccaImage;
+      old.nowSec != nowSec ||
+      old.times != times ||
+      old.meccaDayImage != meccaDayImage ||
+      old.meccaTwilightImage != meccaTwilightImage ||
+      old.meccaNightImage != meccaNightImage ||
+      old.introVal != introVal ||
+      old.shootingStarVal != shootingStarVal;
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/app_state.dart';
 import '../i18n/strings.dart';
 import '../theme/tokens.dart';
+import '../theme/system_bars.dart';
 
 /// Празднование (README §5): сдержанное — галочка, лёгкий салют,
 /// случайный хадис с источником. Без очков и конфетти-вечеринки.
@@ -16,9 +17,10 @@ class CelebrationScreen extends StatefulWidget {
 
 class _CelebrationScreenState extends State<CelebrationScreen>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 2200))
-        ..forward();
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2200),
+  )..forward();
   final int quoteIdx = Random().nextInt(3);
 
   @override
@@ -32,78 +34,117 @@ class _CelebrationScreenState extends State<CelebrationScreen>
     final app = AppScope.of(context);
     final s = S.of(app.lang);
     final quote = s.quotes[quoteIdx];
-    final title =
-        widget.collectionId == 'morning' ? s.doneTitleMorning : s.doneTitleEvening;
+    final title = widget.collectionId == 'morning'
+        ? s.doneTitleMorning
+        : s.doneTitleEvening;
 
     final pop = CurvedAnimation(
-        parent: _ctrl,
-        curve: const Interval(0, .25, curve: Curves.elasticOut));
+      parent: _ctrl,
+      curve: const Interval(0, .25, curve: Curves.elasticOut),
+    );
     final fadeIn = CurvedAnimation(
-        parent: _ctrl, curve: const Interval(.3, .6, curve: Curves.easeOut));
+      parent: _ctrl,
+      curve: const Interval(.3, .6, curve: Curves.easeOut),
+    );
 
-    return Scaffold(
-      backgroundColor: JPaper.bg,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            children: [
-              const Spacer(flex: 2),
-              SizedBox(
-                width: 140,
-                height: 140,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    _Confetti(ctrl: _ctrl),
-                    ScaleTransition(
-                      scale: pop,
-                      child: Container(
-                        width: 88,
-                        height: 88,
-                        decoration: const BoxDecoration(
-                            shape: BoxShape.circle, color: Color(0xFF4A5D50)),
-                        child: const Icon(Icons.check, size: 44, color: Colors.white),
+    return JSystemBars(
+      darkIcons: true,
+      child: Scaffold(
+        backgroundColor: JPaper.bg,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              children: [
+                const Spacer(flex: 2),
+                SizedBox(
+                  width: 140,
+                  height: 140,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      _Confetti(ctrl: _ctrl),
+                      ScaleTransition(
+                        scale: pop,
+                        child: Container(
+                          width: 88,
+                          height: 88,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Color(0xFF4A5D50),
+                          ),
+                          child: const Icon(
+                            Icons.check,
+                            size: 44,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 28),
-              FadeTransition(
-                opacity: fadeIn,
-                child: Column(
-                  children: [
-                    Text(title,
-                        textAlign: TextAlign.center,
-                        style: JType.ui(24, w: FontWeight.w800, color: JPaper.ink)),
-                    const SizedBox(height: 24),
-                    Text(quote.text,
-                        textAlign: TextAlign.center,
-                        style: JType.reading(16,
-                            color: JPaper.ink, style: FontStyle.italic, h: 1.6)),
-                    const SizedBox(height: 8),
-                    Text(quote.src, style: JType.ui(12, color: JPaper.source)),
-                    const SizedBox(height: 28),
-                    Text(s.doneSub, style: JType.caption(JPaper.accent, size: 10)),
-                  ],
-                ),
-              ),
-              const Spacer(flex: 3),
-              GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                      color: JPaper.button, borderRadius: BorderRadius.circular(100)),
-                  child: Center(
-                    child: Text(s.back,
-                        style: JType.ui(15, w: FontWeight.w700, color: JPaper.bg)),
+                    ],
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 28),
+                FadeTransition(
+                  opacity: fadeIn,
+                  child: Column(
+                    children: [
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        style: JType.ui(
+                          24,
+                          w: FontWeight.w800,
+                          color: JPaper.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        quote.text,
+                        textAlign: TextAlign.center,
+                        style: JType.reading(
+                          16,
+                          color: JPaper.ink,
+                          style: FontStyle.italic,
+                          h: 1.6,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        quote.src,
+                        style: JType.ui(12, color: JPaper.source),
+                      ),
+                      const SizedBox(height: 28),
+                      Text(
+                        s.doneSub,
+                        style: JType.caption(JPaper.accent, size: 10),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(flex: 3),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      color: JPaper.button,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                    child: Center(
+                      child: Text(
+                        s.back,
+                        style: JType.ui(
+                          15,
+                          w: FontWeight.w700,
+                          color: JPaper.bg,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -150,8 +191,17 @@ class _Confetti extends StatelessWidget {
 
 class _ConfettiPainter extends CustomPainter {
   _ConfettiPainter(this.particles, this.t);
-  final List<({double angle, double dist, double size, Color color, double delay, double span})>
-      particles;
+  final List<
+    ({
+      double angle,
+      double dist,
+      double size,
+      Color color,
+      double delay,
+      double span,
+    })
+  >
+  particles;
   final double t;
 
   @override
@@ -161,13 +211,16 @@ class _ConfettiPainter extends CustomPainter {
       final local = ((t - p.delay) / p.span).clamp(0.0, 1.0);
       if (local <= 0) continue;
       final eased = Curves.easeOut.transform(local);
-      final pos = center + Offset(cos(p.angle), sin(p.angle)) * (p.dist * eased);
+      final pos =
+          center + Offset(cos(p.angle), sin(p.angle)) * (p.dist * eased);
       final paint = Paint()..color = p.color.withValues(alpha: 1 - local);
       canvas.save();
       canvas.translate(pos.dx, pos.dy);
       canvas.rotate(local * 9.7);
       canvas.drawRect(
-          Rect.fromCenter(center: Offset.zero, width: p.size, height: p.size), paint);
+        Rect.fromCenter(center: Offset.zero, width: p.size, height: p.size),
+        paint,
+      );
       canvas.restore();
     }
   }

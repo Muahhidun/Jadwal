@@ -3,17 +3,17 @@ import 'package:jadwal/prayer/schedule.dart';
 import 'package:jadwal/prayer/windows.dart';
 
 DayTimes day({required bool friday}) => DayTimes(
-      // 03.07.2026 — пятница, 04.07.2026 — суббота.
-      date: friday ? DateTime(2026, 7, 3) : DateTime(2026, 7, 4),
-      times: const {
-        Prayer.fajr: 185, // 03:05
-        Prayer.sunrise: 298, // 04:58
-        Prayer.dhuhr: 779, // 12:59
-        Prayer.asr: 1074, // 17:54
-        Prayer.maghrib: 1253, // 20:53
-        Prayer.isha: 1358, // 22:38
-      },
-    );
+  // 03.07.2026 — пятница, 04.07.2026 — суббота.
+  date: friday ? DateTime(2026, 7, 3) : DateTime(2026, 7, 4),
+  times: const {
+    Prayer.fajr: 185, // 03:05
+    Prayer.sunrise: 298, // 04:58
+    Prayer.dhuhr: 779, // 12:59
+    Prayer.asr: 1074, // 17:54
+    Prayer.maghrib: 1253, // 20:53
+    Prayer.isha: 1358, // 22:38
+  },
+);
 
 void main() {
   test('утреннее окно: после Фаджра, до восхода', () {
@@ -26,13 +26,19 @@ void main() {
   test('пятница добавляет Кахф и час дуа', () {
     final ids = windowsFor(day(friday: true)).map((w) => w.id).toList();
     expect(ids, [TaskId.morning, TaskId.kahf, TaskId.evening, TaskId.dua]);
-    expect(windowsFor(day(friday: false)).map((w) => w.id).toList(),
-        [TaskId.morning, TaskId.evening]);
+    expect(windowsFor(day(friday: false)).map((w) => w.id).toList(), [
+      TaskId.morning,
+      TaskId.evening,
+    ]);
   });
 
   test('выполненная задача уступает окно следующей', () {
     // 20:11 пятницы: открыты и вечерние (аср→магриб), и час дуа (магриб−60).
-    final w = currentWindow(day(friday: true), 1211, (id) => id == TaskId.evening);
+    final w = currentWindow(
+      day(friday: true),
+      1211,
+      (id) => id == TaskId.evening,
+    );
     expect(w?.id, TaskId.dua);
   });
 
@@ -41,8 +47,14 @@ void main() {
     expect(nextPrayer(day(friday: false), 100), Prayer.fajr);
   });
 
-  test('режим «после азана» действует первые 15 минут', () {
+  test('Live Activity не считает восход намазом', () {
+    final times = day(friday: false);
+    expect(nextPrayer(times, 200), Prayer.sunrise);
+    expect(nextNamaz(times, 200), Prayer.dhuhr);
+  });
+
+  test('режим «после азана» действует первые 10 минут', () {
     expect(justCalledPrayer(day(friday: false), 1074 + 5), Prayer.asr);
-    expect(justCalledPrayer(day(friday: false), 1074 + 20), isNull);
+    expect(justCalledPrayer(day(friday: false), 1074 + 12), isNull);
   });
 }

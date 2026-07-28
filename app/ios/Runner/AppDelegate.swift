@@ -7,14 +7,40 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // Нужно flutter_local_notifications для показа/тапа уведомлений на iOS 10+.
     if #available(iOS 10.0, *) {
       UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
     }
+
+    WatchSyncManager.shared.activate()
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
+  override func applicationWillTerminate(_ application: UIApplication) {
+    LiveActivityManager.stopAllActivities()
+    super.applicationWillTerminate(application)
+  }
+
+  override func applicationDidBecomeActive(_ application: UIApplication) {
+    LiveActivityManager.cleanupExpiredPrayerActivities()
+    super.applicationDidBecomeActive(application)
+  }
+
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
-    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    let registry = engineBridge.pluginRegistry
+    GeneratedPluginRegistrant.register(with: registry)
+
+    if let registrar = registry.registrar(forPlugin: "LiveActivityManager") {
+      LiveActivityManager.register(with: registrar)
+    }
+    if let registrar = registry.registrar(forPlugin: "WidgetDataManager") {
+      WidgetDataManager.register(with: registrar)
+    }
+    if let registrar = registry.registrar(forPlugin: "AlarmManager") {
+      AlarmManager.register(with: registrar)
+    }
+    if let registrar = registry.registrar(forPlugin: "ZikrSpeechManager") {
+      ZikrSpeechManager.register(with: registrar)
+    }
   }
 }

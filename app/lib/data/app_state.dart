@@ -23,20 +23,32 @@ class AppState extends ChangeNotifier {
   /// Выбранный город (любой из справочника ДУМК). По умолчанию — Алматы.
   /// Координаты — точные строки ДУМК (см. City).
   City get city => City(
-        _prefs.getString('cityName') ?? kDefaultCity.name,
-        _prefs.getString('cityLatStr') ?? kDefaultCity.latStr,
-        _prefs.getString('cityLngStr') ?? kDefaultCity.lngStr,
-        region: _prefs.getString('cityRegion') ?? kDefaultCity.region,
-      );
+    _prefs.getString('cityName') ?? kDefaultCity.name,
+    _prefs.getString('cityLatStr') ?? kDefaultCity.latStr,
+    _prefs.getString('cityLngStr') ?? kDefaultCity.lngStr,
+    region: _prefs.getString('cityRegion') ?? kDefaultCity.region,
+  );
 
   // ── Настройки уведомлений ──────────────────────────────────────────────
   /// Окна поклонения (по умолчанию все включены — решение владельца).
   bool notifWindow(String id) => getReminderConfig(id, lang).enabled;
-  void setNotifWindow(String id, bool v) => saveReminderConfig(getReminderConfig(id, lang).copyWith(enabled: v));
+  void setNotifWindow(String id, bool v) =>
+      saveReminderConfig(getReminderConfig(id, lang).copyWith(enabled: v));
 
   /// Оповещение о каждом намазе отдельно (fajr/dhuhr/asr/maghrib/isha).
   bool notifPrayer(String id) => getReminderConfig(id, lang).enabled;
-  void setNotifPrayer(String id, bool v) => saveReminderConfig(getReminderConfig(id, lang).copyWith(enabled: v));
+  void setNotifPrayer(String id, bool v) =>
+      saveReminderConfig(getReminderConfig(id, lang).copyWith(enabled: v));
+
+  /// Громкий системный будильник для пробуждения на Фаджр.
+  bool get fajrAlarmEnabled => _prefs.getBool('fajr_alarm_enabled') ?? false;
+  set fajrAlarmEnabled(bool val) =>
+      _set(() => _prefs.setBool('fajr_alarm_enabled', val));
+
+  int get fajrAlarmOffsetMinutes =>
+      _prefs.getInt('fajr_alarm_offset') ?? -15;
+  set fajrAlarmOffsetMinutes(int val) =>
+      _set(() => _prefs.setInt('fajr_alarm_offset', val));
 
   /// Свои напоминания пользователя (конструктор).
   List<ReminderConfig> get customReminders {
@@ -47,16 +59,22 @@ class AppState extends ChangeNotifier {
         .toList();
   }
 
-  void saveReminders(List<ReminderConfig> list) => _set(() =>
-      _prefs.setString('customReminders', jsonEncode([for (final r in list) r.toJson()])));
+  void saveReminders(List<ReminderConfig> list) => _set(
+    () => _prefs.setString(
+      'customReminders',
+      jsonEncode([for (final r in list) r.toJson()]),
+    ),
+  );
 
   void addReminder(ReminderConfig r) => saveReminders([...customReminders, r]);
-  void removeReminder(String id) =>
-      saveReminders([for (final r in customReminders) if (r.id != id) r]);
+  void removeReminder(String id) => saveReminders([
+    for (final r in customReminders)
+      if (r.id != id) r,
+  ]);
   void toggleReminder(String id, bool v) => saveReminders([
-        for (final r in customReminders)
-          if (r.id == id) r.copyWith(enabled: v) else r
-      ]);
+    for (final r in customReminders)
+      if (r.id == id) r.copyWith(enabled: v) else r,
+  ]);
 
   ReminderConfig getReminderConfig(String id, String lang) {
     final raw = _prefs.getString('rc:$id');
@@ -69,93 +87,101 @@ class AppState extends ChangeNotifier {
     final kz = lang == 'kz';
     return switch (id) {
       'morning' => ReminderConfig(
-          id: id,
-          title: kz ? 'Таңғы зікірлер' : 'Утренние зикры',
-          enabled: _prefs.getBool('nw:morning') ?? true,
-          prayer: 0,
-          offsetMin: 0,
-        ),
+        id: id,
+        title: kz ? 'Таңғы зікірлер' : 'Утренние зикры',
+        enabled: _prefs.getBool('nw:morning') ?? true,
+        prayer: 0,
+        offsetMin: 0,
+      ),
       'evening' => ReminderConfig(
-          id: id,
-          title: kz ? 'Кешкі зікірлер' : 'Вечерние зикры',
-          enabled: _prefs.getBool('nw:evening') ?? true,
-          prayer: 3,
-          offsetMin: 0,
-        ),
+        id: id,
+        title: kz ? 'Кешкі зікірлер' : 'Вечерние зикры',
+        enabled: _prefs.getBool('nw:evening') ?? true,
+        prayer: 3,
+        offsetMin: 0,
+      ),
       'kahf' => ReminderConfig(
-          id: id,
-          title: kz ? '«әл-Кәһф» сүресі (жұма)' : 'Сура аль-Кахф (пятница)',
-          enabled: _prefs.getBool('nw:kahf') ?? true,
-          prayer: 2,
-          offsetMin: -120,
-          repeat: 'weekly',
-        ),
+        id: id,
+        title: kz ? '«әл-Кәһф» сүресі (жұма)' : 'Сура аль-Кахф (пятница)',
+        enabled: _prefs.getBool('nw:kahf') ?? true,
+        prayer: 2,
+        offsetMin: -120,
+        repeat: 'weekly',
+      ),
       'dua' => ReminderConfig(
-          id: id,
-          title: kz ? 'Дұға сағаты (жұма)' : 'Час дуа (пятница)',
-          enabled: _prefs.getBool('nw:dua') ?? true,
-          prayer: 4,
-          offsetMin: -60,
-          repeat: 'weekly',
-        ),
+        id: id,
+        title: kz ? 'Дұға сағаты (жұма)' : 'Час дуа (пятница)',
+        enabled: _prefs.getBool('nw:dua') ?? true,
+        prayer: 4,
+        offsetMin: -60,
+        repeat: 'weekly',
+      ),
       'fajr' => ReminderConfig(
-          id: id,
-          title: kz ? 'Таң' : 'Фаджр',
-          enabled: _prefs.getBool('np:fajr') ?? true,
-          prayer: 0,
-          offsetMin: 0,
-        ),
+        id: id,
+        title: kz ? 'Таң' : 'Фаджр',
+        enabled: _prefs.getBool('np:fajr') ?? true,
+        prayer: 0,
+        offsetMin: 0,
+      ),
       'sunrise' => ReminderConfig(
-          id: id,
-          title: kz ? 'Күн шығуы' : 'Восход',
-          enabled: _prefs.getBool('np:sunrise') ?? true,
-          prayer: 1,
-          offsetMin: 0,
-        ),
+        id: id,
+        title: kz ? 'Күн шығуы' : 'Восход',
+        enabled: _prefs.getBool('np:sunrise') ?? true,
+        prayer: 1,
+        offsetMin: 0,
+      ),
       'dhuhr' => ReminderConfig(
-          id: id,
-          title: kz ? 'Бесін' : 'Зухр',
-          enabled: _prefs.getBool('np:dhuhr') ?? true,
-          prayer: 2,
-          offsetMin: 0,
-        ),
+        id: id,
+        title: kz ? 'Бесін' : 'Зухр',
+        enabled: _prefs.getBool('np:dhuhr') ?? true,
+        prayer: 2,
+        offsetMin: 0,
+      ),
       'asr' => ReminderConfig(
-          id: id,
-          title: kz ? 'Екінті' : 'Аср',
-          enabled: _prefs.getBool('np:asr') ?? true,
-          prayer: 3,
-          offsetMin: 0,
-        ),
+        id: id,
+        title: kz ? 'Екінті' : 'Аср',
+        enabled: _prefs.getBool('np:asr') ?? true,
+        prayer: 3,
+        offsetMin: 0,
+      ),
       'maghrib' => ReminderConfig(
-          id: id,
-          title: kz ? 'Ақшам' : 'Магриб',
-          enabled: _prefs.getBool('np:maghrib') ?? true,
-          prayer: 4,
-          offsetMin: 0,
-        ),
+        id: id,
+        title: kz ? 'Ақшам' : 'Магриб',
+        enabled: _prefs.getBool('np:maghrib') ?? true,
+        prayer: 4,
+        offsetMin: 0,
+      ),
       'isha' => ReminderConfig(
-          id: id,
-          title: kz ? 'Құптан' : 'Иша',
-          enabled: _prefs.getBool('np:isha') ?? true,
-          prayer: 5,
-          offsetMin: 0,
-        ),
+        id: id,
+        title: kz ? 'Құптан' : 'Иша',
+        enabled: _prefs.getBool('np:isha') ?? true,
+        prayer: 5,
+        offsetMin: 0,
+      ),
       _ => ReminderConfig(
-          id: id,
-          title: 'Напоминание',
-          enabled: true,
-          prayer: 0,
-          offsetMin: 0,
-        ),
+        id: id,
+        title: 'Напоминание',
+        enabled: true,
+        prayer: 0,
+        offsetMin: 0,
+      ),
     };
   }
 
   void saveReminderConfig(ReminderConfig rc) {
     _set(() {
       _prefs.setString('rc:${rc.id}', jsonEncode(rc.toJson()));
-      if (rc.id == 'morning' || rc.id == 'evening' || rc.id == 'kahf' || rc.id == 'dua') {
+      if (rc.id == 'morning' ||
+          rc.id == 'evening' ||
+          rc.id == 'kahf' ||
+          rc.id == 'dua') {
         _prefs.setBool('nw:${rc.id}', rc.enabled);
-      } else if (rc.id == 'fajr' || rc.id == 'dhuhr' || rc.id == 'asr' || rc.id == 'maghrib' || rc.id == 'isha' || rc.id == 'sunrise') {
+      } else if (rc.id == 'fajr' ||
+          rc.id == 'dhuhr' ||
+          rc.id == 'asr' ||
+          rc.id == 'maghrib' ||
+          rc.id == 'isha' ||
+          rc.id == 'sunrise') {
         _prefs.setBool('np:${rc.id}', rc.enabled);
       }
     });
@@ -166,7 +192,8 @@ class AppState extends ChangeNotifier {
   bool get showTranslation => _prefs.getBool('showTranslation') ?? true;
   bool get showFaz => _prefs.getBool('showFaz') ?? true;
   set showTranslit(bool v) => _set(() => _prefs.setBool('showTranslit', v));
-  set showTranslation(bool v) => _set(() => _prefs.setBool('showTranslation', v));
+  set showTranslation(bool v) =>
+      _set(() => _prefs.setBool('showTranslation', v));
   set showFaz(bool v) => _set(() => _prefs.setBool('showFaz', v));
 
   set lang(String v) => _set(() => _prefs.setString('lang', v));
@@ -175,11 +202,11 @@ class AppState extends ChangeNotifier {
   set dateGregorian(bool v) => _set(() => _prefs.setBool('dateGregorian', v));
 
   void setCity(City c) => _set(() {
-        _prefs.setString('cityName', c.name);
-        _prefs.setString('cityLatStr', c.latStr);
-        _prefs.setString('cityLngStr', c.lngStr);
-        _prefs.setString('cityRegion', c.region);
-      });
+    _prefs.setString('cityName', c.name);
+    _prefs.setString('cityLatStr', c.latStr);
+    _prefs.setString('cityLngStr', c.lngStr);
+    _prefs.setString('cityRegion', c.region);
+  });
 
   /// Отметки за день: ключи morning / kahf / evening / dua.
   /// Хранятся с датой, чтобы в полночь начинался чистый день.
@@ -192,6 +219,33 @@ class AppState extends ChangeNotifier {
   List<String> doneOn(DateTime date) =>
       _prefs.getStringList('done:${dayKey(date)}') ?? const [];
 
+  /// Показывается ли пользовательское дело в конкретный день.
+  ///
+  /// Правило совпадает с планировщиком уведомлений: ежедневное — каждый день,
+  /// еженедельное — в выбранный день недели, ежемесячное — первого числа.
+  bool reminderOccursOn(ReminderConfig reminder, DateTime date) {
+    if (!reminder.enabled) return false;
+    return switch (reminder.repeat) {
+      'weekly' => date.weekday == reminder.weekday,
+      'monthly' => date.day == 1,
+      _ => true,
+    };
+  }
+
+  /// Реальный прогресс дня для кольца тетради: базовые дела плюс все
+  /// пользовательские напоминания, которые приходятся на эту дату.
+  (int, int) taskProgressOn(DateTime date) {
+    final taskIds = <String>[
+      'morning',
+      'evening',
+      if (date.weekday == DateTime.friday) ...['kahf', 'dua'],
+      for (final reminder in customReminders)
+        if (reminderOccursOn(reminder, date)) 'custom:${reminder.id}',
+    ];
+    final done = doneOn(date);
+    return (taskIds.where(done.contains).length, taskIds.length);
+  }
+
   /// «Тетрадь постоянства»: день засчитан (зелёный), если выполнены
   /// оба ежедневных зикра — утренний и вечерний. Иначе — пропущен (красный).
   bool dayCompleted(DateTime date) {
@@ -200,18 +254,18 @@ class AppState extends ChangeNotifier {
   }
 
   void markDone(String task) => _set(() {
-        final list = _prefs.getStringList('done:$_todayKey') ?? <String>[];
-        if (!list.contains(task)) {
-          list.add(task);
-          _prefs.setStringList('done:$_todayKey', list);
-        }
-      });
+    final list = _prefs.getStringList('done:$_todayKey') ?? <String>[];
+    if (!list.contains(task)) {
+      list.add(task);
+      _prefs.setStringList('done:$_todayKey', list);
+    }
+  });
 
   ThemeMode get themeMode => switch (theme) {
-        'light' => ThemeMode.light,
-        'system' => ThemeMode.system,
-        _ => ThemeMode.dark,
-      };
+    'light' => ThemeMode.light,
+    'system' => ThemeMode.system,
+    _ => ThemeMode.dark,
+  };
 
   void _set(void Function() write) {
     write();
@@ -222,7 +276,7 @@ class AppState extends ChangeNotifier {
 /// Доступ к AppState вниз по дереву без внешних пакетов.
 class AppScope extends InheritedNotifier<AppState> {
   const AppScope({super.key, required AppState state, required super.child})
-      : super(notifier: state);
+    : super(notifier: state);
 
   static AppState of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<AppScope>()!.notifier!;
