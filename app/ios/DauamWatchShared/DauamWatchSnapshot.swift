@@ -122,6 +122,10 @@ struct DauamWatchSnapshot: Codable, Hashable {
   static let placeholder: DauamWatchSnapshot = {
     let calendar = Calendar.current
     let now = Date.now
+    let weekdayFormatter = DateFormatter()
+    weekdayFormatter.locale = Locale(identifier: "ru_RU")
+    weekdayFormatter.dateFormat = "EEEE"
+    let currentWeekday = weekdayFormatter.string(from: now).capitalized
     func makeDate(hour: Int, minute: Int, tomorrow: Bool = false) -> Date {
       var components = calendar.dateComponents([.year, .month, .day], from: now)
       components.hour = hour
@@ -153,7 +157,9 @@ struct DauamWatchSnapshot: Codable, Hashable {
       generatedAt: now.timeIntervalSince1970,
       language: "ru",
       city: "Экибастуз",
-      dateLabel: "Суббота · 11 сафар",
+      // До первой синхронизации хотя бы не показываем заведомо устаревший
+      // день недели. Реальные дата и времена сразу заменяются снимком iPhone.
+      dateLabel: currentWeekday,
       prayers: [
         prayer("fajr", "Фаджр", "03:45", hour: 3, minute: 45),
         prayer("sunrise", "Восход", "05:15", hour: 5, minute: 15),

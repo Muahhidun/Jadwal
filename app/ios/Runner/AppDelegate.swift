@@ -23,6 +23,7 @@ import UIKit
 
   override func applicationDidBecomeActive(_ application: UIApplication) {
     LiveActivityManager.cleanupExpiredPrayerActivities()
+    WatchSyncManager.shared.refreshFromSharedStore()
     super.applicationDidBecomeActive(application)
   }
 
