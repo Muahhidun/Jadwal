@@ -15,11 +15,13 @@ import '../theme/tokens.dart';
 import '../theme/system_bars.dart';
 import 'city_picker.dart';
 import 'language_picker.dart';
+import 'qibla_screen.dart';
 import 'reader.dart';
 import 'reminders.dart';
 import 'scene_background.dart';
 
 import '../services/live_activity_service.dart';
+import '../services/location_checker_service.dart';
 import '../services/widget_data_service.dart';
 
 /// Экспериментальный современный нижний экран. Классический слой оставлен в
@@ -48,8 +50,59 @@ class _HomeScreenState extends State<HomeScreen>
   bool _hasSwipedHaptic = false;
   late final AnimationController _p = AnimationController(
     vsync: this,
+    lowerBound: -1.0,
+    upperBound: 1.0,
     duration: const Duration(milliseconds: 420),
   );
+
+  double get swipeProgress => _p.value;
+  set swipeProgress(double v) => _p.value = v;
+
+  void _onDragUpdate(DragUpdateDetails d, double h) {
+    if (d.primaryDelta == null) return;
+    if (_p.value == 0.0 && !_hasSwipedHaptic) {
+      HapticFeedback.lightImpact();
+      _hasSwipedHaptic = true;
+    }
+    if (_p.value >= 0.95 && d.localPosition.dy > 80) {
+      return;
+    }
+    if (_p.value <= -0.95 && d.localPosition.dy < h - 80) {
+      return;
+    }
+    _p.value = (_p.value - d.primaryDelta! / h).clamp(-1.0, 1.0);
+  }
+
+  void _onDragEnd(DragEndDetails d) {
+    _hasSwipedHaptic = false;
+    final v = d.primaryVelocity ?? 0;
+    double target;
+    if (_p.value > 0.3) {
+      target = 1.0;
+    } else if (_p.value < -0.3) {
+      target = -1.0;
+    } else if (v < -300) {
+      target = 1.0;
+    } else if (v > 300) {
+      target = -1.0;
+    } else {
+      target = 0.0;
+    }
+    _p.animateTo(target, curve: Curves.easeOutCubic);
+  }
+
+  void _onDragCancel() {
+    _hasSwipedHaptic = false;
+    double target;
+    if (_p.value > 0.4) {
+      target = 1.0;
+    } else if (_p.value < -0.4) {
+      target = -1.0;
+    } else {
+      target = 0.0;
+    }
+    _p.animateTo(target, curve: Curves.easeOutCubic);
+  }
 
   @override
   void initState() {
@@ -60,11 +113,24 @@ class _HomeScreenState extends State<HomeScreen>
       if (mounted) setState(() {});
     });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Разрешение на уведомления (iOS покажет диалог один раз; тем, кто
-      // прошёл онбординг на старом билде, попросим сейчас).
+      // Разрешение на уведомления
       await gNotifier?.requestPermission();
       if (!mounted) return;
       syncNotifications(AppScope.of(context), ScheduleScope.of(context));
+
+      // Авто-проверка смены города по GPS
+      LocationCheckerService.checkLocationChange(
+        context: context,
+        currentCity: AppScope.of(context).city,
+        onCitySelected: (newCity) {
+          if (!mounted) return;
+          setState(() {
+            AppScope.of(context).setCity(newCity);
+          });
+          syncNotifications(AppScope.of(context), ScheduleScope.of(context));
+        },
+      );
+
       // По тапу на уведомление или по команде Siri — открыть соответствующий сборник.
       final pending = gNotifier?.pendingCollection;
       if (pending != null && pending.isNotEmpty && mounted) {
@@ -229,24 +295,7 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       );
 
-  void _onDragUpdate(DragUpdateDetails d, double h) {
-    if (_p.value == 0.0 && d.primaryDelta! < 0 && !_hasSwipedHaptic) {
-      HapticFeedback.lightImpact();
-      _hasSwipedHaptic = true;
-    }
-    _p.value = (_p.value - d.primaryDelta! / h).clamp(0.0, 1.0);
-  }
 
-  void _onDragEnd(DragEndDetails d) {
-    _hasSwipedHaptic = false;
-    final v = d.primaryVelocity ?? 0;
-    final target = v < -300
-        ? 1.0
-        : v > 300
-        ? 0.0
-        : (_p.value > 0.5 ? 1.0 : 0.0);
-    _p.animateTo(target, curve: Curves.easeOutCubic);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -275,6 +324,7 @@ class _HomeScreenState extends State<HomeScreen>
             behavior: HitTestBehavior.opaque,
             onVerticalDragUpdate: (d) => _onDragUpdate(d, h),
             onVerticalDragEnd: _onDragEnd,
+            onVerticalDragCancel: _onDragCancel,
             child: AnimatedBuilder(
               animation: _p,
               builder: (context, _) {
@@ -314,6 +364,7 @@ class _HomeScreenState extends State<HomeScreen>
                             h: h,
                             schedule: schedule,
                             onCity: () => CityPicker.open(context),
+                            onQibla: () => _p.animateTo(-1, curve: Curves.easeOutCubic),
                             onReader: _openReader,
                             onToggleDate: () =>
                                 app.dateGregorian = !app.dateGregorian,
@@ -321,6 +372,20 @@ class _HomeScreenState extends State<HomeScreen>
                                 _p.animateTo(1, curve: Curves.easeOutCubic),
                           ),
                         ),
+                        if (p < 0)
+                          Positioned.fill(
+                            child: Transform.translate(
+                              offset: Offset(0, -h * (1 + p)),
+                              child: Opacity(
+                                opacity: (-p * 1.4).clamp(0.0, 1.0),
+                                child: QiblaView(
+                                  selectedCity: app.city,
+                                  showAppBar: true,
+                                  onClose: () => _p.animateTo(0, curve: Curves.easeOutCubic),
+                                ),
+                              ),
+                            ),
+                          ),
                         Positioned.fill(
                           child: _modernLowerScreen
                               ? _ModernDayLayer(
@@ -665,6 +730,7 @@ class _HomeLayer extends StatelessWidget {
     required this.h,
     required this.schedule,
     required this.onCity,
+    required this.onQibla,
     required this.onReader,
     required this.onToggleDate,
     required this.onExpand,
@@ -677,7 +743,7 @@ class _HomeLayer extends StatelessWidget {
   final DayTimes t;
   final int nowMin, nowSec;
   final ScheduleService schedule;
-  final VoidCallback onCity, onToggleDate, onExpand;
+  final VoidCallback onCity, onQibla, onToggleDate, onExpand;
   final void Function(String) onReader;
 
   @override
@@ -836,7 +902,20 @@ class _HomeLayer extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: onQibla,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.navigation_outlined, size: 14, color: fg.faint),
+                  const SizedBox(width: 3),
+                  Text('Кибла ↑', style: style),
+                ],
+              ),
+            ),
+          ),
           Expanded(
             child: GestureDetector(
               onTap: onToggleDate,
@@ -1086,7 +1165,7 @@ class _DayLayer extends StatelessWidget {
       0.18,
       1.0,
       curve: Curves.easeOutCubic,
-    ).transform(p);
+    ).transform(p.clamp(0.0, 1.0));
 
     // Стеклянный скролл-контент
     return Transform.translate(
@@ -1174,11 +1253,9 @@ class _DayLayer extends StatelessWidget {
                     top: 48,
                     // Низ — над закреплёнными кнопками (не налезать на них).
                     bottom: 80,
-                    child: SingleChildScrollView(
-                      physics: const NeverScrollableScrollPhysics(),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
                           // Карточка 1: Времена молитв (вертикальный список)
                           _GlassCard(
                             padding: const EdgeInsets.symmetric(
@@ -1263,8 +1340,7 @@ class _DayLayer extends StatelessWidget {
                         ],
                       ),
                     ),
-                  ),
-                  // Кнопки закреплены внизу — всегда видны, не уезжают за экран.
+                    // Кнопки закреплены внизу — всегда видны, не уезжают за экран.
                   Positioned(
                     left: 28,
                     right: 28,
@@ -1365,7 +1441,7 @@ class _StagedReveal extends StatelessWidget {
     final raw = ((progress - start) / (1 - start)).clamp(0.0, 1.0);
     final value = Curves.easeOutCubic.transform(raw);
     return IgnorePointer(
-      ignoring: value < 0.88,
+      ignoring: value < 0.5,
       child: Opacity(
         opacity: value,
         child: Transform.translate(
@@ -1410,7 +1486,7 @@ class _ModernDayLayer extends StatelessWidget {
       0.14,
       1.0,
       curve: Curves.easeOutCubic,
-    ).transform(p);
+    ).transform(p.clamp(0.0, 1.0));
     final eveningOpen = windowsFor(
       t,
     ).any((w) => w.id == TaskId.evening && w.contains(nowMin));
@@ -2708,13 +2784,13 @@ class _ScalePressedState extends State<_ScalePressed>
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      onTap: widget.onTap,
       onTapDown: (_) {
         _controller.animateTo(0.985, curve: Curves.easeInOut);
       },
       onTapUp: (_) {
         _controller.animateTo(1.0, curve: Curves.easeInOut);
         HapticFeedback.lightImpact();
-        widget.onTap();
       },
       onTapCancel: () {
         _controller.animateTo(1.0, curve: Curves.easeInOut);

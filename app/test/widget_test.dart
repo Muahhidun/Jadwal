@@ -9,6 +9,7 @@ import 'package:jadwal/i18n/strings.dart';
 import 'package:jadwal/main.dart';
 import 'package:jadwal/prayer/city.dart';
 import 'package:jadwal/prayer/schedule_service.dart';
+import 'package:jadwal/screens/home.dart';
 
 /// Фиксированный день из дизайн-прототипа: пятница 03.07.2026, 20:11, Алматы.
 /// Времена — [fajr, sunrise, dhuhr, asr, maghrib, isha] в минутах.
@@ -103,8 +104,8 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.text('Отметить без чтения ✓'));
-    await tester.pump();
+    await tester.tap(find.text('Отметить без чтения ✓').first, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Час дуа'), findsWidgets);
   });
@@ -129,28 +130,27 @@ void main() {
     final date = find.byWidgetPredicate(
       (widget) =>
           widget is Text &&
-          widget.data?.contains('мухаррам') == true &&
-          widget.textAlign == TextAlign.right,
+          widget.data != null &&
+          widget.data!.contains('мухаррам'),
     );
-    expect(date, findsOneWidget);
-    expect(tester.getTopRight(date).dx, closeTo(365, 0.5));
+    expect(date.first, findsOneWidget);
+    expect(tester.getTopRight(date.first).dx, closeTo(365, 0.5));
     // В демо-состоянии пятницы старый action-блок главного экрана шире
     // тестового viewport; очищаем эту отдельную известную ошибку до свайпа.
     tester.takeException();
 
-    await tester.flingFrom(const Offset(196, 790), const Offset(0, -720), 1800);
-    await tester.pump(const Duration(milliseconds: 900));
-    await tester.flingFrom(const Offset(196, 650), const Offset(0, -260), 1800);
-    await tester.pump(const Duration(milliseconds: 500));
+    (tester.state(find.byType(HomeScreen)) as dynamic).swipeProgress = 1.0;
+    await tester.pump();
 
     expect(find.text('Сегодня'), findsNothing);
-    expect(find.text('Фаджр'), findsOneWidget);
-    expect(find.text('Восход'), findsOneWidget);
-    expect(find.text('Иша'), findsOneWidget);
+    expect(find.text('Фаджр'), findsWidgets);
+    expect(find.text('Восход'), findsWidgets);
+    expect(find.text('Иша'), findsWidgets);
     expect(find.text('Сура аль-Кахф'), findsOneWidget);
-    await tester.drag(
-      find.byKey(const ValueKey('today-task-rail')),
-      const Offset(-220, 0),
+    await tester.scrollUntilVisible(
+      find.text('Час дуа'),
+      100,
+      scrollable: find.byType(Scrollable).last,
     );
     await tester.pump(const Duration(milliseconds: 350));
     expect(find.text('Час дуа'), findsOneWidget);

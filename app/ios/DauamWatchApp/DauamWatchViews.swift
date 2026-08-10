@@ -53,6 +53,8 @@ struct DauamWatchRootView: View {
         .tag(1)
       DauamWatchTasksView(snapshot: model.snapshot)
         .tag(2)
+      DauamWatchQiblaView(snapshot: model.snapshot)
+        .tag(3)
     }
     .tabViewStyle(.verticalPage(transitionStyle: .blur))
   }
@@ -280,3 +282,77 @@ private struct DauamWatchTasksView: View {
     }
   }
 }
+
+private struct DauamWatchQiblaView: View {
+  let snapshot: DauamWatchSnapshot
+
+  // Мекка: 21.422487, 39.826206
+  private var qiblaAngle: Double {
+    let lat1 = (snapshot.lat * .pi) / 180.0
+    let lng1 = (snapshot.lng * .pi) / 180.0
+    let lat2 = (21.422487 * .pi) / 180.0
+    let lng2 = (39.826206 * .pi) / 180.0
+
+    let dLng = lng2 - lng1
+    let y = sin(dLng) * cos(lat2)
+    let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLng)
+    let bearing = atan2(y, x) * (180.0 / .pi)
+    return (bearing + 360.0).truncatingRemainder(dividingBy: 360.0)
+  }
+
+  var body: some View {
+    TimelineView(.periodic(from: .now, by: 60)) { context in
+      let palette = DauamWatchPalette.resolve(snapshot: snapshot, at: context.date)
+      let primary = palette.darkText ? Color(rgb: 0x101F2A) : Color(rgb: 0xF8F4EA)
+      let accent = Color(rgb: palette.accent)
+
+      ZStack {
+        DauamWatchBackground(snapshot: snapshot)
+        VStack(spacing: 6) {
+          HStack {
+            Text(snapshot.isKazakh ? "ҚҰБЛА" : "КИБЛА")
+              .font(.system(size: 13, weight: .bold, design: .rounded))
+              .foregroundStyle(accent)
+            Spacer()
+            Text("\(Int(qiblaAngle))°")
+              .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
+              .foregroundStyle(primary.opacity(0.8))
+          }
+          .padding(.horizontal, 10)
+
+          Spacer(minLength: 0)
+
+          ZStack {
+            Circle()
+              .stroke(primary.opacity(0.18), lineWidth: 3)
+              .frame(width: 86, height: 86)
+
+            // Стрелка Киблы
+            VStack {
+              Image(systemName: "location.north.circle.fill")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(accent)
+              Spacer()
+            }
+            .frame(width: 86, height: 86)
+            .rotationEffect(.degrees(qiblaAngle))
+
+            Text(snapshot.city)
+              .font(.system(size: 9, weight: .semibold, design: .rounded))
+              .foregroundStyle(primary.opacity(0.7))
+              .lineLimit(1)
+          }
+
+          Spacer(minLength: 0)
+
+          Text("Мекке: 3 840 км")
+            .font(.system(size: 10, weight: .medium, design: .rounded))
+            .foregroundStyle(primary.opacity(0.65))
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 6)
+      }
+    }
+  }
+}
+
