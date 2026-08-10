@@ -287,9 +287,11 @@ private struct DauamWatchQiblaView: View {
   let snapshot: DauamWatchSnapshot
 
   // Мекка: 21.422487, 39.826206
-  private var qiblaAngle: Double {
-    let lat1 = (snapshot.lat * .pi) / 180.0
-    let lng1 = (snapshot.lng * .pi) / 180.0
+  /// nil, пока iPhone не прислал координаты города (старый снимок).
+  private var qiblaAngle: Double? {
+    guard let lat = snapshot.lat, let lng = snapshot.lng else { return nil }
+    let lat1 = (lat * .pi) / 180.0
+    let lng1 = (lng * .pi) / 180.0
     let lat2 = (21.422487 * .pi) / 180.0
     let lng2 = (39.826206 * .pi) / 180.0
 
@@ -314,7 +316,7 @@ private struct DauamWatchQiblaView: View {
               .font(.system(size: 13, weight: .bold, design: .rounded))
               .foregroundStyle(accent)
             Spacer()
-            Text("\(Int(qiblaAngle))°")
+            Text(qiblaAngle.map { "\(Int($0))°" } ?? "—")
               .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
               .foregroundStyle(primary.opacity(0.8))
           }
@@ -335,7 +337,8 @@ private struct DauamWatchQiblaView: View {
               Spacer()
             }
             .frame(width: 86, height: 86)
-            .rotationEffect(.degrees(qiblaAngle))
+            .rotationEffect(.degrees(qiblaAngle ?? 0))
+            .opacity(qiblaAngle == nil ? 0.25 : 1)
 
             Text(snapshot.city)
               .font(.system(size: 9, weight: .semibold, design: .rounded))

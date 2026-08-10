@@ -101,6 +101,9 @@ class WidgetDataService {
       'tasks': tasks,
       'taskDone': doneCount,
       'taskTotal': totalCount,
+      // Координаты города — для экрана Киблы на часах.
+      'lat': double.tryParse(app.city.latStr) ?? 0,
+      'lng': double.tryParse(app.city.lngStr) ?? 0,
     };
 
     try {

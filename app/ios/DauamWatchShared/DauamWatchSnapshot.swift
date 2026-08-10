@@ -45,6 +45,10 @@ struct DauamWatchSnapshot: Codable, Hashable {
   let tasks: [DauamWatchTask]
   let taskDone: Int
   let taskTotal: Int
+  /// Координаты города для Киблы. Optional: снапшоты старых версий их не
+  /// содержат — тогда экран Киблы просит открыть приложение на iPhone.
+  let lat: Double?
+  let lng: Double?
 
   var isKazakh: Bool { language == "kz" }
 
@@ -174,7 +178,9 @@ struct DauamWatchSnapshot: Codable, Hashable {
         DauamWatchTask(id: "evening", title: "Вечерние зикры", done: false),
       ],
       taskDone: 1,
-      taskTotal: 2
+      taskTotal: 2,
+      lat: nil,
+      lng: nil
     )
   }()
 }
