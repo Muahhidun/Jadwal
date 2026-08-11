@@ -29,10 +29,9 @@ import '../services/widget_data_service.dart';
 /// `tmp/lower-screen-rollback-2026-07-22/` для точного отката.
 const _modernLowerScreen = true;
 
-/// Главный экран = вертикальная лента из двух «страниц» (README §2–3).
-/// Прокрутка снизу вверх (как в TikTok/Shorts): контент реально скроллится,
-/// а таймер и сетка времён — общие элементы: переезжают и перестраиваются
-/// (3+3 → ряд из 6). Сзади — художественный фон на два экрана.
+/// Главный экран = центральная страница вертикальной ленты из трёх экранов:
+/// Кибла сверху, таймер по центру, дела дня снизу. С каждого соседнего экрана
+/// встречный свайп возвращает пользователя к центральному таймеру.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -48,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen>
   String _lastWidgetSignature = '';
   bool _widgetSyncInFlight = false;
   bool _hasSwipedHaptic = false;
+  double _dragStartProgress = 0.0;
   late final AnimationController _p = AnimationController(
     vsync: this,
     lowerBound: -1.0,
@@ -56,7 +56,15 @@ class _HomeScreenState extends State<HomeScreen>
   );
 
   double get swipeProgress => _p.value;
-  set swipeProgress(double v) => _p.value = v;
+  set swipeProgress(double v) {
+    _p.value = v;
+    _dragStartProgress = v;
+  }
+
+  void _onDragStart(DragStartDetails _) {
+    _dragStartProgress = _p.value;
+    _hasSwipedHaptic = false;
+  }
 
   void _onDragUpdate(DragUpdateDetails d, double h) {
     if (d.primaryDelta == null) return;
@@ -64,10 +72,12 @@ class _HomeScreenState extends State<HomeScreen>
       HapticFeedback.lightImpact();
       _hasSwipedHaptic = true;
     }
-    if (_p.value >= 0.95 && d.localPosition.dy > 80) {
+    // На крайних экранах блокируем только движение дальше за границу ленты,
+    // но оставляем встречный свайп свободным для возврата к таймеру.
+    if (_p.value >= 0.95 && d.primaryDelta! < 0) {
       return;
     }
-    if (_p.value <= -0.95 && d.localPosition.dy < h - 80) {
+    if (_p.value <= -0.95 && d.primaryDelta! > 0) {
       return;
     }
     _p.value = (_p.value - d.primaryDelta! / h).clamp(-1.0, 1.0);
@@ -76,32 +86,23 @@ class _HomeScreenState extends State<HomeScreen>
   void _onDragEnd(DragEndDetails d) {
     _hasSwipedHaptic = false;
     final v = d.primaryVelocity ?? 0;
-    double target;
-    if (_p.value > 0.3) {
-      target = 1.0;
-    } else if (_p.value < -0.3) {
-      target = -1.0;
-    } else if (v < -300) {
-      target = 1.0;
-    } else if (v > 300) {
-      target = -1.0;
-    } else {
-      target = 0.0;
-    }
+    final movement = _p.value - _dragStartProgress;
+    final startPage = _dragStartProgress.round().clamp(-1, 1);
+    final direction = movement.abs() >= 0.10
+        ? movement.sign.toInt()
+        : v.abs() >= 300
+        ? (v < 0 ? 1 : -1)
+        : 0;
+    final target = (startPage + direction).clamp(-1, 1).toDouble();
     _p.animateTo(target, curve: Curves.easeOutCubic);
   }
 
   void _onDragCancel() {
     _hasSwipedHaptic = false;
-    double target;
-    if (_p.value > 0.4) {
-      target = 1.0;
-    } else if (_p.value < -0.4) {
-      target = -1.0;
-    } else {
-      target = 0.0;
-    }
-    _p.animateTo(target, curve: Curves.easeOutCubic);
+    _p.animateTo(
+      _dragStartProgress.round().clamp(-1, 1).toDouble(),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -164,7 +165,9 @@ class _HomeScreenState extends State<HomeScreen>
   void _checkSiriTarget() async {
     try {
       const channel = MethodChannel('kz.dauam/widgets');
-      final siriTarget = await channel.invokeMethod<String>('getPendingIntentTarget');
+      final siriTarget = await channel.invokeMethod<String>(
+        'getPendingIntentTarget',
+      );
       if (siriTarget != null && siriTarget.isNotEmpty && mounted) {
         _openReader(siriTarget, autoStartSpeech: true);
       }
@@ -295,8 +298,6 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       );
 
-
-
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -322,6 +323,7 @@ class _HomeScreenState extends State<HomeScreen>
           final h = box.maxHeight;
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
+            onVerticalDragStart: _onDragStart,
             onVerticalDragUpdate: (d) => _onDragUpdate(d, h),
             onVerticalDragEnd: _onDragEnd,
             onVerticalDragCancel: _onDragCancel,
@@ -364,7 +366,8 @@ class _HomeScreenState extends State<HomeScreen>
                             h: h,
                             schedule: schedule,
                             onCity: () => CityPicker.open(context),
-                            onQibla: () => _p.animateTo(-1, curve: Curves.easeOutCubic),
+                            onQibla: () =>
+                                _p.animateTo(-1, curve: Curves.easeOutCubic),
                             onReader: _openReader,
                             onToggleDate: () =>
                                 app.dateGregorian = !app.dateGregorian,
@@ -381,7 +384,10 @@ class _HomeScreenState extends State<HomeScreen>
                                 child: QiblaView(
                                   selectedCity: app.city,
                                   showAppBar: true,
-                                  onClose: () => _p.animateTo(0, curve: Curves.easeOutCubic),
+                                  onClose: () => _p.animateTo(
+                                    0,
+                                    curve: Curves.easeOutCubic,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1256,91 +1262,88 @@ class _DayLayer extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                          // Карточка 1: Времена молитв (вертикальный список)
-                          _GlassCard(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 10,
-                              horizontal: 8,
-                            ),
-                            child: _DayTimesList(
-                              s: s,
-                              c: c,
-                              t: t,
-                              nowMin: nowMin,
-                            ),
+                        // Карточка 1: Времена молитв (вертикальный список)
+                        _GlassCard(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 10,
+                            horizontal: 8,
                           ),
+                          child: _DayTimesList(
+                            s: s,
+                            c: c,
+                            t: t,
+                            nowMin: nowMin,
+                          ),
+                        ),
 
-                          // Карточка 2: Сегодня (задачи)
-                          _GlassCard(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 8,
-                              horizontal: 14,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text(
-                                  s.todayCaps,
-                                  style: JType.caption(c.faint),
-                                ),
-                                const SizedBox(height: 8),
-                                _TaskRow(
-                                  label: s.morningTitle,
-                                  done: app.isDone('morning'),
-                                  c: c,
-                                  onTap: () => onReader('morning'),
-                                ),
-                                if (t.isFriday)
-                                  _TaskRow(
-                                    label: s.kahfTitle,
-                                    done: app.isDone('kahf'),
-                                    c: c,
-                                    onTap: () => app.markDone('kahf'),
-                                  ),
-                                _TaskRow(
-                                  label: s.eveningTitle,
-                                  done: app.isDone('evening'),
-                                  c: c,
-                                  active: eveningOpen && !app.isDone('evening'),
-                                  trailing: eveningOpen
-                                      ? '${s.still} ${DayTimes.fmtDuration(t.times[Prayer.maghrib]! - nowMin)}'
-                                      : null,
-                                  onTap: () => onReader('evening'),
-                                ),
-                                if (t.isFriday)
-                                  _TaskRow(
-                                    label: s.duaTitle,
-                                    done: app.isDone('dua'),
-                                    c: c,
-                                    onTap: () => app.markDone('dua'),
-                                  ),
-                              ],
-                            ),
+                        // Карточка 2: Сегодня (задачи)
+                        _GlassCard(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                            horizontal: 14,
                           ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(s.todayCaps, style: JType.caption(c.faint)),
+                              const SizedBox(height: 8),
+                              _TaskRow(
+                                label: s.morningTitle,
+                                done: app.isDone('morning'),
+                                c: c,
+                                onTap: () => onReader('morning'),
+                              ),
+                              if (t.isFriday)
+                                _TaskRow(
+                                  label: s.kahfTitle,
+                                  done: app.isDone('kahf'),
+                                  c: c,
+                                  onTap: () => app.markDone('kahf'),
+                                ),
+                              _TaskRow(
+                                label: s.eveningTitle,
+                                done: app.isDone('evening'),
+                                c: c,
+                                active: eveningOpen && !app.isDone('evening'),
+                                trailing: eveningOpen
+                                    ? '${s.still} ${DayTimes.fmtDuration(t.times[Prayer.maghrib]! - nowMin)}'
+                                    : null,
+                                onTap: () => onReader('evening'),
+                              ),
+                              if (t.isFriday)
+                                _TaskRow(
+                                  label: s.duaTitle,
+                                  done: app.isDone('dua'),
+                                  c: c,
+                                  onTap: () => app.markDone('dua'),
+                                ),
+                            ],
+                          ),
+                        ),
 
-                          // Карточка 3: Тетрадь постоянства
-                          _GlassCard(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 8,
-                              horizontal: 14,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text(
-                                  '${s.notebookTitle} · ${_gregMonthCaps(schedule.now())}',
-                                  style: JType.caption(c.faint),
-                                ),
-                                const SizedBox(height: 12),
-                                _Notebook(c: c, app: app, now: schedule.now()),
-                              ],
-                            ),
+                        // Карточка 3: Тетрадь постоянства
+                        _GlassCard(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                            horizontal: 14,
                           ),
-                          const SizedBox(height: 12),
-                        ],
-                      ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                '${s.notebookTitle} · ${_gregMonthCaps(schedule.now())}',
+                                style: JType.caption(c.faint),
+                              ),
+                              const SizedBox(height: 12),
+                              _Notebook(c: c, app: app, now: schedule.now()),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                     ),
-                    // Кнопки закреплены внизу — всегда видны, не уезжают за экран.
+                  ),
+                  // Кнопки закреплены внизу — всегда видны, не уезжают за экран.
                   Positioned(
                     left: 28,
                     right: 28,

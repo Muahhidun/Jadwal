@@ -91,6 +91,46 @@ void main() {
     expect(find.textContaining('42'), findsWidgets); // адаптивно: «42 мин»
   });
 
+  testWidgets('верхний и нижний экраны свайпом возвращаются к таймеру', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'onboardingDone': true,
+      'lang': 'ru',
+    });
+    final state = await AppState.load();
+    await tester.pumpWidget(
+      JadwalApp(state: state, schedule: await demoSchedule()),
+    );
+    await tester.pump();
+
+    final home = find.byType(HomeScreen);
+    dynamic homeState() => tester.state(home);
+
+    // Центральный таймер → верхняя Кибла → центральный таймер.
+    await tester.dragFrom(const Offset(196, 420), const Offset(0, 240));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(homeState().swipeProgress, closeTo(-1.0, 0.01));
+
+    await tester.dragFrom(const Offset(196, 420), const Offset(0, -240));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(homeState().swipeProgress, closeTo(0.0, 0.01));
+
+    // Центральный таймер → нижний экран дня → центральный таймер.
+    await tester.dragFrom(const Offset(196, 420), const Offset(0, -240));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(homeState().swipeProgress, closeTo(1.0, 0.01));
+
+    await tester.dragFrom(const Offset(196, 420), const Offset(0, 240));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(homeState().swipeProgress, closeTo(0.0, 0.01));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('после отметки вечерних появляется час дуа (пятница)', (
     tester,
   ) async {
@@ -104,7 +144,10 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.text('Отметить без чтения ✓').first, warnIfMissed: false);
+    await tester.tap(
+      find.text('Отметить без чтения ✓').first,
+      warnIfMissed: false,
+    );
     await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Час дуа'), findsWidgets);
@@ -161,6 +204,8 @@ void main() {
 
     final fajrBefore = tester.getTopLeft(find.text('Фаджр'));
     await tester.dragFrom(const Offset(196, 430), const Offset(0, -120));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
     await tester.pump(const Duration(milliseconds: 250));
     final fajrAfter = tester.getTopLeft(find.text('Фаджр'));
 
