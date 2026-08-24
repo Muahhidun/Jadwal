@@ -14,6 +14,7 @@ import '../prayer/schedule_service.dart';
 /// чего WidgetKit получает команду перестроить timelines.
 class WidgetDataService {
   static const MethodChannel _channel = MethodChannel('kz.dauam/widgets');
+  static const int scheduleLookaheadDays = 14;
 
   static Future<bool> sync({
     required AppState app,
@@ -23,10 +24,6 @@ class WidgetDataService {
     required DateTime now,
     required String dateLabel,
   }) async {
-    final tomorrowDate = DateTime(now.year, now.month, now.day + 1);
-    final tomorrow = schedule.timesFor(app.city, tomorrowDate);
-    if (tomorrow == null) return false;
-
     DateTime timestampFor(DayTimes day, Prayer prayer) {
       final minutes = day.times[prayer]!;
       return DateTime(
@@ -50,11 +47,17 @@ class WidgetDataService {
       'isTomorrow': isTomorrow,
     };
 
+    final scheduleDays = <DayTimes>[today];
+    for (var offset = 1; offset < scheduleLookaheadDays; offset++) {
+      final date = DateTime(now.year, now.month, now.day + offset);
+      final day = schedule.timesFor(app.city, date);
+      if (day != null) scheduleDays.add(day);
+    }
+
     final prayerPoints = <Map<String, Object>>[
-      for (final prayer in Prayer.values)
-        prayerJson(today, prayer, isTomorrow: false),
-      for (final prayer in Prayer.values)
-        prayerJson(tomorrow, prayer, isTomorrow: true),
+      for (var dayIndex = 0; dayIndex < scheduleDays.length; dayIndex++)
+        for (final prayer in Prayer.values)
+          prayerJson(scheduleDays[dayIndex], prayer, isTomorrow: dayIndex > 0),
     ];
 
     final tasks = <Map<String, Object>>[
@@ -92,12 +95,13 @@ class WidgetDataService {
 
     final (doneCount, totalCount) = app.taskProgressOn(today.date);
     final payload = <String, Object>{
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'generatedAt': now.millisecondsSinceEpoch / 1000.0,
       'language': app.lang,
       'city': app.city.name,
       'dateLabel': dateLabel,
       'prayers': prayerPoints,
+      'scheduleDays': scheduleDays.length,
       'tasks': tasks,
       'taskDone': doneCount,
       'taskTotal': totalCount,

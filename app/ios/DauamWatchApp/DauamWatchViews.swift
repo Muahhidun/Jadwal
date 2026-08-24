@@ -1,3 +1,4 @@
+import CoreLocation
 import SwiftUI
 
 private extension Color {
@@ -38,7 +39,7 @@ struct DauamWatchRootView: View {
     if let index = arguments.firstIndex(of: "-watchPage"),
        arguments.indices.contains(index + 1),
        let value = Int(arguments[index + 1]) {
-      page = min(2, max(0, value))
+      page = min(3, max(0, value))
     } else {
       page = 0
     }
@@ -177,7 +178,7 @@ private struct DauamWatchScheduleView: View {
             .font(.system(size: 14, weight: .bold, design: .rounded))
             .foregroundStyle(primary)
 
-          ForEach(snapshot.todayPrayers) { prayer in
+          ForEach(snapshot.prayers(on: context.date)) { prayer in
             HStack(spacing: 6) {
               Image(systemName: prayer.symbol)
                 .font(.system(size: 10, weight: .semibold))
@@ -283,13 +284,102 @@ private struct DauamWatchTasksView: View {
   }
 }
 
+@MainActor
+private final class DauamWatchCompass: NSObject, ObservableObject, @preconcurrency CLLocationManagerDelegate {
+  @Published private(set) var heading: CLLocationDirection?
+  @Published private(set) var coordinate: CLLocationCoordinate2D?
+  @Published private(set) var isAvailable = CLLocationManager.headingAvailable()
+
+  private let manager = CLLocationManager()
+  private var isActive = false
+
+  override init() {
+    super.init()
+    manager.delegate = self
+    manager.desiredAccuracy = kCLLocationAccuracyBest
+    manager.headingFilter = 1
+  }
+
+  func start() {
+    isActive = true
+    guard CLLocationManager.headingAvailable() else {
+      isAvailable = false
+      return
+    }
+
+    switch manager.authorizationStatus {
+    case .notDetermined:
+      manager.requestWhenInUseAuthorization()
+    case .authorizedAlways, .authorizedWhenInUse:
+      beginUpdates()
+    default:
+      isAvailable = false
+    }
+  }
+
+  func stop() {
+    isActive = false
+    manager.stopUpdatingHeading()
+    manager.stopUpdatingLocation()
+  }
+
+  private func beginUpdates() {
+    guard isActive else { return }
+    isAvailable = true
+    manager.startUpdatingLocation()
+    manager.startUpdatingHeading()
+  }
+
+  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    if manager.authorizationStatus == .authorizedAlways ||
+        manager.authorizationStatus == .authorizedWhenInUse {
+      beginUpdates()
+    }
+  }
+
+  func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    if let coordinate = locations.last?.coordinate {
+      self.coordinate = coordinate
+    }
+  }
+
+  func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+    guard newHeading.headingAccuracy >= 0 else { return }
+    let raw = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+    guard let previous = heading else {
+      heading = raw
+      return
+    }
+
+    // Сглаживаем по кратчайшей дуге, чтобы переход 359° → 0° не вращал
+    // стрелку через весь круг.
+    let delta = (raw - previous + 540).truncatingRemainder(dividingBy: 360) - 180
+    heading = (previous + delta * 0.28 + 360).truncatingRemainder(dividingBy: 360)
+  }
+
+  func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    // Последнее валидное направление остаётся на экране; Core Location сам
+    // продолжит доставку после временного сбоя датчика.
+  }
+}
+
 private struct DauamWatchQiblaView: View {
   let snapshot: DauamWatchSnapshot
+  @StateObject private var compass = DauamWatchCompass()
 
   // Мекка: 21.422487, 39.826206
-  /// nil, пока iPhone не прислал координаты города (старый снимок).
-  private var qiblaAngle: Double? {
+  private var sourceCoordinate: (lat: Double, lng: Double)? {
+    if let live = compass.coordinate {
+      return (live.latitude, live.longitude)
+    }
     guard let lat = snapshot.lat, let lng = snapshot.lng else { return nil }
+    return (lat, lng)
+  }
+
+  private var qiblaAngle: Double? {
+    guard let sourceCoordinate else { return nil }
+    let lat = sourceCoordinate.lat
+    let lng = sourceCoordinate.lng
     let lat1 = (lat * .pi) / 180.0
     let lng1 = (lng * .pi) / 180.0
     let lat2 = (21.422487 * .pi) / 180.0
@@ -300,6 +390,17 @@ private struct DauamWatchQiblaView: View {
     let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLng)
     let bearing = atan2(y, x) * (180.0 / .pi)
     return (bearing + 360.0).truncatingRemainder(dividingBy: 360.0)
+  }
+
+  private var distanceToMecca: Double? {
+    guard let sourceCoordinate else { return nil }
+    let lat1 = sourceCoordinate.lat * .pi / 180
+    let lat2 = 21.422487 * .pi / 180
+    let dLat = lat2 - lat1
+    let dLng = (39.826206 - sourceCoordinate.lng) * .pi / 180
+    let a = sin(dLat / 2) * sin(dLat / 2) +
+      cos(lat1) * cos(lat2) * sin(dLng / 2) * sin(dLng / 2)
+    return 6_371 * 2 * atan2(sqrt(a), sqrt(1 - a))
   }
 
   var body: some View {
@@ -329,7 +430,8 @@ private struct DauamWatchQiblaView: View {
               .stroke(primary.opacity(0.18), lineWidth: 3)
               .frame(width: 86, height: 86)
 
-            // Стрелка Киблы
+            // Стрелка показывает Киблу относительно фактического направления
+            // корпуса часов, а не просто статичный азимут от севера.
             VStack {
               Image(systemName: "location.north.circle.fill")
                 .font(.system(size: 22, weight: .bold))
@@ -337,7 +439,7 @@ private struct DauamWatchQiblaView: View {
               Spacer()
             }
             .frame(width: 86, height: 86)
-            .rotationEffect(.degrees(qiblaAngle ?? 0))
+            .rotationEffect(.degrees((qiblaAngle ?? 0) - (compass.heading ?? 0)))
             .opacity(qiblaAngle == nil ? 0.25 : 1)
 
             Text(snapshot.city)
@@ -348,7 +450,10 @@ private struct DauamWatchQiblaView: View {
 
           Spacer(minLength: 0)
 
-          Text("Мекке: 3 840 км")
+          Text(
+            distanceToMecca.map { "Мекке: \(Int($0.rounded())) км" } ??
+              (snapshot.isKazakh ? "Бағыт анықталуда" : "Определяем направление")
+          )
             .font(.system(size: 10, weight: .medium, design: .rounded))
             .foregroundStyle(primary.opacity(0.65))
         }
@@ -356,6 +461,7 @@ private struct DauamWatchQiblaView: View {
         .padding(.horizontal, 6)
       }
     }
+    .onAppear { compass.start() }
+    .onDisappear { compass.stop() }
   }
 }
-

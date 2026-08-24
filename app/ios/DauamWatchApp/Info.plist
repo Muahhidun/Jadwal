@@ -26,5 +26,7 @@
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
 	<string>kz.dauam</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Dauam использует направление и местоположение часов, чтобы показать сторону Киблы.</string>
 </dict>
 </plist>

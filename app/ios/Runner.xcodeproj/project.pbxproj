@@ -34,6 +34,10 @@
 		B10000000000000000000007 /* JadwalActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000001 /* JadwalActivityAttributes.swift */; };
 		B10000000000000000000013 /* JadwalWidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B10000000000000000000003 /* JadwalWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B98C6E861B3644D5D6FF8B05 /* DauamWatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13BA66BA2A221EFF934FF85E /* DauamWatchSnapshot.swift */; };
+		BF1000000000000000000011 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BF1000000000000000000001 /* PrivacyInfo.xcprivacy */; };
+		BF1000000000000000000012 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BF1000000000000000000002 /* PrivacyInfo.xcprivacy */; };
+		BF1000000000000000000013 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BF1000000000000000000003 /* PrivacyInfo.xcprivacy */; };
+		BF1000000000000000000014 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BF1000000000000000000004 /* PrivacyInfo.xcprivacy */; };
 		C0525459E64246A745DEB793 /* DauamWatchViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A8601F631DF7D8643823C61 /* DauamWatchViews.swift */; };
 		C20000000000000000000001 /* WidgetDataManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000003 /* WidgetDataManager.swift */; };
 		C20000000000000000000002 /* DauamWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000005 /* DauamWidgets.swift */; };
@@ -160,6 +164,10 @@
 		ADCEA713C01D35207C6232C0 /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
 		B10000000000000000000001 /* JadwalWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JadwalWidgetExtension/JadwalWidgetsBundle.swift; sourceTree = "<group>"; };
 		B10000000000000000000003 /* JadwalWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JadwalWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		BF1000000000000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		BF1000000000000000000002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = JadwalWidgetExtension/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		BF1000000000000000000003 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		BF1000000000000000000004 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		BEFDC2BB927F198005C013F9 /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		C20000000000000000000003 /* WidgetDataManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WidgetDataManager.swift; sourceTree = "<group>"; };
 		C20000000000000000000004 /* Runner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
@@ -269,6 +277,7 @@
 		84875B95D0C9E8A397B2B9FE /* DauamWatchWidgets */ = {
 			isa = PBXGroup;
 			children = (
+				BF1000000000000000000004 /* PrivacyInfo.xcprivacy */,
 				5D266CAD70D87677664E4047 /* DauamWatchWidgets.swift */,
 				54FE68E4F6FAB7AE1C9448D4 /* DauamWatchWidgetsBundle.swift */,
 				954231E2DD8490D48CD73D6A /* Info.plist */,
@@ -320,6 +329,7 @@
 		97C146F01CF9000F007C117D /* Runner */ = {
 			isa = PBXGroup;
 			children = (
+				BF1000000000000000000001 /* PrivacyInfo.xcprivacy */,
 				97C146FA1CF9000F007C117D /* Main.storyboard */,
 				97C146FD1CF9000F007C117D /* Assets.xcassets */,
 				97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */,
@@ -345,6 +355,7 @@
 		F24B23CD30110E3A00E8AE03 /* Recovered References */ = {
 			isa = PBXGroup;
 			children = (
+				BF1000000000000000000002 /* PrivacyInfo.xcprivacy */,
 				B10000000000000000000001 /* JadwalWidgetsBundle.swift */,
 				C20000000000000000000005 /* DauamWidgets.swift */,
 				C20000000000000000000006 /* JadwalWidgetExtension.entitlements */,
@@ -355,6 +366,7 @@
 		FD27F5123D35B2E5288D7E88 /* DauamWatchApp */ = {
 			isa = PBXGroup;
 			children = (
+				BF1000000000000000000003 /* PrivacyInfo.xcprivacy */,
 				65F2B72FA199AE0BA3A57DA3 /* DauamWatchApp.swift */,
 				4A8601F631DF7D8643823C61 /* DauamWatchViews.swift */,
 				68D4FE9D88C7CED3596182A1 /* WatchConnectivityReceiver.swift */,
@@ -524,6 +536,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BF1000000000000000000014 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -538,6 +551,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BF1000000000000000000013 /* PrivacyInfo.xcprivacy in Resources */,
 				D907A604F4E8AE45223CDD48 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -546,6 +560,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BF1000000000000000000011 /* PrivacyInfo.xcprivacy in Resources */,
 				97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */,
 				3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */,
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
@@ -557,6 +572,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BF1000000000000000000012 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

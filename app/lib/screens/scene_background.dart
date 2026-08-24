@@ -31,6 +31,60 @@ class SceneBackground extends StatefulWidget {
   State<SceneBackground> createState() => _SceneBackgroundState();
 }
 
+/// Верхняя часть общей вертикальной сцены. Нижний цвет намеренно совпадает
+/// с самым верхним цветом главного неба: при свайпе два полноэкранных слоя
+/// встречаются без отдельной линии или цветового скачка.
+class QiblaSceneBackground extends StatelessWidget {
+  const QiblaSceneBackground({
+    super.key,
+    required this.progress,
+    required this.screenHeight,
+    required this.times,
+    required this.nowSec,
+  });
+
+  final double progress;
+  final double screenHeight;
+  final DayTimes times;
+  final int nowSec;
+
+  @override
+  Widget build(BuildContext context) {
+    final sky = _skyAt(times, nowSec ~/ 60);
+    final deep = Color.lerp(sky.top, const Color(0xFF07101B), 0.78)!;
+    final middle = Color.lerp(deep, sky.top, 0.46)!;
+
+    return Positioned(
+      left: 0,
+      right: 0,
+      top: -screenHeight * (1 + progress),
+      // Небольшой физический нахлёст исключает субпиксельную щель во время
+      // интерактивного жеста. Слой рисуется после главного неба, поэтому эти
+      // четыре пикселя принадлежат верхней странице и не дают линии на стыке.
+      height: screenHeight + (progress < 0 ? 4 : 0),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [deep, middle, sky.top],
+            stops: const [0.0, 0.58, 1.0],
+          ),
+        ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: const Alignment(0.62, -0.22),
+              radius: 1.15,
+              colors: [sky.bottom.withValues(alpha: 0.14), Colors.transparent],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SceneBackgroundState extends State<SceneBackground>
     with TickerProviderStateMixin {
   late AnimationController _controller;
@@ -492,12 +546,12 @@ class _ScenePainter extends CustomPainter {
     final magh = times.times[Prayer.maghrib]!;
     final isDay = nowMin >= sun && nowMin <= magh;
 
-    // 1. Интерполяция неба (таймлапс эффект при старте/смене города)
-    // Стартуем от восхода (днем) или заката (ночью) и перетекаем к целевому цвету
+    // Intro-анимация выполняется только при первом создании сцены и реальной
+    // смене города/дня. Стабильные ключи в HomeScreen не дают ей повториться
+    // после обычного перехода на экран Киблы и обратно.
     final startMin = isDay ? sun : magh;
     final startSky = _skyAt(times, startMin);
     final targetSky = _skyAt(times, nowMin);
-
     final skyTop = Color.lerp(startSky.top, targetSky.top, introVal)!;
     final skyBottom = Color.lerp(startSky.bottom, targetSky.bottom, introVal)!;
     final skyDay = startSky.day + (targetSky.day - startSky.day) * introVal;

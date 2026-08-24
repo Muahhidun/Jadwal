@@ -52,8 +52,8 @@ struct DauamWatchSnapshot: Codable, Hashable {
 
   var isKazakh: Bool { language == "kz" }
 
-  var todayPrayers: [DauamWatchPrayer] {
-    prayers.filter { !$0.isTomorrow }
+  func prayers(on date: Date) -> [DauamWatchPrayer] {
+    prayers.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
   }
 
   func nextEvent(after date: Date) -> DauamWatchPrayer? {
@@ -85,8 +85,8 @@ struct DauamWatchSnapshot: Codable, Hashable {
     return min(1, max(0, date.timeIntervalSince(previous.date) / duration))
   }
 
-  func prayer(id: String, tomorrow: Bool = false) -> DauamWatchPrayer? {
-    prayers.first { $0.id == id && $0.isTomorrow == tomorrow }
+  func prayer(id: String, on date: Date) -> DauamWatchPrayer? {
+    prayers(on: date).first { $0.id == id }
   }
 
   func until(_ prayer: DauamWatchPrayer, uppercase: Bool = false) -> String {
@@ -220,11 +220,11 @@ struct DauamWatchPalette {
   let darkText: Bool
 
   static func resolve(snapshot: DauamWatchSnapshot, at date: Date) -> DauamWatchPalette {
-    let fajr = snapshot.prayer(id: "fajr")?.date ?? date
-    let sunrise = snapshot.prayer(id: "sunrise")?.date ?? date
-    let asr = snapshot.prayer(id: "asr")?.date ?? date
-    let maghrib = snapshot.prayer(id: "maghrib")?.date ?? date
-    let isha = snapshot.prayer(id: "isha")?.date ?? date
+    let fajr = snapshot.prayer(id: "fajr", on: date)?.date ?? date
+    let sunrise = snapshot.prayer(id: "sunrise", on: date)?.date ?? date
+    let asr = snapshot.prayer(id: "asr", on: date)?.date ?? date
+    let maghrib = snapshot.prayer(id: "maghrib", on: date)?.date ?? date
+    let isha = snapshot.prayer(id: "isha", on: date)?.date ?? date
 
     if date < fajr || date >= isha {
       return .init(top: 0x0C142B, bottom: 0x1A1F3D, accent: 0x7AC7D6, darkText: false)

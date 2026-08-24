@@ -52,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen>
     vsync: this,
     lowerBound: -1.0,
     upperBound: 1.0,
+    value: 0.0,
     duration: const Duration(milliseconds: 420),
   );
 
@@ -88,9 +89,12 @@ class _HomeScreenState extends State<HomeScreen>
     final v = d.primaryVelocity ?? 0;
     final movement = _p.value - _dragStartProgress;
     final startPage = _dragStartProgress.round().clamp(-1, 1);
+    // Скорость учитываем только после заметного перемещения. Иначе лёгкий
+    // сдвиг пальца при тапе по «Карта» мог выглядеть как быстрый короткий
+    // свайп и возвращать ленту на главный экран.
     final direction = movement.abs() >= 0.10
         ? movement.sign.toInt()
-        : v.abs() >= 300
+        : movement.abs() >= 0.075 && v.abs() >= 300
         ? (v < 0 ? 1 : -1)
         : 0;
     final target = (startPage + direction).clamp(-1, 1).toDouble();
@@ -321,135 +325,160 @@ class _HomeScreenState extends State<HomeScreen>
       body: LayoutBuilder(
         builder: (context, box) {
           final h = box.maxHeight;
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onVerticalDragStart: _onDragStart,
-            onVerticalDragUpdate: (d) => _onDragUpdate(d, h),
-            onVerticalDragEnd: _onDragEnd,
-            onVerticalDragCancel: _onDragCancel,
-            child: AnimatedBuilder(
-              animation: _p,
-              builder: (context, _) {
-                final p = _p.value;
-                final fg = t != null ? skyForeground(t, nowSec) : null;
-                final dayPalette = t != null
-                    ? daySurfacePalette(t, nowSec)
-                    : null;
-                // На главном индикаторы следуют за небом, на втором экране —
-                // за его собственной дневной/ночной атмосферой.
-                final darkStatusIcons = p < 0.45
-                    ? fg != null && fg.text.computeLuminance() < 0.5
-                    : dayPalette?.isLight ?? false;
-                return JSystemBars(
-                  darkIcons: darkStatusIcons,
-                  child: Stack(
-                    children: [
-                      if (t != null)
-                        SceneBackground(
-                          progress: p,
-                          screenHeight: h,
-                          times: t,
-                          nowSec: nowSec,
-                          city: app.city,
-                        ),
-                      if (t != null) ...[
-                        Positioned.fill(
-                          child: _HomeLayer(
-                            p: p,
-                            s: s,
-                            c: c,
-                            fg: fg!,
-                            app: app,
-                            t: t,
-                            nowMin: nowMin,
+          return AnimatedBuilder(
+            animation: _p,
+            builder: (context, _) {
+              final p = _p.value;
+              final fg = t != null ? skyForeground(t, nowSec) : null;
+              final dayPalette = t != null
+                  ? daySurfacePalette(t, nowSec)
+                  : null;
+              // На главном индикаторы следуют за небом, на втором экране —
+              // за его собственной дневной/ночной атмосферой.
+              final darkStatusIcons = p < 0.45
+                  ? fg != null && fg.text.computeLuminance() < 0.5
+                  : dayPalette?.isLight ?? false;
+              return JSystemBars(
+                darkIcons: darkStatusIcons,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  // На полностью открытой Кибле зоны возврата задаёт сам
+                  // экран: область локатора либо боковые рамки карты. Так
+                  // шапка и естественные жесты карты не участвуют в ленте.
+                  onVerticalDragStart: p <= -0.85 ? null : _onDragStart,
+                  onVerticalDragUpdate: p <= -0.85
+                      ? null
+                      : (details) => _onDragUpdate(details, h),
+                  onVerticalDragEnd: p <= -0.85 ? null : _onDragEnd,
+                  onVerticalDragCancel: p <= -0.85 ? null : _onDragCancel,
+                  child: SizedBox.expand(
+                    child: Stack(
+                      children: [
+                        if (t != null)
+                          SceneBackground(
+                            key: const ValueKey('home-scene-background'),
+                            progress: p,
+                            screenHeight: h,
+                            times: t,
                             nowSec: nowSec,
-                            h: h,
-                            schedule: schedule,
-                            onCity: () => CityPicker.open(context),
-                            onQibla: () =>
-                                _p.animateTo(-1, curve: Curves.easeOutCubic),
-                            onReader: _openReader,
-                            onToggleDate: () =>
-                                app.dateGregorian = !app.dateGregorian,
-                            onExpand: () =>
-                                _p.animateTo(1, curve: Curves.easeOutCubic),
+                            city: app.city,
                           ),
-                        ),
-                        if (p < 0)
+                        // Слой всегда остаётся в дереве и только уезжает за
+                        // экран. Раньше его условная вставка перед главным
+                        // небом меняла индексы детей Stack, из-за чего Flutter
+                        // пересоздавал SceneBackground и повторял intro-анимацию.
+                        if (t != null)
+                          QiblaSceneBackground(
+                            key: const ValueKey('qibla-scene-background'),
+                            progress: p,
+                            screenHeight: h,
+                            times: t,
+                            nowSec: nowSec,
+                          ),
+                        if (t != null) ...[
                           Positioned.fill(
-                            child: Transform.translate(
-                              offset: Offset(0, -h * (1 + p)),
-                              child: Opacity(
-                                opacity: (-p * 1.4).clamp(0.0, 1.0),
-                                child: QiblaView(
-                                  selectedCity: app.city,
-                                  showAppBar: true,
-                                  onClose: () => _p.animateTo(
-                                    0,
-                                    curve: Curves.easeOutCubic,
+                            child: _HomeLayer(
+                              p: p,
+                              s: s,
+                              c: c,
+                              fg: fg!,
+                              app: app,
+                              t: t,
+                              nowMin: nowMin,
+                              nowSec: nowSec,
+                              h: h,
+                              schedule: schedule,
+                              onCity: () => CityPicker.open(context),
+                              onQibla: () =>
+                                  _p.animateTo(-1, curve: Curves.easeOutCubic),
+                              onReader: _openReader,
+                              onToggleDate: () =>
+                                  app.dateGregorian = !app.dateGregorian,
+                              onExpand: () =>
+                                  _p.animateTo(1, curve: Curves.easeOutCubic),
+                            ),
+                          ),
+                          if (p < 0)
+                            Positioned.fill(
+                              child: Transform.translate(
+                                offset: Offset(0, -h * (1 + p)),
+                                child: Opacity(
+                                  opacity: (-p * 1.4).clamp(0.0, 1.0),
+                                  child: QiblaView(
+                                    key: const ValueKey('embedded-qibla'),
+                                    selectedCity: app.city,
+                                    showAppBar: true,
+                                    embedded: true,
+                                    onVerticalDragStart: _onDragStart,
+                                    onVerticalDragUpdate: (details) =>
+                                        _onDragUpdate(details, h),
+                                    onVerticalDragEnd: _onDragEnd,
+                                    onVerticalDragCancel: _onDragCancel,
                                   ),
                                 ),
                               ),
                             ),
+                          Positioned.fill(
+                            child: _modernLowerScreen
+                                ? _ModernDayLayer(
+                                    p: p,
+                                    s: s,
+                                    palette: dayPalette!,
+                                    app: app,
+                                    t: t,
+                                    nowMin: nowMin,
+                                    nowSec: nowSec,
+                                    h: h,
+                                    schedule: schedule,
+                                    onReader: _openReader,
+                                    onCollapse: () => _p.animateTo(
+                                      0,
+                                      curve: Curves.easeOutCubic,
+                                    ),
+                                    onToggleDate: () =>
+                                        app.dateGregorian = !app.dateGregorian,
+                                  )
+                                : _DayLayer(
+                                    p: p,
+                                    s: s,
+                                    c: c,
+                                    app: app,
+                                    t: t,
+                                    nowMin: nowMin,
+                                    h: h,
+                                    schedule: schedule,
+                                    onReader: _openReader,
+                                    onCollapse: () => _p.animateTo(
+                                      0,
+                                      curve: Curves.easeOutCubic,
+                                    ),
+                                    onToggleDate: () =>
+                                        app.dateGregorian = !app.dateGregorian,
+                                  ),
                           ),
-                        Positioned.fill(
-                          child: _modernLowerScreen
-                              ? _ModernDayLayer(
-                                  p: p,
-                                  s: s,
-                                  palette: dayPalette!,
-                                  app: app,
-                                  t: t,
-                                  nowMin: nowMin,
-                                  nowSec: nowSec,
-                                  h: h,
-                                  schedule: schedule,
-                                  onReader: _openReader,
-                                  onCollapse: () => _p.animateTo(
-                                    0,
-                                    curve: Curves.easeOutCubic,
-                                  ),
-                                  onToggleDate: () =>
-                                      app.dateGregorian = !app.dateGregorian,
-                                )
-                              : _DayLayer(
-                                  p: p,
-                                  s: s,
-                                  c: c,
-                                  app: app,
-                                  t: t,
-                                  nowMin: nowMin,
-                                  h: h,
-                                  schedule: schedule,
-                                  onReader: _openReader,
-                                  onCollapse: () => _p.animateTo(
-                                    0,
-                                    curve: Curves.easeOutCubic,
-                                  ),
-                                  onToggleDate: () =>
-                                      app.dateGregorian = !app.dateGregorian,
-                                ),
-                        ),
-                        // Общий элемент поверх: только таймер (переезжает наверх).
-                        // Времена молитв — на экране «дня» (сеткой 3+3), не на главном.
-                        _HeroTimer(
-                          p: p,
-                          s: s,
-                          c: c,
-                          fg: fg,
-                          t: t,
-                          nowSec: nowSec,
-                          h: h,
-                          schedule: schedule,
-                          app: app,
-                        ),
-                      ] else
-                        Center(child: CircularProgressIndicator(color: c.gold)),
-                    ],
+                          // Общий элемент поверх: только таймер (переезжает наверх).
+                          // Времена молитв — на экране «дня» (сеткой 3+3), не на главном.
+                          _HeroTimer(
+                            p: p,
+                            s: s,
+                            c: c,
+                            fg: fg,
+                            t: t,
+                            nowSec: nowSec,
+                            h: h,
+                            schedule: schedule,
+                            app: app,
+                          ),
+                        ] else
+                          Center(
+                            child: CircularProgressIndicator(color: c.gold),
+                          ),
+                      ],
+                    ),
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           );
         },
       ),
@@ -481,6 +510,8 @@ class _HeroTimer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (p <= -0.9) return const SizedBox.shrink();
+
     final nowMin = nowSec ~/ 60;
     final (caption, secs, _) = heroTimer(s, t, nowSec, nowMin, schedule, app);
     // Посекундный таймер; часы скрываются, когда их нет: «1:40:15» → «40:15»
@@ -491,11 +522,16 @@ class _HeroTimer extends StatelessWidget {
     final value = v >= 3600
         ? '${v ~/ 3600}:${mm.toString().padLeft(2, '0')}:$ss'
         : '$mm:$ss';
-    final fade = (1 - p * 1.6).clamp(0.0, 1.0);
+    final fade = p < 0
+        ? (1 + p * 2.2).clamp(0.0, 1.0)
+        : (1 - p * 1.6).clamp(0.0, 1.0);
     return Positioned(
       left: 0,
       right: 0,
-      top: h * 0.35 - h * p * 0.6,
+      // К экрану дня таймер переезжает в компактную верхнюю позицию. К
+      // Кибле он движется 1:1 вместе с центральной страницей и не может
+      // остаться подписью у нижнего края верхнего экрана.
+      top: p < 0 ? h * 0.35 - h * p : h * 0.35 - h * p * 0.6,
       child: IgnorePointer(
         child: Opacity(
           opacity: fade,
@@ -2167,16 +2203,17 @@ const _gregMonthsKz = [
   'желтоқсан',
 ];
 
-/// «Пятница · 19 мухаррама» (хиджра) или «Пятница · 5 июля» (григорианский).
+/// «19 мухаррам» (хиджра) или «5 июля» (григорианский).
+/// День недели намеренно не показываем: рядом находится ярлык «Кибла», и на
+/// компактных экранах важная дата иначе обрезалась первой.
 String dateLine(S s, DateTime now, bool gregorian) {
-  final wd = s.weekdays[now.weekday - 1];
   if (gregorian) {
     final months = s == S.kz ? _gregMonthsKz : _gregMonthsRu;
-    return '$wd · ${now.day} ${months[now.month - 1]}';
+    return '${now.day} ${months[now.month - 1]}';
   }
   final hijri = HijriCalendar.fromDate(now);
   final months = s == S.kz ? s.hijriMonths : _hijriMonthsRu;
-  return '$wd · ${hijri.hDay} ${months[hijri.hMonth - 1]}';
+  return '${hijri.hDay} ${months[hijri.hMonth - 1]}';
 }
 
 /// Цвета по актуальной теме (учитывает «системную»).

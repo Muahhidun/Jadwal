@@ -101,12 +101,12 @@ private struct DauamSnapshot: Codable, Hashable {
     return (elapsed >= 0 && elapsed < graceMinutes * 60) ? last : nil
   }
 
-  func prayer(id: String, tomorrow: Bool = false) -> DauamPrayerPoint? {
-    prayers.first { $0.id == id && $0.isTomorrow == tomorrow }
+  func prayers(on date: Date) -> [DauamPrayerPoint] {
+    prayers.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
   }
 
-  var todayPrayers: [DauamPrayerPoint] {
-    prayers.filter { !$0.isTomorrow }
+  func prayer(id: String, on date: Date) -> DauamPrayerPoint? {
+    prayers(on: date).first { $0.id == id }
   }
 
   var isKazakh: Bool { language == "kz" }
@@ -213,11 +213,11 @@ private struct DauamPalette {
   let accent: Color
 
   static func resolve(snapshot: DauamSnapshot, at date: Date) -> DauamPalette {
-    let fajr = snapshot.prayer(id: "fajr")?.date ?? date
-    let sunrise = snapshot.prayer(id: "sunrise")?.date ?? date
-    let asr = snapshot.prayer(id: "asr")?.date ?? date
-    let maghrib = snapshot.prayer(id: "maghrib")?.date ?? date
-    let isha = snapshot.prayer(id: "isha")?.date ?? date
+    let fajr = snapshot.prayer(id: "fajr", on: date)?.date ?? date
+    let sunrise = snapshot.prayer(id: "sunrise", on: date)?.date ?? date
+    let asr = snapshot.prayer(id: "asr", on: date)?.date ?? date
+    let maghrib = snapshot.prayer(id: "maghrib", on: date)?.date ?? date
+    let isha = snapshot.prayer(id: "isha", on: date)?.date ?? date
 
     if date < fajr || date >= isha {
       return .init(
@@ -377,6 +377,7 @@ private struct NextPrayerBlock: View {
 
 private struct PrayerGrid: View {
   let snapshot: DauamSnapshot
+  let date: Date
   let next: DauamPrayerPoint?
   let palette: DauamPalette
 
@@ -387,7 +388,7 @@ private struct PrayerGrid: View {
 
   var body: some View {
     LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
-      ForEach(snapshot.todayPrayers, id: \.id) { prayer in
+      ForEach(snapshot.prayers(on: date), id: \.id) { prayer in
         HStack(spacing: 4) {
           Image(systemName: prayer.symbol)
             .font(.system(size: 9, weight: .semibold))
@@ -484,7 +485,7 @@ private struct DauamMediumPrayerView: View {
         .fill(palette.text.opacity(0.14))
         .frame(width: 1)
 
-      PrayerGrid(snapshot: entry.snapshot, next: next, palette: palette)
+      PrayerGrid(snapshot: entry.snapshot, date: entry.date, next: next, palette: palette)
         .frame(maxWidth: .infinity)
     }
     .padding(14)
@@ -499,6 +500,7 @@ private struct DauamLargePrayerView: View {
 
   var body: some View {
     let next = entry.snapshot.nextEvent(after: entry.date)
+    let dayPrayers = entry.snapshot.prayers(on: entry.date)
     VStack(alignment: .leading, spacing: 12) {
       HStack {
         VStack(alignment: .leading, spacing: 2) {
@@ -525,7 +527,7 @@ private struct DauamLargePrayerView: View {
       )
 
       VStack(spacing: 0) {
-        ForEach(entry.snapshot.todayPrayers, id: \.id) { prayer in
+        ForEach(dayPrayers, id: \.id) { prayer in
           HStack {
             Image(systemName: prayer.symbol)
               .font(.system(size: 11, weight: .semibold))
@@ -538,7 +540,7 @@ private struct DauamLargePrayerView: View {
           }
           .foregroundStyle(prayer.id == next?.id ? palette.accent : palette.text)
           .padding(.vertical, 5)
-          if prayer.id != entry.snapshot.todayPrayers.last?.id {
+          if prayer.id != dayPrayers.last?.id {
             Rectangle()
               .fill(palette.text.opacity(0.10))
               .frame(height: 1)
