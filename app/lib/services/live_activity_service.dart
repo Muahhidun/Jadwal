@@ -1,5 +1,15 @@
 import 'package:flutter/services.dart';
 
+({String collectionId, int index})? zikrTargetFromDeepLink(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  final uri = Uri.tryParse(raw);
+  if (uri == null || uri.scheme != 'dauam' || uri.host != 'zikr') return null;
+  final collection = uri.queryParameters['collection'];
+  if (collection != 'morning' && collection != 'evening') return null;
+  final parsedIndex = int.tryParse(uri.queryParameters['index'] ?? '') ?? 0;
+  return (collectionId: collection!, index: parsedIndex < 0 ? 0 : parsedIndex);
+}
+
 /// Сервис управления нативными Live Activities и Dynamic Island на iOS.
 class LiveActivityService {
   static const MethodChannel _channel = MethodChannel('kz.dauam/live_activity');
@@ -7,15 +17,20 @@ class LiveActivityService {
   static void Function()? onNextZikr;
   static void Function()? onPrevZikr;
   static void Function()? onTickZikr;
+  static void Function(String collectionId, int index)? onOpenZikr;
+  static String? activeCollection;
+  static String? _lastDeliveredDeepLink;
 
   static void init({
     void Function()? nextZikrHandler,
     void Function()? prevZikrHandler,
     void Function()? tickZikrHandler,
+    void Function(String collectionId, int index)? openZikrHandler,
   }) {
     onNextZikr = nextZikrHandler;
     onPrevZikr = prevZikrHandler;
     onTickZikr = tickZikrHandler;
+    if (openZikrHandler != null) onOpenZikr = openZikrHandler;
 
     _channel.setMethodCallHandler((call) async {
       switch (call.method) {
@@ -28,8 +43,30 @@ class LiveActivityService {
         case 'onZikrTick':
           onTickZikr?.call();
           break;
+        case 'onOpenDeepLink':
+          _deliverDeepLink(call.arguments as String?);
+          break;
       }
     });
+  }
+
+  static void _deliverDeepLink(String? raw) {
+    if (raw == null || raw.isEmpty || raw == _lastDeliveredDeepLink) return;
+    final target = zikrTargetFromDeepLink(raw);
+    if (target == null) return;
+    _lastDeliveredDeepLink = raw;
+    if (activeCollection != target.collectionId) {
+      onOpenZikr?.call(target.collectionId, target.index);
+    }
+  }
+
+  /// Забирает ссылку, с которой приложение было запущено после полного
+  /// закрытия. При обычном возврате из фона ссылка приходит через канал.
+  static Future<void> claimPendingDeepLink() async {
+    try {
+      final raw = await _channel.invokeMethod<String>('getPendingDeepLink');
+      _deliverDeepLink(raw);
+    } catch (_) {}
   }
 
   static Future<bool> isSupported() async {
@@ -67,6 +104,8 @@ class LiveActivityService {
 
   /// Сценарий B: Включение интерактивного ридера зикров в Dynamic Island
   static Future<String> startZikrSession({
+    required String collectionId,
+    required int currentIndex,
     required String title,
     required int counterCurrent,
     required int counterTotal,
@@ -76,6 +115,8 @@ class LiveActivityService {
     try {
       final res = await _channel.invokeMethod('startActivity', {
         'mode': 'zikr',
+        'collectionId': collectionId,
+        'currentIndex': currentIndex,
         'title': title,
         'subtitle': 'Зикр $counterCurrent из $counterTotal',
         'counterCurrent': counterCurrent,
@@ -91,6 +132,8 @@ class LiveActivityService {
 
   /// Обновление текущего зикра в Dynamic Island при щелчке/переключении
   static Future<void> updateZikrSession({
+    required String collectionId,
+    required int currentIndex,
     required String title,
     required int counterCurrent,
     required int counterTotal,
@@ -100,6 +143,8 @@ class LiveActivityService {
     try {
       await _channel.invokeMethod('updateActivity', {
         'mode': 'zikr',
+        'collectionId': collectionId,
+        'currentIndex': currentIndex,
         'title': title,
         'subtitle': 'Зикр $counterCurrent из $counterTotal',
         'counterCurrent': counterCurrent,

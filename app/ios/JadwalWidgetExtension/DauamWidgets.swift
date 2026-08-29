@@ -186,12 +186,19 @@ private struct DauamProvider: TimelineProvider {
     // В момент наступления любой точки расписания (включая восход) контент
     // должен перейти к следующему событию.
     // Сам countdown между этими точками обновляет системный Text(.timer).
+    let horizon = now.addingTimeInterval(36 * 3_600)
     for prayer in snapshot.prayers {
-      if prayer.date > now && prayer.date < now.addingTimeInterval(36 * 3_600) {
-        dates.append(prayer.date.addingTimeInterval(1))
-        if prayer.id != "sunrise" {
-          dates.append(prayer.date.addingTimeInterval(601))
-        }
+      let eventStart = prayer.date.addingTimeInterval(1)
+      if eventStart > now && eventStart < horizon {
+        dates.append(eventStart)
+      }
+
+      // Конец десятиминутного окна планируется независимо от его начала.
+      // Если WidgetKit запросил новый timeline уже после азана, начало осталось
+      // в прошлом, но будущая граница всё равно обязана попасть в timeline.
+      let graceEnd = prayer.date.addingTimeInterval(601)
+      if prayer.id != "sunrise" && graceEnd > now && graceEnd < horizon {
+        dates.append(graceEnd)
       }
     }
     dates = Array(Set(dates)).sorted()

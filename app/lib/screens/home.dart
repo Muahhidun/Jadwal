@@ -17,8 +17,10 @@ import 'city_picker.dart';
 import 'language_picker.dart';
 import 'qibla_screen.dart';
 import 'reader.dart';
+import 'kahf_reader.dart';
 import 'reminders.dart';
 import 'scene_background.dart';
+import 'swipe_hint.dart';
 
 import '../services/live_activity_service.dart';
 import '../services/location_checker_service.dart';
@@ -48,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen>
   bool _widgetSyncInFlight = false;
   bool _hasSwipedHaptic = false;
   double _dragStartProgress = 0.0;
+  int _pageAnimationSerial = 0;
   late final AnimationController _p = AnimationController(
     vsync: this,
     lowerBound: -1.0,
@@ -63,7 +66,35 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _onDragStart(DragStartDetails _) {
+    _pageAnimationSerial++;
+    _p.stop();
     _dragStartProgress = _p.value;
+    _hasSwipedHaptic = false;
+  }
+
+  void _animateToPage(double target) {
+    final normalizedTarget = target.clamp(-1.0, 1.0);
+    final serial = ++_pageAnimationSerial;
+    _p
+        .animateTo(normalizedTarget, curve: Curves.easeOutCubic)
+        .whenCompleteOrCancel(() {
+          if (!mounted || serial != _pageAnimationSerial) return;
+          if ((_p.value - normalizedTarget).abs() < 0.02) {
+            _p.value = normalizedTarget;
+          }
+          _dragStartProgress = _p.value;
+          _hasSwipedHaptic = false;
+        });
+  }
+
+  void _stabilizeHomeForHeaderPointer() {
+    // Верхние элементы принадлежат центральному экрану. Если пользователь
+    // нажал их сразу после возвратного свайпа, завершаем ещё идущую инерцию
+    // именно в центре, чтобы старый target не выглядел как «назад».
+    _pageAnimationSerial++;
+    _p.stop();
+    _p.value = 0.0;
+    _dragStartProgress = 0.0;
     _hasSwipedHaptic = false;
   }
 
@@ -98,15 +129,12 @@ class _HomeScreenState extends State<HomeScreen>
         ? (v < 0 ? 1 : -1)
         : 0;
     final target = (startPage + direction).clamp(-1, 1).toDouble();
-    _p.animateTo(target, curve: Curves.easeOutCubic);
+    _animateToPage(target);
   }
 
   void _onDragCancel() {
     _hasSwipedHaptic = false;
-    _p.animateTo(
-      _dragStartProgress.round().clamp(-1, 1).toDouble(),
-      curve: Curves.easeOutCubic,
-    );
+    _animateToPage(_dragStartProgress.round().clamp(-1, 1).toDouble());
   }
 
   @override
@@ -114,6 +142,11 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _listenToSiriChannel();
+    LiveActivityService.init(
+      openZikrHandler: (collectionId, index) {
+        if (mounted) _openReader(collectionId, initialIndex: index);
+      },
+    );
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -124,26 +157,17 @@ class _HomeScreenState extends State<HomeScreen>
       syncNotifications(AppScope.of(context), ScheduleScope.of(context));
 
       // Авто-проверка смены города по GPS
-      LocationCheckerService.checkLocationChange(
-        context: context,
-        currentCity: AppScope.of(context).city,
-        onCitySelected: (newCity) {
-          if (!mounted) return;
-          setState(() {
-            AppScope.of(context).setCity(newCity);
-          });
-          syncNotifications(AppScope.of(context), ScheduleScope.of(context));
-        },
-      );
+      _checkLocationChange();
 
       // По тапу на уведомление или по команде Siri — открыть соответствующий сборник.
       final pending = gNotifier?.pendingCollection;
       if (pending != null && pending.isNotEmpty && mounted) {
         gNotifier!.pendingCollection = null;
-        _openReader(pending);
+        _openContent(pending);
       } else {
         _checkSiriTarget();
       }
+      LiveActivityService.claimPendingDeepLink();
     });
   }
 
@@ -163,7 +187,22 @@ class _HomeScreenState extends State<HomeScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkSiriTarget();
+      _checkLocationChange();
+      LiveActivityService.claimPendingDeepLink();
     }
+  }
+
+  void _checkLocationChange() {
+    if (!mounted) return;
+    LocationCheckerService.checkLocationChange(
+      context: context,
+      currentCity: AppScope.of(context).city,
+      onCitySelected: (newCity) {
+        if (!mounted) return;
+        AppScope.of(context).setCity(newCity);
+        syncNotifications(AppScope.of(context), ScheduleScope.of(context));
+      },
+    );
   }
 
   void _checkSiriTarget() async {
@@ -203,7 +242,7 @@ class _HomeScreenState extends State<HomeScreen>
         );
         LiveActivityService.startPrayerProximity(
           prayerName: s.prayers[next.index],
-          cityName: app.city.name,
+          cityName: app.city.displayName(app.lang),
           targetTime: targetTime,
         );
         return;
@@ -291,16 +330,33 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
-  void _openReader(String collectionId, {bool autoStartSpeech = false}) =>
+  void _openReader(
+    String collectionId, {
+    bool autoStartSpeech = false,
+    int initialIndex = 0,
+  }) => Navigator.of(context).push(
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => ReaderScreen(
+        collectionId: collectionId,
+        autoStartSpeech: autoStartSpeech,
+        initialIndex: initialIndex,
+      ),
+    ),
+  );
+
+  void _openContent(String target) {
+    if (target == 'kahf') {
       Navigator.of(context).push(
         MaterialPageRoute(
           fullscreenDialog: true,
-          builder: (_) => ReaderScreen(
-            collectionId: collectionId,
-            autoStartSpeech: autoStartSpeech,
-          ),
+          builder: (_) => const KahfReaderScreen(),
         ),
       );
+      return;
+    }
+    _openReader(target);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -389,13 +445,13 @@ class _HomeScreenState extends State<HomeScreen>
                               h: h,
                               schedule: schedule,
                               onCity: () => CityPicker.open(context),
-                              onQibla: () =>
-                                  _p.animateTo(-1, curve: Curves.easeOutCubic),
-                              onReader: _openReader,
+                              onHeaderPointerDown:
+                                  _stabilizeHomeForHeaderPointer,
+                              onQibla: () => _animateToPage(-1),
+                              onReader: _openContent,
                               onToggleDate: () =>
                                   app.dateGregorian = !app.dateGregorian,
-                              onExpand: () =>
-                                  _p.animateTo(1, curve: Curves.easeOutCubic),
+                              onExpand: () => _animateToPage(1),
                             ),
                           ),
                           if (p < 0)
@@ -430,11 +486,8 @@ class _HomeScreenState extends State<HomeScreen>
                                     nowSec: nowSec,
                                     h: h,
                                     schedule: schedule,
-                                    onReader: _openReader,
-                                    onCollapse: () => _p.animateTo(
-                                      0,
-                                      curve: Curves.easeOutCubic,
-                                    ),
+                                    onReader: _openContent,
+                                    onCollapse: () => _animateToPage(0),
                                     onToggleDate: () =>
                                         app.dateGregorian = !app.dateGregorian,
                                   )
@@ -447,11 +500,8 @@ class _HomeScreenState extends State<HomeScreen>
                                     nowMin: nowMin,
                                     h: h,
                                     schedule: schedule,
-                                    onReader: _openReader,
-                                    onCollapse: () => _p.animateTo(
-                                      0,
-                                      curve: Curves.easeOutCubic,
-                                    ),
+                                    onReader: _openContent,
+                                    onCollapse: () => _animateToPage(0),
                                     onToggleDate: () =>
                                         app.dateGregorian = !app.dateGregorian,
                                   ),
@@ -772,6 +822,7 @@ class _HomeLayer extends StatelessWidget {
     required this.h,
     required this.schedule,
     required this.onCity,
+    required this.onHeaderPointerDown,
     required this.onQibla,
     required this.onReader,
     required this.onToggleDate,
@@ -785,7 +836,11 @@ class _HomeLayer extends StatelessWidget {
   final DayTimes t;
   final int nowMin, nowSec;
   final ScheduleService schedule;
-  final VoidCallback onCity, onQibla, onToggleDate, onExpand;
+  final VoidCallback onCity,
+      onHeaderPointerDown,
+      onQibla,
+      onToggleDate,
+      onExpand;
   final void Function(String) onReader;
 
   @override
@@ -921,57 +976,80 @@ class _HomeLayer extends StatelessWidget {
       left: 28,
       right: 28,
       top: 12,
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: onCity,
-              behavior: HitTestBehavior.opaque,
-              child: Row(
-                children: [
-                  Icon(Icons.place_outlined, size: 14, color: fg.faint),
-                  const SizedBox(width: 3),
-                  Flexible(
-                    child: Text(
-                      app.city.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: style,
-                    ),
+      // Город, Кибла и календарная дата — самостоятельные элементы управления.
+      // Их вертикальные жесты не должны попадать в распознаватель трёхэкранной
+      // ленты: иначе небольшой сдвиг пальца при тапе менял экран вместо даты.
+      child: Listener(
+        onPointerDown: (_) => onHeaderPointerDown(),
+        child: GestureDetector(
+          key: const ValueKey('home-header-gesture-shield'),
+          behavior: HitTestBehavior.opaque,
+          onVerticalDragStart: (_) {},
+          onVerticalDragUpdate: (_) {},
+          onVerticalDragEnd: (_) {},
+          onVerticalDragCancel: () {},
+          child: Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: onCity,
+                  behavior: HitTestBehavior.opaque,
+                  child: Row(
+                    children: [
+                      Icon(Icons.place_outlined, size: 14, color: fg.faint),
+                      const SizedBox(width: 3),
+                      Flexible(
+                        child: Text(
+                          app.city.displayName(app.lang),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: style,
+                        ),
+                      ),
+                      Icon(
+                        Icons.keyboard_arrow_down,
+                        size: 14,
+                        color: fg.faint,
+                      ),
+                    ],
                   ),
-                  Icon(Icons.keyboard_arrow_down, size: 14, color: fg.faint),
-                ],
+                ),
               ),
-            ),
-          ),
-          GestureDetector(
-            onTap: onQibla,
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Row(
-                children: [
-                  Icon(Icons.navigation_outlined, size: 14, color: fg.faint),
-                  const SizedBox(width: 3),
-                  Text('Кибла ↑', style: style),
-                ],
+              GestureDetector(
+                onTap: onQibla,
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.navigation_outlined,
+                        size: 14,
+                        color: fg.faint,
+                      ),
+                      const SizedBox(width: 3),
+                      Text('Кибла ↑', style: style),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: onToggleDate,
-              behavior: HitTestBehavior.opaque,
-              child: Text(
-                dateLine(s, schedule.now(), app.dateGregorian),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.right,
-                style: style,
+              Expanded(
+                child: GestureDetector(
+                  key: const ValueKey('home-date-toggle'),
+                  onTap: onToggleDate,
+                  behavior: HitTestBehavior.opaque,
+                  child: Text(
+                    dateLine(s, schedule.now(), app.dateGregorian),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: style,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -980,8 +1058,9 @@ class _HomeLayer extends StatelessWidget {
     left: 0,
     right: 0,
     bottom: 8,
-    child: _BouncingHint(
-      s: s,
+    child: SwipeHint(
+      label: s.swipe,
+      direction: SwipeHintDirection.up,
       // Подсказка лежит поверх архитектуры, поэтому не наследует дневной
       // тёмный foreground неба: её прежний светлый вид читается стабильнее.
       color: const Color(0xFFF2EFE6),
@@ -991,104 +1070,6 @@ class _HomeLayer extends StatelessWidget {
       onTap: onExpand,
     ),
   );
-}
-
-/// Подсказка свайпа с периодическим подскоком (README: hintbounce) —
-/// намекает, что экран можно свайпнуть вверх.
-class _BouncingHint extends StatefulWidget {
-  const _BouncingHint({
-    required this.s,
-    required this.color,
-    required this.shadows,
-    required this.onTap,
-  });
-  final S s;
-  final Color color;
-  final List<Shadow> shadows;
-  final VoidCallback onTap;
-
-  @override
-  State<_BouncingHint> createState() => _BouncingHintState();
-}
-
-class _BouncingHintState extends State<_BouncingHint>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 5),
-  )..repeat();
-  late final Animation<double> _dy = TweenSequence<double>([
-    TweenSequenceItem(tween: ConstantTween(0), weight: 72),
-    TweenSequenceItem(
-      tween: Tween(
-        begin: 0.0,
-        end: -8.0,
-      ).chain(CurveTween(curve: Curves.easeInOut)),
-      weight: 6,
-    ),
-    TweenSequenceItem(
-      tween: Tween(
-        begin: -8.0,
-        end: 0.0,
-      ).chain(CurveTween(curve: Curves.easeInOut)),
-      weight: 6,
-    ),
-    TweenSequenceItem(
-      tween: Tween(
-        begin: 0.0,
-        end: -4.0,
-      ).chain(CurveTween(curve: Curves.easeInOut)),
-      weight: 6,
-    ),
-    TweenSequenceItem(
-      tween: Tween(
-        begin: -4.0,
-        end: 0.0,
-      ).chain(CurveTween(curve: Curves.easeInOut)),
-      weight: 6,
-    ),
-    TweenSequenceItem(tween: ConstantTween(0), weight: 4),
-  ]).animate(_ctrl);
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = widget.color;
-    return GestureDetector(
-      onTap: widget.onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedBuilder(
-        animation: _dy,
-        builder: (_, child) =>
-            Transform.translate(offset: Offset(0, _dy.value), child: child),
-        child: Column(
-          children: [
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              widget.s.swipe,
-              style: JType.ui(
-                11,
-                color: color,
-              ).copyWith(shadows: widget.shadows),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 (String, String, String, String?, VoidCallback, VoidCallback?) _windowLabels(
@@ -1111,9 +1092,9 @@ class _BouncingHintState extends State<_BouncingHint>
       return (
         s.kahfTitle,
         s.kahfSub,
-        s.markKahf,
+        s.read,
         null,
-        () => app.markDone('kahf'),
+        () => onReader('kahf'),
         null,
       );
     case TaskId.evening:
@@ -1271,7 +1252,7 @@ class _DayLayer extends StatelessWidget {
                                 ),
                                 const SizedBox(width: 3),
                                 Text(
-                                  app.city.name,
+                                  app.city.displayName(app.lang),
                                   style: JType.ui(12.5, color: c.sub),
                                 ),
                               ],
@@ -1334,7 +1315,7 @@ class _DayLayer extends StatelessWidget {
                                   label: s.kahfTitle,
                                   done: app.isDone('kahf'),
                                   c: c,
-                                  onTap: () => app.markDone('kahf'),
+                                  onTap: () => onReader('kahf'),
                                 ),
                               _TaskRow(
                                 label: s.eveningTitle,
@@ -1571,7 +1552,7 @@ class _ModernDayLayer extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          app.city.name,
+                          app.city.displayName(app.lang),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: JType.ui(12.5, color: c.sub),
@@ -1690,6 +1671,7 @@ class _ModernDayLayer extends StatelessWidget {
                   child: _UtilityDock(
                     s: s,
                     palette: palette,
+                    onKahf: () => onReader('kahf'),
                     onReminders: () => RemindersScreen.open(context),
                     onLanguage: () => LanguagePicker.open(context),
                   ),
@@ -1738,7 +1720,7 @@ class _ModernTasksCard extends StatelessWidget {
               id: 'kahf',
               label: s.kahfTitle,
               active: false,
-              onTap: () => app.markDone('kahf'),
+              onTap: () => onReader('kahf'),
             ),
           (
             id: 'evening',
@@ -2022,13 +2004,14 @@ class _UtilityDock extends StatelessWidget {
   const _UtilityDock({
     required this.s,
     required this.palette,
+    required this.onKahf,
     required this.onReminders,
     required this.onLanguage,
   });
 
   final S s;
   final DaySurfacePalette palette;
-  final VoidCallback onReminders, onLanguage;
+  final VoidCallback onKahf, onReminders, onLanguage;
 
   @override
   Widget build(BuildContext context) {
@@ -2057,6 +2040,19 @@ class _UtilityDock extends StatelessWidget {
             ),
             child: Row(
               children: [
+                Expanded(
+                  child: _DockAction(
+                    icon: CupertinoIcons.book,
+                    label: s == S.kz ? 'әл-Кәһф' : 'аль-Кахф',
+                    color: c.ink,
+                    onTap: onKahf,
+                  ),
+                ),
+                Container(
+                  width: 0.8,
+                  height: 24,
+                  color: c.hair.withValues(alpha: 0.65),
+                ),
                 Expanded(
                   child: _DockAction(
                     icon: CupertinoIcons.bell,
@@ -2533,7 +2529,10 @@ class _Notebook extends StatelessWidget {
             style: JType.ui(
               11,
               w: FontWeight.w400,
-              color: c.faint.withValues(alpha: 0.58),
+              // Будущие даты отличаются отсутствием кольца; дополнительно
+              // снижать opacity нельзя — на закате это делало число почти
+              // невидимым даже при корректном цвете палитры.
+              color: c.faint,
             ),
           ),
         ),

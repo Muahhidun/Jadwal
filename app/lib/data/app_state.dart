@@ -8,17 +8,53 @@ import '../prayer/city.dart';
 class AppState extends ChangeNotifier {
   AppState._(this._prefs);
 
-  static Future<AppState> load() async =>
-      AppState._(await SharedPreferences.getInstance());
+  static Future<AppState> load() async {
+    final state = AppState._(await SharedPreferences.getInstance());
+    state._migrateZikrReminderDelay();
+    return state;
+  }
 
   final SharedPreferences _prefs;
+
+  /// Старые сборки создавали уведомления зикров одновременно с намазом.
+  /// Один раз переносим только прежнее нулевое значение на новый мягкий
+  /// дефолт +10 минут; последующий выбор пользователя не перезаписываем.
+  void _migrateZikrReminderDelay() {
+    const migrationKey = 'migration:zikr_reminder_delay_v1';
+    if (_prefs.getBool(migrationKey) ?? false) return;
+    for (final id in const ['morning', 'evening']) {
+      final raw = _prefs.getString('rc:$id');
+      if (raw == null) continue;
+      try {
+        final json = jsonDecode(raw) as Map<String, dynamic>;
+        if ((json['o'] as int?) == 0) {
+          json['o'] = 10;
+          _prefs.setString('rc:$id', jsonEncode(json));
+        }
+      } catch (_) {
+        // Повреждённая старая настройка ниже будет заменена дефолтом.
+      }
+    }
+    _prefs.setBool(migrationKey, true);
+  }
 
   String get lang => _prefs.getString('lang') ?? 'ru';
   String get theme => _prefs.getString('theme') ?? 'dark';
   bool get onboardingDone => _prefs.getBool('onboardingDone') ?? false;
 
+  /// Контекстное знакомство с центром напоминаний показывается отдельно от
+  /// короткого первого запуска приложения и только при первом входе в раздел.
+  bool get remindersGuideSeen =>
+      _prefs.getBool('remindersGuideSeenV2') ?? false;
+
   /// Показывать дату по григорианскому календарю вместо хиджры (тап по дате).
   bool get dateGregorian => _prefs.getBool('dateGregorian') ?? false;
+
+  /// Цветовая палитра читалки зикров. Не влияет на тему остальных экранов.
+  String get readerPalette => _prefs.getString('readerPalette') ?? 'paper';
+
+  /// Цветные правила таджвида в читалке аль-Кахф.
+  bool get kahfTajweed => _prefs.getBool('kahfTajweed') ?? true;
 
   /// Выбранный город (любой из справочника ДУМК). По умолчанию — Алматы.
   /// Координаты — точные строки ДУМК (см. City).
@@ -40,15 +76,35 @@ class AppState extends ChangeNotifier {
   void setNotifPrayer(String id, bool v) =>
       saveReminderConfig(getReminderConfig(id, lang).copyWith(enabled: v));
 
-  /// Громкий системный будильник для пробуждения на Фаджр.
-  bool get fajrAlarmEnabled => _prefs.getBool('fajr_alarm_enabled') ?? false;
-  set fajrAlarmEnabled(bool val) =>
-      _set(() => _prefs.setBool('fajr_alarm_enabled', val));
+  /// Громкие системные будильники для пяти намазов.
+  ///
+  /// Старые ключи Фаджра читаются как fallback, чтобы обновление
+  /// не сбрасывало уже выбранные пользователем настройки.
+  bool alarmEnabled(String prayerId) =>
+      _prefs.getBool('prayer_alarm:$prayerId:enabled') ??
+      (prayerId == 'fajr'
+          ? (_prefs.getBool('fajr_alarm_enabled') ?? false)
+          : false);
 
-  int get fajrAlarmOffsetMinutes =>
-      _prefs.getInt('fajr_alarm_offset') ?? -15;
-  set fajrAlarmOffsetMinutes(int val) =>
-      _set(() => _prefs.setInt('fajr_alarm_offset', val));
+  void setAlarmEnabled(String prayerId, bool value) => _set(() {
+    _prefs.setBool('prayer_alarm:$prayerId:enabled', value);
+    if (prayerId == 'fajr') _prefs.setBool('fajr_alarm_enabled', value);
+  });
+
+  int alarmOffsetMinutes(String prayerId) =>
+      _prefs.getInt('prayer_alarm:$prayerId:offset') ??
+      (prayerId == 'fajr' ? (_prefs.getInt('fajr_alarm_offset') ?? -15) : 0);
+
+  void setAlarmOffsetMinutes(String prayerId, int value) => _set(() {
+    _prefs.setInt('prayer_alarm:$prayerId:offset', value);
+    if (prayerId == 'fajr') _prefs.setInt('fajr_alarm_offset', value);
+  });
+
+  // Совместимость с кодом предыдущих сборок.
+  bool get fajrAlarmEnabled => alarmEnabled('fajr');
+  set fajrAlarmEnabled(bool value) => setAlarmEnabled('fajr', value);
+  int get fajrAlarmOffsetMinutes => alarmOffsetMinutes('fajr');
+  set fajrAlarmOffsetMinutes(int value) => setAlarmOffsetMinutes('fajr', value);
 
   /// Свои напоминания пользователя (конструктор).
   List<ReminderConfig> get customReminders {
@@ -91,14 +147,14 @@ class AppState extends ChangeNotifier {
         title: kz ? 'Таңғы зікірлер' : 'Утренние зикры',
         enabled: _prefs.getBool('nw:morning') ?? true,
         prayer: 0,
-        offsetMin: 0,
+        offsetMin: 10,
       ),
       'evening' => ReminderConfig(
         id: id,
         title: kz ? 'Кешкі зікірлер' : 'Вечерние зикры',
         enabled: _prefs.getBool('nw:evening') ?? true,
         prayer: 3,
-        offsetMin: 0,
+        offsetMin: 10,
       ),
       'kahf' => ReminderConfig(
         id: id,
@@ -199,7 +255,14 @@ class AppState extends ChangeNotifier {
   set lang(String v) => _set(() => _prefs.setString('lang', v));
   set theme(String v) => _set(() => _prefs.setString('theme', v));
   set onboardingDone(bool v) => _set(() => _prefs.setBool('onboardingDone', v));
+  set remindersGuideSeen(bool v) => _set(() {
+    _prefs.setBool('remindersGuideSeen', v);
+    _prefs.setBool('remindersGuideSeenV2', v);
+  });
   set dateGregorian(bool v) => _set(() => _prefs.setBool('dateGregorian', v));
+  set readerPalette(String v) =>
+      _set(() => _prefs.setString('readerPalette', v));
+  set kahfTajweed(bool v) => _set(() => _prefs.setBool('kahfTajweed', v));
 
   void setCity(City c) => _set(() {
     _prefs.setString('cityName', c.name);
@@ -287,6 +350,8 @@ class ReminderConfig {
   final String id, title;
   final int prayer; // индекс Prayer (0 fajr … 5 isha)
   final int offsetMin; // отрицательное — до намаза, положительное — после
+  final String anchor; // 'prayer' — от намаза, 'clock' — в фиксированное время
+  final int fixedHour, fixedMinute;
   final bool enabled;
   final String repeat; // 'daily' / 'weekly' / 'monthly'
   final int weekday; // день недели (1-7, default 5 = пятница)
@@ -296,16 +361,24 @@ class ReminderConfig {
     required this.title,
     required this.prayer,
     required this.offsetMin,
+    this.anchor = 'prayer',
+    this.fixedHour = 9,
+    this.fixedMinute = 0,
     this.enabled = true,
     this.repeat = 'daily',
     this.weekday = 5,
   });
+
+  bool get isPrayerLinked => anchor != 'clock';
 
   ReminderConfig copyWith({
     String? title,
     bool? enabled,
     int? prayer,
     int? offsetMin,
+    String? anchor,
+    int? fixedHour,
+    int? fixedMinute,
     String? repeat,
     int? weekday,
   }) => ReminderConfig(
@@ -313,6 +386,9 @@ class ReminderConfig {
     title: title ?? this.title,
     prayer: prayer ?? this.prayer,
     offsetMin: offsetMin ?? this.offsetMin,
+    anchor: anchor ?? this.anchor,
+    fixedHour: fixedHour ?? this.fixedHour,
+    fixedMinute: fixedMinute ?? this.fixedMinute,
     enabled: enabled ?? this.enabled,
     repeat: repeat ?? this.repeat,
     weekday: weekday ?? this.weekday,
@@ -323,6 +399,9 @@ class ReminderConfig {
     't': title,
     'p': prayer,
     'o': offsetMin,
+    'a': anchor,
+    'h': fixedHour,
+    'm': fixedMinute,
     'e': enabled,
     'r': repeat,
     'w': weekday,
@@ -333,6 +412,9 @@ class ReminderConfig {
     title: j['t'] as String,
     prayer: j['p'] as int,
     offsetMin: j['o'] as int,
+    anchor: (j['a'] as String?) ?? 'prayer',
+    fixedHour: (j['h'] as int?) ?? 9,
+    fixedMinute: (j['m'] as int?) ?? 0,
     enabled: (j['e'] as bool?) ?? true,
     repeat: (j['r'] as String?) ?? 'daily',
     weekday: (j['w'] as int?) ?? 5,

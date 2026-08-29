@@ -9,7 +9,7 @@ struct DauamAlarmMetadata: AlarmMetadata {
 }
 #endif
 
-/// Мост Flutter → AlarmKit для настоящего системного будильника Фаджра.
+/// Мост Flutter → AlarmKit для настоящих системных будильников намазов.
 ///
 /// Важно: этот класс намеренно не подменяет ошибку AlarmKit обычным
 /// UNUserNotificationCenter-уведомлением. Иначе Flutter сообщает об успешном
@@ -24,6 +24,13 @@ public final class AlarmManager: NSObject, FlutterPlugin {
   private static let testAlarmID = UUID(
     uuidString: "DA0A0000-0000-4000-8000-000000000002"
   )!
+  private static let prayerAlarmIDs: [String: UUID] = [
+    "fajr": fajrAlarmID,
+    "dhuhr": UUID(uuidString: "DA0A0000-0000-4000-8000-000000000003")!,
+    "asr": UUID(uuidString: "DA0A0000-0000-4000-8000-000000000004")!,
+    "maghrib": UUID(uuidString: "DA0A0000-0000-4000-8000-000000000005")!,
+    "isha": UUID(uuidString: "DA0A0000-0000-4000-8000-000000000006")!,
+  ]
 
   private enum BridgeError: LocalizedError {
     case alarmKitUnavailable
@@ -68,6 +75,22 @@ public final class AlarmManager: NSObject, FlutterPlugin {
     switch call.method {
     case "getPendingAlarms":
       getPendingAlarms(result: result)
+
+    case "syncPrayerAlarms":
+      guard
+        let args = call.arguments as? [String: Any],
+        let alarms = args["alarms"] as? [[String: Any]]
+      else {
+        result(
+          FlutterError(
+            code: "INVALID_ARGS",
+            message: "Expected an alarms array.",
+            details: nil
+          )
+        )
+        return
+      }
+      syncPrayerAlarms(alarms, result: result)
 
     case "testFajrAlarm":
       let args = call.arguments as? [String: Any]
@@ -114,6 +137,100 @@ public final class AlarmManager: NSObject, FlutterPlugin {
     }
   }
 
+  private func syncPrayerAlarms(
+    _ entries: [[String: Any]],
+    result: @escaping FlutterResult
+  ) {
+    removeLegacyNotificationFallbacks()
+
+    let validEntries = entries.filter { entry in
+      guard let kind = entry["id"] as? String else { return false }
+      return Self.prayerAlarmIDs[kind] != nil
+    }
+    let enabledEntries = validEntries.filter {
+      $0["enabled"] as? Bool ?? false
+    }
+
+    for entry in enabledEntries {
+      let timestamp = entry["timestamp"] as? Double ?? 0
+      if Date(timeIntervalSince1970: timestamp).timeIntervalSinceNow <= 0 {
+        finish(result, with: BridgeError.invalidDate)
+        return
+      }
+    }
+
+    #if canImport(AlarmKit)
+    guard #available(iOS 26.0, *) else {
+      if enabledEntries.isEmpty {
+        finish(
+          result,
+          value: ["success": true, "mode": "alarmKit", "scheduled": 0]
+        )
+      } else {
+        finish(result, with: BridgeError.alarmKitUnavailable)
+      }
+      return
+    }
+
+    Task {
+      do {
+        let manager = AlarmKit.AlarmManager.shared
+        if !enabledEntries.isEmpty {
+          try await ensureAuthorization(using: manager)
+        }
+
+        removeLegacyAlarmKitAlarms(using: manager)
+        var scheduled: [[String: Any]] = []
+
+        for (kind, id) in Self.prayerAlarmIDs {
+          let entry = validEntries.first { $0["id"] as? String == kind }
+          let enabled = entry?["enabled"] as? Bool ?? false
+          try? manager.cancel(id: id)
+          guard enabled, let entry else { continue }
+
+          let timestamp = entry["timestamp"] as? Double ?? 0
+          let title = entry["title"] as? String ?? kind
+          let date = Date(timeIntervalSince1970: timestamp)
+          let alarm = try await scheduleAlarm(
+            at: date,
+            title: title,
+            kind: kind,
+            id: id,
+            using: manager
+          )
+          scheduled.append([
+            "kind": kind,
+            "id": alarm.id.uuidString,
+            "nextTrigger": date.timeIntervalSince1970,
+            "state": stateName(alarm.state),
+          ])
+        }
+
+        finish(
+          result,
+          value: [
+            "success": true,
+            "mode": "alarmKit",
+            "scheduled": scheduled.count,
+            "alarms": scheduled,
+          ]
+        )
+      } catch {
+        finish(result, with: error)
+      }
+    }
+    #else
+    if enabledEntries.isEmpty {
+      finish(
+        result,
+        value: ["success": true, "mode": "alarmKit", "scheduled": 0]
+      )
+    } else {
+      finish(result, with: BridgeError.alarmKitUnavailable)
+    }
+    #endif
+  }
+
   private func schedule(
     at date: Date,
     title: String,
@@ -137,58 +254,15 @@ public final class AlarmManager: NSObject, FlutterPlugin {
     Task {
       do {
         let alarmManager = AlarmKit.AlarmManager.shared
-        let authorization: AlarmKit.AlarmManager.AuthorizationState
-
-        switch alarmManager.authorizationState {
-        case .notDetermined:
-          authorization = try await alarmManager.requestAuthorization()
-        case .authorized:
-          authorization = .authorized
-        case .denied:
-          authorization = .denied
-        @unknown default:
-          authorization = .denied
-        }
-
-        guard authorization == .authorized else {
-          throw BridgeError.authorizationDenied
-        }
-
-        // Один стабильный ID для обычного Фаджра и отдельный — для теста.
-        // Это позволяет тестировать будильник, не удаляя ежедневный.
+        try await ensureAuthorization(using: alarmManager)
         try? alarmManager.cancel(id: id)
         removeLegacyAlarmKitAlarms(using: alarmManager)
-
-        let titleResource = LocalizedStringResource(stringLiteral: title)
-        let alert: AlarmPresentation.Alert
-        if #available(iOS 26.1, *) {
-          alert = AlarmPresentation.Alert(title: titleResource)
-        } else {
-          let stopButton = AlarmButton(
-            text: "Остановить",
-            textColor: .white,
-            systemImageName: "stop.fill"
-          )
-          alert = AlarmPresentation.Alert(
-            title: titleResource,
-            stopButton: stopButton
-          )
-        }
-
-        let presentation = AlarmPresentation(alert: alert)
-        let attributes = AlarmAttributes<DauamAlarmMetadata>(
-          presentation: presentation,
-          metadata: DauamAlarmMetadata(title: title, kind: kind),
-          tintColor: .orange
-        )
-        let configuration = AlarmKit.AlarmManager.AlarmConfiguration.alarm(
-          schedule: .fixed(date),
-          attributes: attributes
-        )
-
-        let alarm = try await alarmManager.schedule(
+        let alarm = try await scheduleAlarm(
+          at: date,
+          title: title,
+          kind: kind,
           id: id,
-          configuration: configuration
+          using: alarmManager
         )
 
         finish(
@@ -283,11 +357,68 @@ public final class AlarmManager: NSObject, FlutterPlugin {
 
   #if canImport(AlarmKit)
   @available(iOS 26.0, *)
+  private func ensureAuthorization(
+    using manager: AlarmKit.AlarmManager
+  ) async throws {
+    let authorization: AlarmKit.AlarmManager.AuthorizationState
+    switch manager.authorizationState {
+    case .notDetermined:
+      authorization = try await manager.requestAuthorization()
+    case .authorized:
+      authorization = .authorized
+    case .denied:
+      authorization = .denied
+    @unknown default:
+      authorization = .denied
+    }
+    guard authorization == .authorized else {
+      throw BridgeError.authorizationDenied
+    }
+  }
+
+  @available(iOS 26.0, *)
+  private func scheduleAlarm(
+    at date: Date,
+    title: String,
+    kind: String,
+    id: UUID,
+    using manager: AlarmKit.AlarmManager
+  ) async throws -> Alarm {
+    let titleResource = LocalizedStringResource(stringLiteral: title)
+    let alert: AlarmPresentation.Alert
+    if #available(iOS 26.1, *) {
+      alert = AlarmPresentation.Alert(title: titleResource)
+    } else {
+      let stopButton = AlarmButton(
+        text: "Остановить",
+        textColor: .white,
+        systemImageName: "stop.fill"
+      )
+      alert = AlarmPresentation.Alert(
+        title: titleResource,
+        stopButton: stopButton
+      )
+    }
+
+    let presentation = AlarmPresentation(alert: alert)
+    let attributes = AlarmAttributes<DauamAlarmMetadata>(
+      presentation: presentation,
+      metadata: DauamAlarmMetadata(title: title, kind: kind),
+      tintColor: .orange
+    )
+    let configuration = AlarmKit.AlarmManager.AlarmConfiguration.alarm(
+      schedule: .fixed(date),
+      attributes: attributes
+    )
+    return try await manager.schedule(id: id, configuration: configuration)
+  }
+
+  @available(iOS 26.0, *)
   private func removeLegacyAlarmKitAlarms(
     using manager: AlarmKit.AlarmManager
   ) {
     guard let alarms = try? manager.alarms else { return }
-    let currentIDs = Set([Self.fajrAlarmID, Self.testAlarmID])
+    let currentIDs = Set(Self.prayerAlarmIDs.values).union([Self.testAlarmID])
     for alarm in alarms where !currentIDs.contains(alarm.id) {
       try? manager.cancel(id: alarm.id)
     }

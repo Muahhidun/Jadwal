@@ -58,6 +58,20 @@ private struct PrayerCountdown: View {
 public struct JadwalLiveActivity: Widget {
   public init() {}
 
+  private func targetURL(_ state: JadwalActivityAttributes.ContentState) -> URL? {
+    guard state.mode == "zikr", !state.collectionId.isEmpty else {
+      return URL(string: "dauam://home")
+    }
+    var parts = URLComponents()
+    parts.scheme = "dauam"
+    parts.host = "zikr"
+    parts.queryItems = [
+      URLQueryItem(name: "collection", value: state.collectionId),
+      URLQueryItem(name: "index", value: String(state.currentIndex))
+    ]
+    return parts.url
+  }
+
   public var body: some WidgetConfiguration {
     ActivityConfiguration(for: JadwalActivityAttributes.self) { context in
       VStack(alignment: .leading, spacing: 8) {
@@ -103,6 +117,7 @@ public struct JadwalLiveActivity: Widget {
       }
       .padding(16)
       .background(Color(red: 0.07, green: 0.09, blue: 0.15))
+      .widgetURL(targetURL(context.state))
     } dynamicIsland: { context in
       DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
@@ -202,6 +217,7 @@ public struct JadwalLiveActivity: Widget {
           .font(.system(size: 11, weight: .semibold))
           .foregroundColor(Color(red: 0.85, green: 0.72, blue: 0.42))
       }
+      .widgetURL(targetURL(context.state))
     }
   }
 }

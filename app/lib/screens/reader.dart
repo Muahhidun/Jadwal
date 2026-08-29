@@ -10,17 +10,21 @@ import '../theme/system_bars.dart';
 import 'celebration.dart';
 import '../services/live_activity_service.dart';
 import '../services/zikr_speech_service.dart';
+import 'reader_palette.dart';
+import 'zikr_reader_session.dart';
 
-/// Чтение зикров — «книга» (README §4). Фон-«бумага» в обеих темах,
-/// один зикр на экран, сегментированный прогресс. Никаких счётчиков нажатий.
+/// Чтение зикров — «книга» (README §4). Один зикр на экран, четыре локальные
+/// палитры чтения и сегментированный прогресс. Никаких счётчиков нажатий.
 class ReaderScreen extends StatefulWidget {
   const ReaderScreen({
     super.key,
     required this.collectionId,
     this.autoStartSpeech = false,
+    this.initialIndex = 0,
   });
   final String collectionId;
   final bool autoStartSpeech;
+  final int initialIndex;
 
   @override
   State<ReaderScreen> createState() => _ReaderScreenState();
@@ -28,27 +32,28 @@ class ReaderScreen extends StatefulWidget {
 
 class _ReaderScreenState extends State<ReaderScreen> {
   ZikrCollection? collection;
-  int idx = 0;
-  bool confirmed = false;
-  bool isSpeaking = false;
+  ZikrReaderSession? session;
+  int _playbackRequest = 0;
+
+  int get idx => session?.currentIndex ?? 0;
+  bool get isSpeaking => session?.isCurrentSpeaking ?? false;
+  bool get repeatConfirmed => session?.repeatConfirmed ?? false;
 
   @override
   void initState() {
     super.initState();
+    LiveActivityService.activeCollection = widget.collectionId;
     ZikrSpeechService.init(
       onZikrStarted: (i, total) {
-        if (mounted) {
+        if (mounted && session != null) {
           setState(() {
-            idx = i;
-            isSpeaking = true;
+            session!.markCurrentSpeaking();
           });
-          _syncZikrLiveActivity();
         }
       },
       onReadingCompleted: () {
-        if (mounted) {
-          setState(() => isSpeaking = false);
-          _finish();
+        if (mounted && session != null) {
+          setState(session!.markPlaybackStopped);
         }
       },
     );
@@ -58,21 +63,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
         if (mounted &&
             collection != null &&
             idx < collection!.items.length - 1) {
-          setState(() => idx++);
-          _syncZikrLiveActivity();
+          _goToIndex(idx + 1);
         }
       },
       prevZikrHandler: () {
         if (mounted && collection != null && idx > 0) {
-          setState(() => idx--);
-          _syncZikrLiveActivity();
+          _goToIndex(idx - 1);
         }
       },
       tickZikrHandler: () {
         if (mounted && collection != null) {
           if (idx < collection!.items.length - 1) {
-            setState(() => idx++);
-            _syncZikrLiveActivity();
+            _goToIndex(idx + 1);
           } else {
             _finish();
           }
@@ -83,29 +85,76 @@ class _ReaderScreenState extends State<ReaderScreen> {
     AdhkarRepository.load().then((all) {
       if (mounted) {
         final col = all[widget.collectionId];
-        setState(() => collection = col);
+        setState(() {
+          collection = col;
+          if (col != null && col.items.isNotEmpty) {
+            session = ZikrReaderSession(itemCount: col.items.length);
+            final initialIndex = widget.initialIndex.clamp(
+              0,
+              col.items.length - 1,
+            );
+            if (initialIndex > 0) session!.select(initialIndex);
+          }
+        });
         _syncZikrLiveActivity();
-        if (widget.autoStartSpeech && col != null) {
-          _startSpeech(col);
+        if (widget.autoStartSpeech && col != null && col.items.isNotEmpty) {
+          _playCurrent(col);
         }
       }
     });
   }
 
-  void _startSpeech(ZikrCollection col) async {
-    setState(() => isSpeaking = true);
-    await ZikrSpeechService.speakCollection(col);
+  Future<void> _playCurrent(ZikrCollection col) async {
+    final request = ++_playbackRequest;
+    await ZikrSpeechService.stop();
+    if (!mounted || request != _playbackRequest || session == null) return;
+
+    final started = await ZikrSpeechService.speakZikr(
+      col.items[idx],
+      title: col.title(AppScope.of(context).lang),
+    );
+    if (!mounted || request != _playbackRequest || session == null) {
+      if (started) ZikrSpeechService.stop();
+      return;
+    }
+    setState(() {
+      if (started) {
+        session!.markCurrentSpeaking();
+      } else {
+        session!.markPlaybackStopped();
+      }
+    });
   }
 
-  void _toggleSpeech() async {
+  Future<void> _stopSpeech() async {
+    final request = ++_playbackRequest;
+    await ZikrSpeechService.stop();
+    if (mounted && request == _playbackRequest && session != null) {
+      setState(session!.markPlaybackStopped);
+    }
+  }
+
+  Future<void> _toggleSpeech() async {
     final col = collection;
     if (col == null) return;
     if (isSpeaking) {
-      await ZikrSpeechService.stop();
-      setState(() => isSpeaking = false);
+      await _stopSpeech();
     } else {
-      _startSpeech(col);
+      await _playCurrent(col);
     }
+  }
+
+  Future<void> _goToIndex(int target) async {
+    final currentSession = session;
+    if (currentSession == null || target == currentSession.currentIndex) return;
+
+    ++_playbackRequest;
+    final stop = ZikrSpeechService.stop();
+    if (mounted) {
+      setState(() => currentSession.select(target));
+      _syncZikrLiveActivity();
+    }
+    await stop;
   }
 
   void _syncZikrLiveActivity() async {
@@ -116,6 +165,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
         ? 'Утренние зикры'
         : 'Вечерние зикры';
     final res = await LiveActivityService.startZikrSession(
+      collectionId: widget.collectionId,
+      currentIndex: idx,
       title: title,
       counterCurrent: idx + 1,
       counterTotal: col.items.length,
@@ -136,11 +187,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   @override
   void dispose() {
+    ++_playbackRequest;
     ZikrSpeechService.stop();
+    if (LiveActivityService.activeCollection == widget.collectionId) {
+      LiveActivityService.activeCollection = null;
+    }
     super.dispose();
   }
 
   void _finish() {
+    ++_playbackRequest;
     ZikrSpeechService.stop();
     LiveActivityService.stopActivity();
     final app = AppScope.of(context);
@@ -152,17 +208,38 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
+  void _showPalettePicker(AppState app, ReaderPalette palette) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: palette.bg,
+      barrierColor: Colors.black.withValues(alpha: .45),
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        side: BorderSide(color: palette.divider),
+      ),
+      builder: (sheetContext) => ReaderPalettePicker(
+        current: palette,
+        lang: app.lang,
+        onSelected: (selected) {
+          app.readerPalette = selected.id;
+          Navigator.of(sheetContext).pop();
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final s = S.of(app.lang);
+    final palette = ReaderPalette.fromId(app.readerPalette);
     final col = collection;
     if (col == null) {
-      return const JSystemBars(
-        darkIcons: true,
+      return JSystemBars(
+        darkIcons: !palette.isDark,
         child: Scaffold(
-          backgroundColor: JPaper.bg,
-          body: Center(child: CircularProgressIndicator(color: JPaper.accent)),
+          backgroundColor: palette.bg,
+          body: Center(child: CircularProgressIndicator(color: palette.accent)),
         ),
       );
     }
@@ -185,9 +262,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final remaining = DayTimes.fmtDuration(remainingMin);
 
     return JSystemBars(
-      darkIcons: true,
+      darkIcons: !palette.isDark,
       child: Scaffold(
-        backgroundColor: JPaper.bg,
+        backgroundColor: palette.bg,
         body: SafeArea(
           child: Column(
             children: [
@@ -201,29 +278,43 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         LiveActivityService.stopActivity();
                         Navigator.of(context).pop();
                       },
-                      child: const Padding(
-                        padding: EdgeInsets.all(6),
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
                         child: Icon(
                           Icons.close,
                           size: 22,
-                          color: JPaper.source,
+                          color: palette.source,
                         ),
                       ),
                     ),
                     Expanded(
                       child: Column(
                         children: [
-                          Text(title, style: JType.caption(JPaper.accent)),
+                          Text(title, style: JType.caption(palette.accent)),
                           const SizedBox(height: 2),
                           if (remainingMin > 0)
                             Text(
                               '$timerCaption · $remaining',
-                              style: JType.ui(11, color: JPaper.source),
+                              style: JType.ui(11, color: palette.source),
                             ),
                         ],
                       ),
                     ),
                     GestureDetector(
+                      key: const ValueKey('reader-palette-button'),
+                      onTap: () => _showPalettePicker(app, palette),
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Icon(
+                          Icons.palette_outlined,
+                          size: 22,
+                          color: palette.source,
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      key: const ValueKey('reader-speech-toggle'),
                       onTap: _toggleSpeech,
                       child: Padding(
                         padding: const EdgeInsets.all(6),
@@ -232,7 +323,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                               ? Icons.volume_up_rounded
                               : Icons.volume_off_rounded,
                           size: 22,
-                          color: isSpeaking ? JPaper.accent : JPaper.source,
+                          color: isSpeaking ? palette.accent : palette.source,
                         ),
                       ),
                     ),
@@ -249,7 +340,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         child: Container(
                           height: 3,
                           decoration: BoxDecoration(
-                            color: i <= idx ? JPaper.accent : JPaper.divider,
+                            color: i <= idx ? palette.accent : palette.divider,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -262,7 +353,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
               const SizedBox(height: 6),
               Text(
                 '${idx + 1} ${s.of_} ${col.items.length}',
-                style: JType.ui(11, color: JPaper.source),
+                style: JType.ui(11, color: palette.source),
               ),
               Expanded(
                 child: SingleChildScrollView(
@@ -270,75 +361,228 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     horizontal: 28,
                     vertical: 20,
                   ),
-                  child: _ZikrBody(z: z, s: s, lang: app.lang),
+                  child: _ZikrBody(
+                    z: z,
+                    s: s,
+                    lang: app.lang,
+                    palette: palette,
+                  ),
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                child: Row(
+                child: Column(
                   children: [
                     GestureDetector(
-                      onTap: idx > 0
-                          ? () {
-                              setState(() {
-                                confirmed = false;
-                                idx--;
-                              });
-                              _syncZikrLiveActivity();
-                            }
-                          : null,
-                      child: Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: idx > 0 ? JPaper.button : JPaper.disabled,
-                          ),
+                      key: const ValueKey('reader-skip-action'),
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        session!.skipCurrent();
+                        if (last) {
+                          _finish();
+                        } else {
+                          _goToIndex(idx + 1);
+                        }
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
                         ),
-                        child: Icon(
-                          Icons.arrow_back,
-                          size: 20,
-                          color: idx > 0 ? JPaper.button : JPaper.disabled,
+                        child: Text(
+                          app.lang == 'kz'
+                              ? 'Бұл зікірді өткізу'
+                              : 'Пропустить этот зикр',
+                          style: JType.ui(
+                            12,
+                            w: FontWeight.w600,
+                            color: palette.source,
+                          ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _ActionButton(
-                        isConfirmed: confirmed,
-                        topText: confirmed
-                            ? s.repeatConfirmTitle.replaceAll(
-                                '{n}',
-                                '${z.repeat}',
-                              )
-                            : countLabel(z.repeat, app.lang),
-                        bottomText: confirmed
-                            ? s.repeatConfirmBtn
-                            : (last ? s.finishBtn : s.nextBtn),
-                        onTap: () {
-                          if (z.repeat > 1 && !confirmed) {
-                            HapticFeedback.mediumImpact();
-                            setState(() => confirmed = true);
-                          } else {
-                            if (last) {
-                              _finish();
-                            } else {
-                              setState(() {
-                                confirmed = false;
-                                idx++;
-                              });
-                              _syncZikrLiveActivity();
-                            }
-                          }
-                        },
-                      ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        GestureDetector(
+                          onTap: idx > 0 ? () => _goToIndex(idx - 1) : null,
+                          child: Container(
+                            width: 52,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: idx > 0
+                                    ? palette.button
+                                    : palette.disabled,
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.arrow_back,
+                              size: 20,
+                              color: idx > 0
+                                  ? palette.button
+                                  : palette.disabled,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _ActionButton(
+                            key: const ValueKey('reader-next-action'),
+                            isConfirmed: repeatConfirmed,
+                            palette: palette,
+                            topText: repeatConfirmed
+                                ? s.repeatConfirmTitle.replaceAll(
+                                    '{n}',
+                                    '${z.repeat}',
+                                  )
+                                : countLabel(z.repeat, app.lang),
+                            bottomText: repeatConfirmed
+                                ? s.repeatConfirmBtn
+                                : (last ? s.finishBtn : s.nextBtn),
+                            onTap: () {
+                              if (z.repeat > 1 && !repeatConfirmed) {
+                                HapticFeedback.selectionClick();
+                                setState(session!.confirmRepeat);
+                                return;
+                              }
+                              session!.markCurrentRead();
+                              HapticFeedback.mediumImpact();
+                              if (last) {
+                                _finish();
+                              } else {
+                                _goToIndex(idx + 1);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class ReaderPalettePicker extends StatelessWidget {
+  const ReaderPalettePicker({
+    super.key,
+    required this.current,
+    required this.lang,
+    required this.onSelected,
+  });
+
+  final ReaderPalette current;
+  final String lang;
+  final ValueChanged<ReaderPalette> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: current.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              lang == 'kz' ? 'Оқу түстері' : 'Цвета для чтения',
+              textAlign: TextAlign.center,
+              style: JType.ui(18, w: FontWeight.w700, color: current.ink),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              lang == 'kz'
+                  ? 'Таңдау барлық зікірлерге сақталады'
+                  : 'Выбор сохранится для всех зикров',
+              textAlign: TextAlign.center,
+              style: JType.ui(12, color: current.source),
+            ),
+            const SizedBox(height: 18),
+            for (final palette in ReaderPalette.values) ...[
+              GestureDetector(
+                key: ValueKey('reader-palette-${palette.id}'),
+                onTap: () => onSelected(palette),
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 11,
+                  ),
+                  decoration: BoxDecoration(
+                    color: current.fazPlate,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: palette.id == current.id
+                          ? current.accent
+                          : current.divider,
+                      width: palette.id == current.id ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: palette.bg,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: palette.divider),
+                        ),
+                        child: Text(
+                          'Aa',
+                          style: JType.ui(
+                            13,
+                            w: FontWeight.w700,
+                            color: palette.ink,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          palette.title(lang),
+                          style: JType.ui(
+                            14,
+                            w: FontWeight.w600,
+                            color: current.ink,
+                          ),
+                        ),
+                      ),
+                      if (palette.id == current.id)
+                        Icon(
+                          Icons.check_rounded,
+                          size: 20,
+                          color: current.accent,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              if (palette != ReaderPalette.values.last)
+                const SizedBox(height: 8),
+            ],
+          ],
         ),
       ),
     );
@@ -364,10 +608,16 @@ String countLabel(int repeat, String lang) {
 }
 
 class _ZikrBody extends StatelessWidget {
-  const _ZikrBody({required this.z, required this.s, required this.lang});
+  const _ZikrBody({
+    required this.z,
+    required this.s,
+    required this.lang,
+    required this.palette,
+  });
   final Zikr z;
   final S s;
   final String lang;
+  final ReaderPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -381,7 +631,7 @@ class _ZikrBody extends StatelessWidget {
           z.ar,
           textAlign: TextAlign.center,
           textDirection: TextDirection.rtl,
-          style: JType.arabic(26),
+          style: JType.arabic(26, color: palette.arabic),
         ),
         const SizedBox(height: 14),
         // Сворачиваемые блоки: транскрипция / перевод / достоинство.
@@ -389,33 +639,36 @@ class _ZikrBody extends StatelessWidget {
         if (z.translit != null)
           _Section(
             title: s.translitTitle,
+            palette: palette,
             open: app.showTranslit,
             onToggle: () => app.showTranslit = !app.showTranslit,
             child: Text(
               z.translit!,
               textAlign: TextAlign.center,
               style: JType.reading(
-                13.5,
-                color: JPaper.translit,
+                readerTransliterationFontSize,
+                color: palette.translit,
                 style: FontStyle.italic,
-                h: 1.6,
+                h: 1.65,
               ),
             ),
           ),
         if (translation != null)
           _Section(
             title: s.translationTitle,
+            palette: palette,
             open: app.showTranslation,
             onToggle: () => app.showTranslation = !app.showTranslation,
             child: Text(
               translation,
               textAlign: TextAlign.center,
-              style: JType.reading(14.5, color: JPaper.ink),
+              style: JType.reading(14.5, color: palette.ink),
             ),
           ),
         if (faz != null)
           _Section(
             title: s.fazTitle,
+            palette: palette,
             open: app.showFaz,
             onToggle: () => app.showFaz = !app.showFaz,
             plate: true,
@@ -424,10 +677,10 @@ class _ZikrBody extends StatelessWidget {
               children: [
                 Text(
                   faz,
-                  style: JType.reading(13.5, color: JPaper.ink, h: 1.6),
+                  style: JType.reading(13.5, color: palette.ink, h: 1.6),
                 ),
                 const SizedBox(height: 8),
-                Text(z.source, style: JType.ui(11.5, color: JPaper.source)),
+                Text(z.source, style: JType.ui(11.5, color: palette.source)),
               ],
             ),
           )
@@ -437,7 +690,7 @@ class _ZikrBody extends StatelessWidget {
             child: Center(
               child: Text(
                 z.source,
-                style: JType.ui(11.5, color: JPaper.source),
+                style: JType.ui(11.5, color: palette.source),
               ),
             ),
           ),
@@ -451,12 +704,14 @@ class _ZikrBody extends StatelessWidget {
 class _Section extends StatelessWidget {
   const _Section({
     required this.title,
+    required this.palette,
     required this.open,
     required this.onToggle,
     required this.child,
     this.plate = false,
   });
   final String title;
+  final ReaderPalette palette;
   final bool open;
   final VoidCallback onToggle;
   final Widget child;
@@ -472,12 +727,12 @@ class _Section extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(title, style: JType.caption(JPaper.accent, size: 10)),
+            Text(title, style: JType.caption(palette.accent, size: 10)),
             const SizedBox(width: 4),
             Icon(
               open ? Icons.expand_less : Icons.expand_more,
               size: 16,
-              color: JPaper.accent,
+              color: palette.accent,
             ),
           ],
         ),
@@ -499,7 +754,7 @@ class _Section extends StatelessWidget {
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       decoration: BoxDecoration(
-        color: JPaper.fazPlate,
+        color: palette.fazPlate,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(children: [header, body]),
@@ -509,14 +764,17 @@ class _Section extends StatelessWidget {
 
 class _ActionButton extends StatefulWidget {
   const _ActionButton({
+    super.key,
     required this.topText,
     required this.bottomText,
     required this.isConfirmed,
+    required this.palette,
     required this.onTap,
   });
   final String topText;
   final String bottomText;
   final bool isConfirmed;
+  final ReaderPalette palette;
   final VoidCallback onTap;
 
   @override
@@ -597,7 +855,9 @@ class _ActionButtonState extends State<_ActionButton>
           duration: const Duration(milliseconds: 250),
           height: 52,
           decoration: BoxDecoration(
-            color: widget.isConfirmed ? JPaper.accent : JPaper.button,
+            color: widget.isConfirmed
+                ? widget.palette.accent
+                : widget.palette.button,
             borderRadius: BorderRadius.circular(100),
           ),
           child: Column(
@@ -608,14 +868,18 @@ class _ActionButtonState extends State<_ActionButton>
                 style: JType.ui(
                   10.5,
                   w: FontWeight.w400,
-                  color: JPaper.bg.withValues(alpha: .6),
+                  color: widget.palette.buttonInk.withValues(alpha: .65),
                 ),
                 child: Text(widget.topText),
               ),
               const SizedBox(height: 1),
               AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 200),
-                style: JType.ui(15, w: FontWeight.w700, color: JPaper.bg),
+                style: JType.ui(
+                  15,
+                  w: FontWeight.w700,
+                  color: widget.palette.buttonInk,
+                ),
                 child: Text(widget.bottomText),
               ),
             ],

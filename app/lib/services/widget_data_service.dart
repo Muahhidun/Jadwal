@@ -98,7 +98,7 @@ class WidgetDataService {
       'schemaVersion': 2,
       'generatedAt': now.millisecondsSinceEpoch / 1000.0,
       'language': app.lang,
-      'city': app.city.name,
+      'city': app.city.displayName(app.lang),
       'dateLabel': dateLabel,
       'prayers': prayerPoints,
       'scheduleDays': scheduleDays.length,

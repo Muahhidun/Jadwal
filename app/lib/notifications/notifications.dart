@@ -13,6 +13,43 @@ import '../services/alarm_service.dart';
 /// Глобальный сервис уведомлений (создаётся в main; null в тестах).
 NotificationService? gNotifier;
 
+/// Чистый расчёт времени пользовательского напоминания.
+/// Вынесен отдельно, чтобы проверять оба режима без нативного API.
+DateTime reminderScheduledTime(
+  ReminderConfig reminder,
+  DateTime date,
+  DayTimes? dayTimes,
+) {
+  if (!reminder.isPrayerLinked) {
+    return DateTime(
+      date.year,
+      date.month,
+      date.day,
+      reminder.fixedHour,
+      reminder.fixedMinute,
+    );
+  }
+  if (dayTimes == null) {
+    throw StateError('Prayer-linked reminder requires prayer times.');
+  }
+  final prayer = Prayer.values[reminder.prayer];
+  final baseTime = dayTimes.times[prayer];
+  if (baseTime == null) {
+    throw StateError('Prayer time is unavailable for ${reminder.id}.');
+  }
+  return DateTime(
+    date.year,
+    date.month,
+    date.day,
+  ).add(Duration(minutes: baseTime + reminder.offsetMin));
+}
+
+/// Контент, который должен открыться по тапу на локальное уведомление.
+String notificationTargetFor(String reminderId) => switch (reminderId) {
+  'morning' || 'evening' || 'kahf' => reminderId,
+  _ => '',
+};
+
 /// Перепланировать очередь из текущего состояния приложения.
 Future<void> syncNotifications(AppState app, ScheduleService schedule) async {
   final now = schedule.now();
@@ -22,7 +59,18 @@ Future<void> syncNotifications(AppState app, ScheduleService schedule) async {
     await schedule.ensureLoaded(app.city, now.year + 1);
   }
 
-  final ids = ['morning', 'evening', 'kahf', 'dua', 'fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
+  final ids = [
+    'morning',
+    'evening',
+    'kahf',
+    'dua',
+    'fajr',
+    'sunrise',
+    'dhuhr',
+    'asr',
+    'maghrib',
+    'isha',
+  ];
   final configs = [
     for (final id in ids) app.getReminderConfig(id, app.lang),
     ...app.customReminders,
@@ -34,7 +82,7 @@ Future<void> syncNotifications(AppState app, ScheduleService schedule) async {
     configs: configs,
     doneToday: {
       for (final id in TaskId.values)
-        if (app.isDone(id.name)) id
+        if (app.isDone(id.name)) id,
     },
   );
   await AlarmService.sync(app, schedule);
@@ -44,6 +92,27 @@ Future<void> syncNotifications(AppState app, ScheduleService schedule) async {
 class _NotifText {
   final String title, body;
   const _NotifText(this.title, this.body);
+}
+
+/// Короткий текст для встроенных временных точек. Восход входит в
+/// расписание, но не является намазом и не должен использовать общий
+/// молитвенный шаблон.
+({String title, String body}) prayerNotificationCopy(String lang, Prayer p) {
+  final kz = lang == 'kz';
+  if (p == Prayer.sunrise) {
+    return (
+      title: kz ? 'Күн шығуы' : 'Восход солнца',
+      body: kz ? 'Күн шықты.' : 'Наступил восход солнца.',
+    );
+  }
+  final names = kz
+      ? ['Таң', 'Күн шығуы', 'Бесін', 'Екінті', 'Ақшам', 'Құптан']
+      : ['Фаджр', 'Восход', 'Зухр', 'Аср', 'Магриб', 'Иша'];
+  final name = names[p.index];
+  return (
+    title: name,
+    body: kz ? '$name намазының уақыты кірді' : 'Наступило время намаза $name',
+  );
 }
 
 /// Сервис локальных уведомлений.
@@ -97,14 +166,22 @@ class NotificationService {
 
   /// Запросить разрешение на уведомления (iOS/Android 13+).
   Future<bool> requestPermission() async {
-    final ios = _plugin.resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>();
+    final ios = _plugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
     if (ios != null) {
-      return await ios.requestPermissions(alert: true, badge: true, sound: true) ??
+      return await ios.requestPermissions(
+            alert: true,
+            badge: true,
+            sound: true,
+          ) ??
           false;
     }
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    final android = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     if (android != null) {
       return await android.requestNotificationsPermission() ?? false;
     }
@@ -112,12 +189,15 @@ class NotificationService {
   }
 
   NotificationDetails _details() => const NotificationDetails(
-        android: AndroidNotificationDetails('jadwal_worship', 'Поклонение',
-            channelDescription: 'Напоминания об окнах зикра и намазах',
-            importance: Importance.high,
-            priority: Priority.high),
-        iOS: DarwinNotificationDetails(),
-      );
+    android: AndroidNotificationDetails(
+      'jadwal_worship',
+      'Поклонение',
+      channelDescription: 'Напоминания об окнах зикра и намазах',
+      importance: Importance.high,
+      priority: Priority.high,
+    ),
+    iOS: DarwinNotificationDetails(),
+  );
 
   /// Перепланировать всю очередь. Вызывать при старте, смене города/настроек
   /// и при отметке «выполнено» ([doneToday] — какие задачи уже выполнены сегодня).
@@ -135,7 +215,6 @@ class NotificationService {
     for (var d = 0; d < _daysAhead && count < _cap; d++) {
       final date = DateTime(now.year, now.month, now.day + d);
       final t = _schedule.timesFor(city, date);
-      if (t == null) continue;
       final isToday = d == 0;
 
       for (final rc in configs) {
@@ -154,19 +233,20 @@ class NotificationService {
 
         // Проверяем, выполнено ли сегодня
         if (isToday) {
-          if (rc.id == 'morning' && doneToday.contains(TaskId.morning)) continue;
-          if (rc.id == 'evening' && doneToday.contains(TaskId.evening)) continue;
+          if (rc.id == 'morning' && doneToday.contains(TaskId.morning)) {
+            continue;
+          }
+          if (rc.id == 'evening' && doneToday.contains(TaskId.evening)) {
+            continue;
+          }
           if (rc.id == 'kahf' && doneToday.contains(TaskId.kahf)) continue;
           if (rc.id == 'dua' && doneToday.contains(TaskId.dua)) continue;
         }
 
-        final basePrayer = Prayer.values[rc.prayer];
-        final baseTime = t.times[basePrayer];
-        if (baseTime == null) continue;
-
-        final scheduledTime = _at(date, baseTime + rc.offsetMin);
+        if (rc.isPrayerLinked && t == null) continue;
+        final scheduledTime = reminderScheduledTime(rc, date, t);
         final slot = _slotFor(rc.id, configs);
-        final payload = rc.id == 'morning' || rc.id == 'evening' ? rc.id : '';
+        final payload = notificationTargetFor(rc.id);
 
         // Первичное напоминание (в момент наступления события)
         if (scheduledTime.isAfter(now) && count < _cap) {
@@ -176,14 +256,26 @@ class NotificationService {
         }
 
         // Дополнительное напоминание перед завершением утреннего/вечернего окна (за 30 минут)
-        if ((rc.id == 'morning' || rc.id == 'evening') && rc.offsetMin == 0) {
-          final endPrayer = rc.id == 'morning' ? Prayer.sunrise : Prayer.maghrib;
+        if (t != null && (rc.id == 'morning' || rc.id == 'evening')) {
+          final endPrayer = rc.id == 'morning'
+              ? Prayer.sunrise
+              : Prayer.maghrib;
           final endTime = t.times[endPrayer];
           if (endTime != null) {
             final remindAt = _at(date, endTime - _reminderBeforeEndMin);
             if (remindAt.isAfter(now) && count < _cap) {
-              final rTxt = _windowText(lang, rc.id == 'morning' ? TaskId.morning : TaskId.evening, opening: false);
-              await _schedule0(_id(d, slot + 20), remindAt, rTxt, payload, details);
+              final rTxt = _windowText(
+                lang,
+                rc.id == 'morning' ? TaskId.morning : TaskId.evening,
+                opening: false,
+              );
+              await _schedule0(
+                _id(d, slot + 20),
+                remindAt,
+                rTxt,
+                payload,
+                details,
+              );
               count++;
             }
           }
@@ -194,16 +286,26 @@ class NotificationService {
 
   int _slotFor(String id, List<ReminderConfig> configs) {
     switch (id) {
-      case 'morning': return 0;
-      case 'evening': return 1;
-      case 'kahf': return 2;
-      case 'dua': return 3;
-      case 'fajr': return 4;
-      case 'sunrise': return 5;
-      case 'dhuhr': return 6;
-      case 'asr': return 7;
-      case 'maghrib': return 8;
-      case 'isha': return 9;
+      case 'morning':
+        return 0;
+      case 'evening':
+        return 1;
+      case 'kahf':
+        return 2;
+      case 'dua':
+        return 3;
+      case 'fajr':
+        return 4;
+      case 'sunrise':
+        return 5;
+      case 'dhuhr':
+        return 6;
+      case 'asr':
+        return 7;
+      case 'maghrib':
+        return 8;
+      case 'isha':
+        return 9;
       default:
         final idx = configs.indexWhere((c) => c.id == id);
         return 10 + (idx >= 0 ? idx : 0);
@@ -211,12 +313,23 @@ class NotificationService {
   }
 
   _NotifText _getNotificationText(String lang, ReminderConfig rc) {
-    if (rc.id == 'morning') return _windowText(lang, TaskId.morning, opening: true);
-    if (rc.id == 'evening') return _windowText(lang, TaskId.evening, opening: true);
+    if (rc.id == 'morning') {
+      return _windowText(lang, TaskId.morning, opening: true);
+    }
+    if (rc.id == 'evening') {
+      return _windowText(lang, TaskId.evening, opening: true);
+    }
     if (rc.id == 'kahf') return _windowText(lang, TaskId.kahf, opening: true);
     if (rc.id == 'dua') return _windowText(lang, TaskId.dua, opening: true);
 
-    final isBuiltInPrayer = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'].contains(rc.id);
+    final isBuiltInPrayer = [
+      'fajr',
+      'sunrise',
+      'dhuhr',
+      'asr',
+      'maghrib',
+      'isha',
+    ].contains(rc.id);
     if (isBuiltInPrayer && rc.offsetMin == 0) {
       return _prayerText(lang, Prayer.values[rc.prayer]);
     }
@@ -224,8 +337,13 @@ class NotificationService {
     return _NotifText(rc.title, _customBody(lang, rc));
   }
 
-  Future<void> _schedule0(int id, DateTime local, _NotifText txt, String payload,
-      NotificationDetails details) async {
+  Future<void> _schedule0(
+    int id,
+    DateTime local,
+    _NotifText txt,
+    String payload,
+    NotificationDetails details,
+  ) async {
     final when = tz.TZDateTime.from(local, tz.local);
     await _plugin.zonedSchedule(
       id: id,
@@ -243,50 +361,69 @@ class NotificationService {
 
   int _id(int day, int slot) => day * 100 + slot;
 
-
-
   _NotifText _windowText(String lang, TaskId id, {required bool opening}) {
     final kz = lang == 'kz';
     switch (id) {
       case TaskId.morning:
         return opening
-            ? _NotifText(kz ? 'Таңғы зікірлер' : 'Утренние зикры',
-                kz ? 'Уақыт ашылды: таңнан кейін, күн шыққанға дейін.' : 'Окно открыто: после Фаджра, до восхода солнца.')
-            : _NotifText(kz ? 'Таңғы зікірлерді ұмытпаңыз' : 'Не забудьте утренние зикры',
-                kz ? 'Күн шығуына аз қалды.' : 'Скоро восход — успейте прочитать.');
+            ? _NotifText(
+                kz ? 'Таңғы зікірлер' : 'Утренние зикры',
+                kz
+                    ? 'Алланы еске алуға бірнеше минут бөліңіз.'
+                    : 'Найдите несколько минут для поминания Аллаха.',
+              )
+            : _NotifText(
+                kz ? 'Таңғы зікірлер' : 'Утренние зикры',
+                kz ? 'Күн шығуына 30 минут қалды.' : 'До восхода 30 минут.',
+              );
       case TaskId.evening:
         return opening
-            ? _NotifText(kz ? 'Кешкі зікірлер' : 'Вечерние зикры',
-                kz ? 'Уақыт ашылды: екінтіден кейін, күн батқанға дейін.' : 'Окно открыто: после Асра, до захода солнца.')
-            : _NotifText(kz ? 'Кешкі зікірлерді ұмытпаңыз' : 'Не забудьте вечерние зикры',
-                kz ? 'Ақшамға аз қалды.' : 'Скоро Магриб — успейте прочитать.');
+            ? _NotifText(
+                kz ? 'Кешкі зікірлер' : 'Вечерние зикры',
+                kz
+                    ? 'Алланы еске алуға бірнеше минут бөліңіз.'
+                    : 'Найдите несколько минут для поминания Аллаха.',
+              )
+            : _NotifText(
+                kz ? 'Кешкі зікірлер' : 'Вечерние зикры',
+                kz ? 'Ақшамға 30 минут қалды.' : 'До Магриба 30 минут.',
+              );
       case TaskId.kahf:
-        return _NotifText(kz ? '«әл-Кәһф» сүресі' : 'Сура аль-Кахф',
-            kz ? 'Жұма — жұма намазына дейін «әл-Кәһф» сүресін оқу уақыты.' : 'Пятница — время прочитать суру аль-Кахф до Джума.');
+        return _NotifText(
+          kz ? '«әл-Кәһф» сүресі' : 'Сура аль-Кахф',
+          kz ? 'Сүрені оқуға уақыт бөліңіз.' : 'Найдите время прочитать суру.',
+        );
       case TaskId.dua:
-        return _NotifText(kz ? 'Дұға сағаты' : 'Час дуа',
-            kz ? 'Жұма — Ақшам алдындағы дұға қабыл болатын сағат.' : 'Пятница — час принятия дуа перед Магрибом.');
+        return _NotifText(
+          kz ? 'Дұға сағаты' : 'Час дуа',
+          kz
+              ? 'Аллаға жеке дұға жасауға уақыт бөліңіз.'
+              : 'Найдите время обратиться к Аллаху с личной мольбой.',
+        );
     }
   }
 
   String _customBody(String lang, ReminderConfig r) {
     final kz = lang == 'kz';
+    if (!r.isPrayerLinked) {
+      final time =
+          '${r.fixedHour.toString().padLeft(2, '0')}:${r.fixedMinute.toString().padLeft(2, '0')}';
+      return kz ? 'Белгіленген уақыт: $time' : 'В указанное время: $time';
+    }
     final names = kz
         ? ['Таң', 'Күн шығуы', 'Бесін', 'Екінті', 'Ақшам', 'Құптан']
         : ['Фаджр', 'Восход', 'Зухр', 'Аср', 'Магриб', 'Иша'];
     final n = names[r.prayer];
     final m = r.offsetMin.abs();
     if (r.offsetMin == 0) return kz ? '$n уақыты' : 'Время: $n';
-    if (r.offsetMin < 0) return kz ? '$n уақытына $m мин қалды' : 'До $n — $m мин';
+    if (r.offsetMin < 0) {
+      return kz ? '$n уақытына $m мин қалды' : 'До $n — $m мин';
+    }
     return kz ? '$n кейін $m мин өтті' : '$m мин после $n';
   }
 
   _NotifText _prayerText(String lang, Prayer p) {
-    final kz = lang == 'kz';
-    final names = kz
-        ? ['Таң', 'Күн шығуы', 'Бесін', 'Екінті', 'Ақшам', 'Құптан']
-        : ['Фаджр', 'Восход', 'Зухр', 'Аср', 'Магриб', 'Иша'];
-    final name = names[p.index];
-    return _NotifText(name, kz ? '$name намазының уақыты кірді' : 'Наступило время намаза $name');
+    final copy = prayerNotificationCopy(lang, p);
+    return _NotifText(copy.title, copy.body);
   }
 }

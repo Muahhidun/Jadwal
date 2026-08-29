@@ -49,7 +49,10 @@ class _CityPickerState extends State<CityPicker> {
       return;
     }
     setState(() => _searching = true);
-    final results = await CityRepository.search(query);
+    final results = await CityRepository.search(
+      query,
+      lang: AppScope.of(context).lang,
+    );
     if (!mounted || _controller.text != generation) return;
     setState(() {
       _results = results;
@@ -176,10 +179,10 @@ class _CityPickerState extends State<CityPicker> {
                     children: [
                       DauamSettingsRow(
                         icon: CupertinoIcons.location_fill,
-                        title: app.city.name,
+                        title: app.city.displayName(app.lang),
                         subtitle: app.city.region.isEmpty
                             ? null
-                            : app.city.region,
+                            : app.city.displayRegion(app.lang),
                       ),
                       DauamSettingsRow(
                         icon: CupertinoIcons.location,
@@ -244,8 +247,10 @@ class _CityPickerState extends State<CityPicker> {
                     children: [
                       for (final city in cities)
                         DauamChoiceRow(
-                          title: city.name,
-                          subtitle: city.region.isEmpty ? null : city.region,
+                          title: city.displayName(app.lang),
+                          subtitle: city.region.isEmpty
+                              ? null
+                              : city.displayRegion(app.lang),
                           selected:
                               city.latStr == app.city.latStr &&
                               city.lngStr == app.city.lngStr,

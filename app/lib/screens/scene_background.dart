@@ -355,22 +355,49 @@ double _smoothStep(double edge0, double edge1, double value) {
   return x * x * (3 - 2 * x);
 }
 
-JColors _lerpJColors(JColors a, JColors b, double t) {
-  Color mix(Color x, Color y) => Color.lerp(x, y, t)!;
-  return JColors(
-    bg: mix(a.bg, b.bg),
-    ink: mix(a.ink, b.ink),
-    sub: mix(a.sub, b.sub),
-    faint: mix(a.faint, b.faint),
-    hair: mix(a.hair, b.hair),
-    gold: mix(a.gold, b.gold),
-    green: mix(a.green, b.green),
-    gdim: mix(a.gdim, b.gdim),
-    red: mix(a.red, b.red),
-    card: mix(a.card, b.card),
-    btnbg: mix(a.btnbg, b.btnbg),
-    btnink: mix(a.btnink, b.btnink),
+/// WCAG-контраст двух непрозрачных цветов. Нижний экран использует стекло,
+/// поэтому фактический фон текста сначала нужно получить через [compositeOver].
+double colorContrastRatio(Color foreground, Color background) {
+  final a = foreground.computeLuminance();
+  final b = background.computeLuminance();
+  return (max(a, b) + 0.05) / (min(a, b) + 0.05);
+}
+
+/// Результат наложения полупрозрачного [foreground] на [background].
+Color compositeOver(Color foreground, Color background) {
+  final alpha = foreground.a;
+  return Color.from(
+    alpha: 1,
+    red: foreground.r * alpha + background.r * (1 - alpha),
+    green: foreground.g * alpha + background.g * (1 - alpha),
+    blue: foreground.b * alpha + background.b * (1 - alpha),
   );
+}
+
+double _minimumContrast(Color color, Iterable<Color> backgrounds) => backgrounds
+    .map((background) => colorContrastRatio(color, background))
+    .reduce(min);
+
+Color _ensureContrast(
+  Color color,
+  Color endpoint,
+  Iterable<Color> backgrounds, {
+  double minimum = 4.5,
+}) {
+  if (_minimumContrast(color, backgrounds) >= minimum) return color;
+
+  var low = 0.0;
+  var high = 1.0;
+  for (var i = 0; i < 14; i++) {
+    final t = (low + high) / 2;
+    final candidate = Color.lerp(color, endpoint, t)!;
+    if (_minimumContrast(candidate, backgrounds) >= minimum) {
+      high = t;
+    } else {
+      low = t;
+    }
+  }
+  return Color.lerp(color, endpoint, high)!;
 }
 
 DaySurfacePalette daySurfacePalette(DayTimes t, int nowSec) {
@@ -384,11 +411,6 @@ DaySurfacePalette daySurfacePalette(DayTimes t, int nowSec) {
   final nightBlend = 1 - daylight;
   final surfaceBlend = _smoothStep(0.18, 0.92, nightBlend);
 
-  // Текст меняет полярность позже фона, когда сумеречная подложка уже
-  // достаточно тёмная. Сам цвет тоже перетекает, а не переключается.
-  final contentNightBlend = _smoothStep(0.62, 0.82, nightBlend);
-  final isLight = contentNightBlend < 0.5;
-
   final lightTop = Color.lerp(const Color(0xFFDDE8ED), sky.bottom, 0.38)!;
   final lightMiddle = Color.lerp(const Color(0xFFCAD8DE), sky.top, 0.16)!;
   final lightBottom = Color.lerp(lightMiddle, const Color(0xFFB8C9C8), 0.64)!;
@@ -400,8 +422,8 @@ DaySurfacePalette daySurfacePalette(DayTimes t, int nowSec) {
   const lightColors = JColors(
     bg: Color(0xFFD7E2E4),
     ink: Color(0xFF1E2830),
-    sub: Color(0xFF40505A),
-    faint: Color(0xFF63717A),
+    sub: Color(0xFF34434C),
+    faint: Color(0xFF3D4B54),
     hair: Color(0xFFB6C1C4),
     gold: Color(0xFF855B0B),
     green: Color(0xFF4F7460),
@@ -414,8 +436,8 @@ DaySurfacePalette daySurfacePalette(DayTimes t, int nowSec) {
   const darkColors = JColors(
     bg: Color(0xFF0D171D),
     ink: Color(0xFFF1EFE7),
-    sub: Color(0xFFBEC5C2),
-    faint: Color(0xFF899590),
+    sub: Color(0xFFD3D9D5),
+    faint: Color(0xFFB1BCB7),
     hair: Color(0xFF35423F),
     gold: Color(0xFFE0AE4A),
     green: Color(0xFF678A74),
@@ -430,18 +452,67 @@ DaySurfacePalette daySurfacePalette(DayTimes t, int nowSec) {
   final middle = Color.lerp(lightMiddle, darkMiddle, nightBlend)!;
   final bottom = Color.lerp(lightBottom, darkBottom, nightBlend)!;
 
+  // За полчаса до Магриба фон уже заметно темнеет, но прежнее стекло всё ещё
+  // пропускало его примерно на 30%. На серо-синем результате вторичный текст
+  // и календарь падали до 1.5–2.4:1. В сумерках делаем карточку плотнее, при
+  // этом сама атмосферная смена цвета остаётся плавной.
+  final twilightReadability =
+      _smoothStep(0.24, 0.50, nightBlend) *
+      (1 - _smoothStep(0.66, 0.84, nightBlend));
+  final baseSurface = Color.lerp(
+    const Color(0xB8FFFFFF),
+    const Color(0xA6172228),
+    surfaceBlend,
+  )!;
+  final surface = baseSurface.withValues(
+    alpha: (baseSurface.a + 0.18 * twilightReadability).clamp(0.0, 1.0),
+  );
+  final cardBackgrounds = [
+    compositeOver(surface, top),
+    compositeOver(surface, middle),
+    compositeOver(surface, bottom),
+  ];
+
+  // Не интерполируем светлый и тёмный текст через средне-серый: именно эта
+  // промежуточная смесь теряла читаемость. Выбираем полярность по худшему из
+  // трёх участков градиента, затем аккуратно усиливаем каждый смысловой цвет
+  // до 4.5:1 на фактической (уже скомпонованной) подложке.
+  const darkEndpoint = Color(0xFF05090C);
+  const lightEndpoint = Color(0xFFFCFAF4);
+  final darkScore = _minimumContrast(darkEndpoint, cardBackgrounds);
+  final lightScore = _minimumContrast(lightEndpoint, cardBackgrounds);
+  final useDarkText = darkScore >= lightScore;
+  final baseColors = useDarkText ? lightColors : darkColors;
+  final endpoint = useDarkText ? darkEndpoint : lightEndpoint;
+  final colors = JColors(
+    bg: baseColors.bg,
+    ink: _ensureContrast(baseColors.ink, endpoint, cardBackgrounds),
+    sub: _ensureContrast(baseColors.sub, endpoint, cardBackgrounds),
+    faint: _ensureContrast(baseColors.faint, endpoint, cardBackgrounds),
+    hair: _ensureContrast(
+      baseColors.hair,
+      endpoint,
+      cardBackgrounds,
+      minimum: 3,
+    ),
+    gold: _ensureContrast(baseColors.gold, endpoint, cardBackgrounds),
+    green: baseColors.green,
+    gdim: baseColors.gdim,
+    red: baseColors.red,
+    card: baseColors.card,
+    btnbg: baseColors.btnbg,
+    btnink: baseColors.btnink,
+  );
+  final isLight = useDarkText;
+
   return DaySurfacePalette(
-    colors: _lerpJColors(lightColors, darkColors, contentNightBlend),
+    colors: colors,
     isLight: isLight,
     top: top,
     middle: middle,
     bottom: bottom,
     glow: sky.bottom,
-    surface: Color.lerp(
-      const Color(0xB8FFFFFF),
-      const Color(0xA6172228),
-      surfaceBlend,
-    )!,
+    surface: surface,
     border: Color.lerp(
       const Color(0x8AFFFFFF),
       const Color(0x1FFFFFFF),

@@ -6,6 +6,18 @@ import '../prayer/city.dart';
 /// Сервис авто-определения смены города и вежливого предложения обновить расписание
 class LocationCheckerService {
   static bool _hasPromptedThisSession = false;
+  static bool _checkInFlight = false;
+
+  /// Фоновая проверка GPS может завершиться уже после того, как
+  /// пользователь открыл настройки или читалку. Новый modal route в этот
+  /// момент оставлял над приложением недоступный затемняющий слой.
+  /// Поэтому автоподсказку разрешено показывать только с текущего route.
+  @visibleForTesting
+  static bool canPresentPrompt(BuildContext context) {
+    if (!context.mounted) return false;
+    final route = ModalRoute.of(context);
+    return route != null && route.isCurrent;
+  }
 
   /// Проверяет текущее GPS-положение. Если ближайший город отличается от currentCity,
   /// показывает эстетичный диалог с предложением сменить город.
@@ -14,43 +26,54 @@ class LocationCheckerService {
     required City currentCity,
     required Function(City newCity) onCitySelected,
   }) async {
-    if (_hasPromptedThisSession) return;
+    if (_hasPromptedThisSession || _checkInFlight) return;
+    _checkInFlight = true;
 
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return;
 
       var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
         return;
       }
 
       final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+        ),
       );
 
-      final detectedCity = await CityRepository.nearest(pos.latitude, pos.longitude);
+      final detectedCity = await CityRepository.nearest(
+        pos.latitude,
+        pos.longitude,
+      );
 
-      if (detectedCity.name != currentCity.name && context.mounted) {
+      if (!context.mounted) return;
+      if (detectedCity.name != currentCity.name && canPresentPrompt(context)) {
         _hasPromptedThisSession = true;
-        _showLocationPrompt(
+        final selectedCity = await _showLocationPrompt(
           context: context,
           currentCity: currentCity,
           detectedCity: detectedCity,
-          onCitySelected: onCitySelected,
         );
+        if (selectedCity != null && context.mounted) {
+          onCitySelected(selectedCity);
+        }
       }
     } catch (_) {
       // Игнорируем фоновые ошибки геолокации
+    } finally {
+      _checkInFlight = false;
     }
   }
 
-  static void _showLocationPrompt({
+  static Future<City?> _showLocationPrompt({
     required BuildContext context,
     required City currentCity,
     required City detectedCity,
-    required Function(City newCity) onCitySelected,
   }) {
-    showModalBottomSheet(
+    return showModalBottomSheet<City>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
@@ -62,11 +85,7 @@ class LocationCheckerService {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
             border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
             boxShadow: const [
-              BoxShadow(
-                color: Colors.black54,
-                blurRadius: 20,
-                spreadRadius: 5,
-              ),
+              BoxShadow(color: Colors.black54, blurRadius: 20, spreadRadius: 5),
             ],
           ),
           child: Column(
@@ -121,7 +140,9 @@ class LocationCheckerService {
                     child: OutlinedButton(
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+                        side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.2),
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
@@ -153,8 +174,7 @@ class LocationCheckerService {
                       ),
                       onPressed: () {
                         HapticFeedback.mediumImpact();
-                        Navigator.of(ctx).pop();
-                        onCitySelected(detectedCity);
+                        Navigator.of(ctx).pop(detectedCity);
                       },
                       child: Text(
                         'Да, ${detectedCity.name}',

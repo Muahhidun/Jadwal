@@ -30,22 +30,28 @@ private struct DauamWatchProvider: TimelineProvider {
     let now = Date.now
     let snapshot = DauamWatchSnapshotStore.load()
     var dates = [now]
+    let horizon = now.addingTimeInterval(36 * 3_600)
     for prayer in snapshot.prayers {
-      if prayer.date > now && prayer.date < now.addingTimeInterval(36 * 3_600) {
-        dates.append(prayer.date.addingTimeInterval(1))
-        if prayer.id != "sunrise" {
-          dates.append(prayer.date.addingTimeInterval(601))
-        }
+      let eventStart = prayer.date.addingTimeInterval(1)
+      if eventStart > now && eventStart < horizon {
+        dates.append(eventStart)
+      }
+
+      // Часы могут перестроить timeline уже внутри послезанного окна.
+      // Поэтому граница завершения не должна зависеть от того, осталось ли
+      // само время молитвы в будущем.
+      let graceEnd = prayer.date.addingTimeInterval(601)
+      if prayer.id != "sunrise" && graceEnd > now && graceEnd < horizon {
+        dates.append(graceEnd)
       }
     }
     dates = Array(Set(dates)).sorted()
     let entries = dates.map { DauamWatchEntry(date: $0, snapshot: snapshot) }
-    completion(
-      Timeline(
-        entries: entries,
-        policy: .after(min(now.addingTimeInterval(6 * 3_600), dates.last ?? now))
-      )
+    let refresh = min(
+      dates.last?.addingTimeInterval(60) ?? now.addingTimeInterval(6 * 3_600),
+      now.addingTimeInterval(12 * 3_600)
     )
+    completion(Timeline(entries: entries, policy: .after(refresh)))
   }
 }
 

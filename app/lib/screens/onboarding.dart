@@ -167,7 +167,10 @@ class _CityStepState extends State<_CityStep> {
   }
 
   Future<void> _search(String q) async {
-    final r = await CityRepository.search(q);
+    final r = await CityRepository.search(
+      q,
+      lang: widget.s == S.kz ? 'kz' : 'ru',
+    );
     if (mounted) setState(() => _results = r);
   }
 
@@ -260,11 +263,14 @@ class _CityStepState extends State<_CityStep> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(list[i].name, style: JType.ui(16, color: c.ink)),
+                      Text(
+                        list[i].displayName(s == S.kz ? 'kz' : 'ru'),
+                        style: JType.ui(16, color: c.ink),
+                      ),
                       if (list[i].region.isNotEmpty &&
                           list[i].region != list[i].name)
                         Text(
-                          list[i].region,
+                          list[i].displayRegion(s == S.kz ? 'kz' : 'ru'),
                           style: JType.ui(12, color: c.faint),
                         ),
                     ],
@@ -316,7 +322,7 @@ class _NotifStep extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('جدول', style: JType.arabic(20, color: c.gold)),
+                Text('دوام', style: JType.arabic(20, color: c.gold)),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(

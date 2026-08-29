@@ -18,13 +18,21 @@ class AlarmOperationResult {
   final String? message;
 }
 
-/// Сервис управления нативным системным будильником Фаджра.
+/// Сервис управления нативными системными будильниками намазов.
 class AlarmService {
   static const MethodChannel _channel = MethodChannel('kz.dauam/alarm');
 
+  static const _prayers = <(String, Prayer)>[
+    ('fajr', Prayer.fajr),
+    ('dhuhr', Prayer.dhuhr),
+    ('asr', Prayer.asr),
+    ('maghrib', Prayer.maghrib),
+    ('isha', Prayer.isha),
+  ];
+
   /// Пересчитывает и регистрирует настоящий системный будильник AlarmKit.
   static Future<bool> sync(AppState app, ScheduleService schedule) async {
-    final now = DateTime.now();
+    final now = schedule.now();
     final today = schedule.timesFor(app.city, now);
     final tomorrowDate = DateTime(now.year, now.month, now.day + 1);
     final tomorrow = schedule.timesFor(app.city, tomorrowDate);
@@ -42,27 +50,45 @@ class AlarmService {
       );
     }
 
-    final fajrToday = timestampFor(today, Prayer.fajr);
-    final fajrTomorrow = timestampFor(tomorrow, Prayer.fajr);
-    final offset = app.fajrAlarmOffsetMinutes;
+    final kz = app.lang == 'kz';
+    const titlesRu = <String, String>{
+      'fajr': 'Фаджр',
+      'dhuhr': 'Зухр',
+      'asr': 'Аср',
+      'maghrib': 'Магриб',
+      'isha': 'Иша',
+    };
+    const titlesKz = <String, String>{
+      'fajr': 'Таң намазы',
+      'dhuhr': 'Бесін намазы',
+      'asr': 'Екінті намазы',
+      'maghrib': 'Ақшам намазы',
+      'isha': 'Құптан намазы',
+    };
 
-    DateTime target = fajrToday.add(Duration(minutes: offset));
-    if (target.isBefore(now)) {
-      target = fajrTomorrow.add(Duration(minutes: offset));
+    final alarms = <Map<String, dynamic>>[];
+    for (final item in _prayers) {
+      final (id, prayer) = item;
+      final offset = app.alarmOffsetMinutes(id);
+      var target = timestampFor(today, prayer).add(Duration(minutes: offset));
+      if (!target.isAfter(now)) {
+        target = timestampFor(tomorrow, prayer).add(Duration(minutes: offset));
+      }
+      alarms.add({
+        'id': id,
+        'enabled': app.alarmEnabled(id),
+        'timestamp': target.millisecondsSinceEpoch / 1000.0,
+        'offsetMinutes': offset,
+        'title': (kz ? titlesKz : titlesRu)[id]!,
+      });
     }
 
     try {
       final response = await _channel.invokeMapMethod<String, dynamic>(
-        'scheduleFajrAlarm',
-        {
-        'enabled': app.fajrAlarmEnabled,
-        'timestamp': target.millisecondsSinceEpoch / 1000.0,
-        'offsetMinutes': offset,
-        'title': app.lang == 'kz' ? 'Таң намазы' : 'Фаджр',
-        },
+        'syncPrayerAlarms',
+        {'alarms': alarms},
       );
-      return response?['success'] == true &&
-          response?['mode'] == 'alarmKit';
+      return response?['success'] == true && response?['mode'] == 'alarmKit';
     } on MissingPluginException {
       return false;
     } on PlatformException {
@@ -78,10 +104,7 @@ class AlarmService {
     try {
       final response = await _channel.invokeMapMethod<String, dynamic>(
         'testFajrAlarm',
-        {
-          'seconds': seconds.toDouble(),
-          'title': title,
-        },
+        {'seconds': seconds.toDouble(), 'title': title},
       );
       final mode = response?['mode'] as String?;
       final success = response?['success'] == true && mode == 'alarmKit';

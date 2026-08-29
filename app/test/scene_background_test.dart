@@ -55,4 +55,34 @@ void main() {
     expect(distance(before.bottom, after.bottom), lessThan(0.08));
     expect(distance(before.surface, after.surface), lessThan(0.08));
   });
+
+  test('текст карточек остаётся читаемым вокруг Магриба', () {
+    for (final offset in [-30, -25, -15, 0, 15]) {
+      final palette = daySurfacePalette(
+        times,
+        (times.times[Prayer.maghrib]! + offset) * 60,
+      );
+      final backgrounds = [
+        compositeOver(palette.surface, palette.top),
+        compositeOver(palette.surface, palette.middle),
+        compositeOver(palette.surface, palette.bottom),
+      ];
+
+      for (final textColor in [
+        palette.colors.ink,
+        palette.colors.sub,
+        palette.colors.faint,
+        palette.colors.gold,
+      ]) {
+        final minimumContrast = backgrounds
+            .map((background) => colorContrastRatio(textColor, background))
+            .reduce((a, b) => a < b ? a : b);
+        expect(
+          minimumContrast,
+          greaterThanOrEqualTo(4.5),
+          reason: 'Недостаточный контраст за $offset минут до/после Магриба',
+        );
+      }
+    }
+  });
 }

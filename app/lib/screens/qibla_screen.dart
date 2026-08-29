@@ -8,6 +8,9 @@ import 'package:latlong2/latlong.dart';
 import 'package:adhan/adhan.dart' as adhan;
 import '../prayer/city.dart';
 import '../theme/tokens.dart';
+import '../data/app_state.dart';
+import '../i18n/strings.dart';
+import 'swipe_hint.dart';
 
 /// Виджет Киблы: Режим 1 (Живой Компас с градуированной вибрацией) и Режим 2 (Интерактивная Карта).
 class QiblaView extends StatefulWidget {
@@ -271,6 +274,27 @@ class _QiblaViewState extends State<QiblaView>
               // внутри IndexedStack могла оставить загруженным один тайл.
               : _buildMapView(userLatLng),
         ),
+        if (widget.embedded &&
+            _selectedTab == 0 &&
+            widget.onVerticalDragStart != null)
+          IgnorePointer(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 8),
+              child: SwipeHint(
+                key: const ValueKey('qibla-return-swipe-hint'),
+                label: S.of(AppScope.of(context).lang).swipeBack,
+                direction: SwipeHintDirection.down,
+                color: Colors.white.withValues(alpha: 0.88),
+                shadows: const [
+                  Shadow(
+                    color: Colors.black54,
+                    offset: Offset(0, 1),
+                    blurRadius: 2.5,
+                  ),
+                ],
+              ),
+            ),
+          ),
       ],
     );
 

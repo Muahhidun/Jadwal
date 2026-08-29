@@ -4,6 +4,13 @@ import UIKit
 
 public class LiveActivityManager: NSObject, FlutterPlugin {
   private var methodChannel: FlutterMethodChannel?
+  private static weak var activeInstance: LiveActivityManager?
+  private static var pendingDeepLink: String?
+
+  @objc public static func handleDeepLink(_ rawValue: String) {
+    pendingDeepLink = rawValue
+    activeInstance?.methodChannel?.invokeMethod("onOpenDeepLink", arguments: rawValue)
+  }
 
   @available(iOS 16.1, *)
   private static func state(
@@ -50,6 +57,7 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "kz.dauam/live_activity", binaryMessenger: registrar.messenger())
     let instance = LiveActivityManager()
+    activeInstance = instance
     instance.methodChannel = channel
     registrar.addMethodCallDelegate(instance, channel: channel)
 
@@ -84,6 +92,9 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
       } else {
         result(false)
       }
+    case "getPendingDeepLink":
+      result(Self.pendingDeepLink)
+      Self.pendingDeepLink = nil
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -121,6 +132,8 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
     let counterTotal = args["counterTotal"] as? Int ?? 0
     let zikrArabic = args["zikrArabic"] as? String ?? ""
     let zikrTranslation = args["zikrTranslation"] as? String ?? ""
+    let collectionId = args["collectionId"] as? String ?? ""
+    let currentIndex = args["currentIndex"] as? Int ?? 0
 
     if mode == "prayer" && targetTimestamp <= Date.now.timeIntervalSince1970 {
       stopPrayerActivity(result: result)
@@ -135,7 +148,9 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
       counterCurrent: counterCurrent,
       counterTotal: counterTotal,
       zikrArabic: zikrArabic,
-      zikrTranslation: zikrTranslation
+      zikrTranslation: zikrTranslation,
+      collectionId: collectionId,
+      currentIndex: currentIndex
     )
 
     let attributes = JadwalActivityAttributes(name: "DauamSession")
@@ -215,6 +230,8 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
     let counterTotal = args["counterTotal"] as? Int ?? 0
     let zikrArabic = args["zikrArabic"] as? String ?? ""
     let zikrTranslation = args["zikrTranslation"] as? String ?? ""
+    let collectionId = args["collectionId"] as? String ?? ""
+    let currentIndex = args["currentIndex"] as? Int ?? 0
 
     let state = JadwalActivityAttributes.ContentState(
       mode: mode,
@@ -224,7 +241,9 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
       counterCurrent: counterCurrent,
       counterTotal: counterTotal,
       zikrArabic: zikrArabic,
-      zikrTranslation: zikrTranslation
+      zikrTranslation: zikrTranslation,
+      collectionId: collectionId,
+      currentIndex: currentIndex
     )
     let expiresAt = Self.staleDate(
       mode: mode,

@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes">
+  <title>سورة الكهف</title>
+  <style>
+    @font-face {
+      font-family: UthmanicHafs;
+      src: url("https://verses.quran.foundation/fonts/quran/hafs/uthmanic_hafs/UthmanicHafs1Ver18.woff2") format("woff2");
+      font-display: swap;
+    }
+
+    :root {
+      --bg: #f7f2e7;
+      --page: #fbf7ed;
+      --ink: #23211b;
+      --muted: #7f7868;
+      --line: #e3dcc9;
+      --accent: #8c7a4e;
+      color-scheme: light;
+    }
+    body.monoLight {
+      --bg: #fcfcfc; --page: #ffffff; --ink: #080808;
+      --muted: #666666; --line: #dedede; --accent: #202020;
+      color-scheme: light;
+    }
+    body.monoDark {
+      --bg: #050505; --page: #0d0d0d; --ink: #ffffff;
+      --muted: #a3a3a3; --line: #292929; --accent: #f4f4f4;
+      color-scheme: dark;
+    }
+    body.softDark {
+      --bg: #19212b; --page: #202a36; --ink: #f2ede3;
+      --muted: #929ba5; --line: #35414e; --accent: #c7a36a;
+      color-scheme: dark;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+    }
+    body {
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      transition: background-color .18s ease, color .18s ease;
+      overscroll-behavior: none;
+    }
+    #reader {
+      direction: rtl;
+      width: 100vw;
+      height: 100dvh;
+      display: flex;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+      overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    #reader::-webkit-scrollbar { display: none; }
+    .page-slot {
+      flex: 0 0 100vw;
+      width: 100vw;
+      height: 100%;
+      min-width: 0;
+      padding: 3px 2px;
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
+    }
+    .page {
+      direction: rtl;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      margin: 0;
+      padding: 4px 5px 2px;
+      display: grid;
+      grid-template-rows: repeat(15, minmax(0, 1fr)) 15px;
+      background: var(--page);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .mushaf-line {
+      min-width: 0;
+      display: flex;
+      direction: rtl;
+      align-items: center;
+      justify-content: center;
+      gap: .08em;
+      white-space: nowrap;
+      font-size: clamp(20px, min(6.4vw, 4.1vh), 32px);
+      line-height: 1;
+      color: var(--ink);
+    }
+    .mushaf-line.justified {
+      justify-content: space-between;
+      gap: 0;
+    }
+    .word { flex: 0 0 auto; }
+    .mushaf-line.chapter-name {
+      font-family: UthmanicHafs, serif;
+      font-size: clamp(19px, min(5.5vw, 3.7vh), 29px);
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .mushaf-line.basmala {
+      font-family: UthmanicHafs, serif;
+      font-size: clamp(20px, min(5.8vw, 3.9vh), 30px);
+    }
+    .verse-end {
+      font-family: UthmanicHafs, serif;
+      color: var(--accent);
+      margin-inline-start: .05em;
+    }
+    .page-number {
+      direction: ltr;
+      align-self: end;
+      text-align: center;
+      font: 600 10px/15px -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--muted);
+    }
+    .notice, .error {
+      direction: ltr;
+      flex: 0 0 100vw;
+      max-width: 520px;
+      margin: auto;
+      padding: 18px;
+      text-align: center;
+      color: var(--muted);
+      font: 500 14px/1.55 -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .error button {
+      margin-top: 12px;
+      padding: 9px 16px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      background: var(--page);
+      font: inherit;
+    }
+  </style>
+</head>
+<body class="paper">
+  <main id="reader">
+    <div class="notice" id="loading">Загрузка проверенного текста и разметки мусхафа…</div>
+  </main>
+
+  <script>
+    const API = 'https://api.quran.com/api/v4';
+    const FONT_CDN = 'https://verses.quran.foundation/fonts/quran/hafs';
+    const reader = document.getElementById('reader');
+    let currentTheme = 'paper';
+    let pageData = [];
+    let renderedPages = [];
+    const loadedFonts = new Set();
+    let pointerStart = null;
+
+    const paletteIndex = () => {
+      if (currentTheme === 'monoDark' || currentTheme === 'softDark') return 1;
+      if (currentTheme === 'paper') return 2;
+      return 0;
+    };
+
+    async function loadFont(page) {
+      const family = `qcf-${page}-v4`;
+      if (loadedFonts.has(family)) return family;
+      const path = `${FONT_CDN}/v4/colrv1/woff2/p${page}.woff2`;
+      const font = new FontFace(family, `url("${path}")`, { display: 'block' });
+      await font.load();
+      document.fonts.add(font);
+      loadedFonts.add(family);
+      return family;
+    }
+
+    function pageFont(page) {
+      return `qcf-${page}-v4`;
+    }
+
+    function applyFontPalette(line, page) {
+      line.style.fontFamily = `'${pageFont(page)}'`;
+      const name = `--dauam-${page}-${paletteIndex()}`;
+      let style = document.getElementById(`palette-${page}-${paletteIndex()}`);
+      if (!style) {
+        style = document.createElement('style');
+        style.id = `palette-${page}-${paletteIndex()}`;
+        style.textContent = `@font-palette-values ${name} { font-family: '${pageFont(page)}'; base-palette: ${paletteIndex()}; }`;
+        document.head.appendChild(style);
+      }
+      line.style.fontPalette = name;
+    }
+
+    function appendWord(line, word, verseKey) {
+      const span = document.createElement('span');
+      span.className = word.char_type_name === 'end' ? 'word verse-end' : 'word';
+      span.dataset.verse = verseKey;
+      if (word.char_type_name === 'end') {
+        span.textContent = word.text_qpc_hafs || '';
+      } else {
+        // QCF glyph codes are supplied by Quran Foundation and, according to
+        // their renderer guide, must be inserted as glyph HTML.
+        span.innerHTML = word.code_v2 || word.text_qpc_hafs || '';
+      }
+      line.appendChild(span);
+    }
+
+    function fitPage(page) {
+      const lines = [...page.querySelectorAll('.mushaf-line:not(.chapter-name):not(.basmala)')];
+      if (!lines.length) return;
+      let low = 18;
+      let high = Math.min(34, window.innerWidth * .082);
+      for (let step = 0; step < 9; step += 1) {
+        const size = (low + high) / 2;
+        for (const line of lines) line.style.fontSize = `${size}px`;
+        const fits = lines.every((line) => line.scrollWidth <= line.clientWidth + .5);
+        if (fits) low = size; else high = size;
+      }
+      for (const line of lines) line.style.fontSize = `${low}px`;
+    }
+
+    function render() {
+      reader.innerHTML = '';
+      renderedPages = [];
+      for (const entry of pageData) {
+        const slot = document.createElement('div');
+        slot.className = 'page-slot';
+        slot.dataset.page = entry.page;
+        const page = document.createElement('section');
+        page.className = 'page';
+        page.dataset.page = entry.page;
+        const wordsByLine = new Map();
+
+        for (const verse of entry.verses) {
+          for (const word of verse.words || []) {
+            const lineNumber = word.line_number;
+            if (!wordsByLine.has(lineNumber)) wordsByLine.set(lineNumber, []);
+            wordsByLine.get(lineNumber).push({ word, verseKey: verse.verse_key });
+          }
+        }
+
+        for (let number = 1; number <= 15; number += 1) {
+          const line = document.createElement('div');
+          line.className = 'mushaf-line';
+          line.dataset.line = number;
+          applyFontPalette(line, entry.page);
+
+          // В QCF разметке заголовок аль-Кахф и басмала занимают пустые
+          // строки 10 и 11 страницы 293 и не входят в список слов аятов.
+          if (entry.page === 293 && number === 10) {
+            line.classList.add('chapter-name');
+            line.textContent = 'سُورَةُ الكَهْفِ';
+          } else if (entry.page === 293 && number === 11) {
+            line.classList.add('basmala');
+            line.textContent = 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ';
+          } else {
+            const items = wordsByLine.get(number) || [];
+            for (const item of items) {
+              appendWord(line, item.word, item.verseKey);
+            }
+            // QCF keeps the official word glyphs intact. For regular Mushaf
+            // lines we distribute only the space between those glyphs so the
+            // two page edges align without stretching Quranic letters.
+            if (items.length > 1) line.classList.add('justified');
+          }
+          page.appendChild(line);
+        }
+
+        const number = document.createElement('div');
+        number.className = 'page-number';
+        number.textContent = entry.page;
+        page.appendChild(number);
+        slot.appendChild(page);
+        reader.appendChild(slot);
+        renderedPages.push(page);
+      }
+      requestAnimationFrame(() => renderedPages.forEach(fitPage));
+    }
+
+    function applyAppearance() {
+      document.body.className = currentTheme;
+      if (!pageData.length) return;
+      Promise.all(pageData.map((entry) => loadFont(entry.page)))
+        .then(() => render())
+        .catch(showError);
+    }
+
+    async function fetchJson(url) {
+      const response = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    }
+
+    async function loadMushaf() {
+      try {
+        const pages = [];
+        for (let page = 293; page <= 304; page += 1) pages.push(page);
+        const results = await Promise.all(pages.map(async (page) => {
+          const query = new URLSearchParams({
+            words: 'true',
+            word_fields: 'code_v2,text_qpc_hafs',
+            per_page: '50',
+            mushaf: '19'
+          });
+          const data = await fetchJson(`${API}/verses/by_page/${page}?${query}`);
+          return { page, verses: data.verses || [] };
+        }));
+        pageData = results;
+        await Promise.all(pageData.map((entry) => loadFont(entry.page)));
+        render();
+        requestAnimationFrame(() => reader.scrollTo({ left: 0, top: 0 }));
+      } catch (error) {
+        showError(error);
+      }
+    }
+
+    function showError(error) {
+      console.error(error);
+      reader.innerHTML = `<div class="error" dir="ltr">Не удалось загрузить страницы мусхафа. Проверьте интернет-соединение.<br><button onclick="location.reload()">Повторить</button></div>`;
+    }
+
+    window.setReaderAppearance = (theme) => {
+      currentTheme = ['paper', 'monoLight', 'monoDark', 'softDark'].includes(theme)
+        ? theme : 'paper';
+      document.body.className = currentTheme;
+      for (const page of renderedPages) {
+        const pageNumber = Number(page.dataset.page);
+        for (const line of page.querySelectorAll('.mushaf-line')) {
+          applyFontPalette(line, pageNumber);
+        }
+      }
+    };
+
+    reader.addEventListener('pointerdown', (event) => {
+      pointerStart = { x: event.clientX, y: event.clientY, at: performance.now() };
+    }, { passive: true });
+    reader.addEventListener('pointerup', (event) => {
+      if (!pointerStart) return;
+      const dx = Math.abs(event.clientX - pointerStart.x);
+      const dy = Math.abs(event.clientY - pointerStart.y);
+      const elapsed = performance.now() - pointerStart.at;
+      pointerStart = null;
+      if (dx < 10 && dy < 10 && elapsed < 500) {
+        window.DauamReader?.postMessage('toggleChrome');
+      }
+    }, { passive: true });
+
+    window.addEventListener('resize', () => {
+      requestAnimationFrame(() => renderedPages.forEach(fitPage));
+    });
+
+    loadMushaf();
+  </script>
+</body>
+</html>

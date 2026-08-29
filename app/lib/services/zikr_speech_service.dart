@@ -48,6 +48,25 @@ class ZikrSpeechService {
     }
   }
 
+  /// Читает только выбранный зикр. Экран читалки сам управляет переходами:
+  /// это исключает продолжение предыдущего текста после смены карточки.
+  static Future<bool> speakZikr(
+    Zikr zikr, {
+    required String title,
+    double pauseSeconds = 0,
+  }) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('speakZikrs', {
+        'items': [zikr.ar],
+        'title': title,
+        'pauseSeconds': pauseSeconds,
+      });
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<void> pause() async {
     try {
       await _channel.invokeMethod('pause');
