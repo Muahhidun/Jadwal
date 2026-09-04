@@ -14,6 +14,17 @@ class WorshipWindow {
   bool contains(int nowMin) => nowMin >= start && nowMin < end;
 }
 
+/// После закрытия окна ещё полчаса держим дело рядом: пользователь мог
+/// закончить чтение на границе времени. Затем лента автоматически ставит
+/// первым следующее актуальное дело.
+const taskRailGraceMinutes = 30;
+
+bool isWorshipWindowPast(
+  WorshipWindow window,
+  int nowMin, {
+  int graceMinutes = taskRailGraceMinutes,
+}) => nowMin >= window.end + graceMinutes;
+
 /// Окна на день. Пятничные (Кахф, час дуа) — только в пятницу.
 List<WorshipWindow> windowsFor(DayTimes t) => [
   // Утренние зикры: после Фаджра, до восхода.

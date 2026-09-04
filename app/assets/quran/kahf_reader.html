@@ -129,6 +129,42 @@
       font: 600 10px/15px -apple-system, BlinkMacSystemFont, sans-serif;
       color: var(--muted);
     }
+    .kahf-intro {
+      direction: ltr;
+      grid-row: 1 / span 9;
+      margin: 3px 3px 6px;
+      padding: clamp(10px, 2.5vh, 20px) 14px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: color-mix(in srgb, var(--accent) 7%, var(--page));
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      overflow: hidden;
+    }
+    .kahf-intro-label {
+      color: var(--accent);
+      font: 700 10px/1.2 -apple-system, BlinkMacSystemFont, sans-serif;
+      letter-spacing: .14em;
+    }
+    .kahf-intro-title {
+      margin-top: 7px;
+      color: var(--ink);
+      font: 750 clamp(18px, 5.2vw, 25px)/1.2 -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .kahf-intro-body {
+      max-width: 34em;
+      margin-top: 7px;
+      color: var(--ink);
+      font: 500 clamp(12px, 3.3vw, 16px)/1.42 -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .kahf-intro-source {
+      margin-top: 7px;
+      color: var(--muted);
+      font: 500 clamp(9px, 2.5vw, 12px)/1.3 -apple-system, BlinkMacSystemFont, sans-serif;
+    }
     .notice, .error {
       direction: ltr;
       flex: 0 0 100vw;
@@ -160,10 +196,34 @@
     const FONT_CDN = 'https://verses.quran.foundation/fonts/quran/hafs';
     const reader = document.getElementById('reader');
     let currentTheme = 'paper';
+    let currentLocale = 'ru';
     let pageData = [];
     let renderedPages = [];
     const loadedFonts = new Set();
     let pointerStart = null;
+    let touchStart = null;
+    let scrollFrame = null;
+
+    const copy = {
+      ru: {
+        label: 'ПЯТНИЧНОЕ ЧТЕНИЕ',
+        title: 'Сура аль-Кахф',
+        reminder: 'Прочитайте суру «аль-Кахф» в пятницу.',
+        virtue: 'Прочитавшему её в пятницу будет дарован свет между двумя пятницами.',
+        source: 'аль-Байхаки, 6209 · аль-Хаким, 3392 · «Сахих аль-Джами‘», 6470'
+      },
+      kz: {
+        label: 'ЖҰМА КҮНГІ ОҚУ',
+        title: '«әл-Кәһф» сүресі',
+        reminder: '«әл-Кәһф» сүресін жұма күні оқыңыз.',
+        virtue: 'Оны жұма күні оқыған адамға екі жұма аралығында нұр беріледі.',
+        source: 'әл-Бәйһақи, 6209 · әл-Хаким, 3392 · «Сахих әл-Жами‘», 6470'
+      }
+    };
+
+    function post(type, details = {}) {
+      window.DauamReader?.postMessage(JSON.stringify({ type, ...details }));
+    }
 
     const paletteIndex = () => {
       if (currentTheme === 'monoDark' || currentTheme === 'softDark') return 1;
@@ -239,6 +299,19 @@
         page.dataset.page = entry.page;
         const wordsByLine = new Map();
 
+        if (entry.page === 293) {
+          const text = copy[currentLocale] || copy.ru;
+          const intro = document.createElement('aside');
+          intro.className = 'kahf-intro';
+          intro.dataset.review = 'religious-specialist';
+          intro.innerHTML = `
+            <div class="kahf-intro-label">${text.label}</div>
+            <div class="kahf-intro-title">${text.title}</div>
+            <div class="kahf-intro-body">${text.reminder}<br>${text.virtue}</div>
+            <div class="kahf-intro-source">${text.source}</div>`;
+          page.appendChild(intro);
+        }
+
         for (const verse of entry.verses) {
           for (const word of verse.words || []) {
             const lineNumber = word.line_number;
@@ -248,6 +321,9 @@
         }
 
         for (let number = 1; number <= 15; number += 1) {
+          // Строки 1–9 страницы 293 относятся к предыдущей суре. В читалке
+          // аль-Кахф их место занимает краткое напоминание с источником.
+          if (entry.page === 293 && number <= 9) continue;
           const line = document.createElement('div');
           line.className = 'mushaf-line';
           line.dataset.line = number;
@@ -282,7 +358,31 @@
         reader.appendChild(slot);
         renderedPages.push(page);
       }
-      requestAnimationFrame(() => renderedPages.forEach(fitPage));
+      requestAnimationFrame(() => {
+        renderedPages.forEach(fitPage);
+        notifyPage();
+        post('contentReady');
+      });
+    }
+
+    function currentPageIndex() {
+      if (!renderedPages.length) return 0;
+      const center = window.innerWidth / 2;
+      let nearest = 0;
+      let distance = Infinity;
+      renderedPages.forEach((page, index) => {
+        const rect = page.parentElement.getBoundingClientRect();
+        const nextDistance = Math.abs(rect.left + rect.width / 2 - center);
+        if (nextDistance < distance) {
+          distance = nextDistance;
+          nearest = index;
+        }
+      });
+      return nearest;
+    }
+
+    function notifyPage() {
+      post('page', { index: currentPageIndex(), count: renderedPages.length });
     }
 
     function applyAppearance() {
@@ -327,10 +427,19 @@
       reader.innerHTML = `<div class="error" dir="ltr">Не удалось загрузить страницы мусхафа. Проверьте интернет-соединение.<br><button onclick="location.reload()">Повторить</button></div>`;
     }
 
-    window.setReaderAppearance = (theme) => {
+    window.setReaderAppearance = (theme, locale) => {
       currentTheme = ['paper', 'monoLight', 'monoDark', 'softDark'].includes(theme)
         ? theme : 'paper';
+      const nextLocale = locale === 'kz' ? 'kz' : 'ru';
+      const localeChanged = nextLocale !== currentLocale;
+      currentLocale = nextLocale;
       document.body.className = currentTheme;
+      if (localeChanged && pageData.length) {
+        const index = currentPageIndex();
+        render();
+        requestAnimationFrame(() => reader.children[index]?.scrollIntoView());
+        return;
+      }
       for (const page of renderedPages) {
         const pageNumber = Number(page.dataset.page);
         for (const line of page.querySelectorAll('.mushaf-line')) {
@@ -340,17 +449,52 @@
     };
 
     reader.addEventListener('pointerdown', (event) => {
-      pointerStart = { x: event.clientX, y: event.clientY, at: performance.now() };
+      pointerStart = { x: event.screenX, y: event.screenY, at: performance.now() };
     }, { passive: true });
     reader.addEventListener('pointerup', (event) => {
       if (!pointerStart) return;
-      const dx = Math.abs(event.clientX - pointerStart.x);
-      const dy = Math.abs(event.clientY - pointerStart.y);
+      const rawDx = event.screenX - pointerStart.x;
+      const rawDy = event.screenY - pointerStart.y;
+      const dx = Math.abs(rawDx);
+      const dy = Math.abs(rawDy);
       const elapsed = performance.now() - pointerStart.at;
       pointerStart = null;
+      if (rawDx > 72 && Math.abs(rawDx) > Math.abs(rawDy) * 1.2 &&
+          currentPageIndex() === renderedPages.length - 1) {
+        post('complete');
+        return;
+      }
       if (dx < 10 && dy < 10 && elapsed < 500) {
         window.DauamReader?.postMessage('toggleChrome');
       }
+    }, { passive: true });
+    reader.addEventListener('pointercancel', () => {
+      pointerStart = null;
+    }, { passive: true });
+    reader.addEventListener('touchstart', (event) => {
+      const touch = event.changedTouches[0];
+      touchStart = touch ? { x: touch.clientX, y: touch.clientY } : null;
+    }, { passive: true });
+    reader.addEventListener('touchend', (event) => {
+      if (!touchStart) return;
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      const dx = touch.clientX - touchStart.x;
+      const dy = touch.clientY - touchStart.y;
+      touchStart = null;
+      // Нативная горизонтальная прокрутка WebKit может отменить pointerup,
+      // поэтому крайний жест завершения дополнительно ловим через touchend.
+      if (dx > 72 && Math.abs(dx) > Math.abs(dy) * 1.2 &&
+          currentPageIndex() === renderedPages.length - 1) {
+        post('complete');
+      }
+    }, { passive: true });
+    reader.addEventListener('scroll', () => {
+      if (scrollFrame) cancelAnimationFrame(scrollFrame);
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = null;
+        notifyPage();
+      });
     }, { passive: true });
 
     window.addEventListener('resize', () => {

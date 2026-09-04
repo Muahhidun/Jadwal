@@ -23,6 +23,13 @@ void main() {
     expect(closed, isNull); // после восхода окно закрыто
   });
 
+  test('дело уходит в прошлое через 30 минут после закрытия окна', () {
+    final morning = windowsFor(day(friday: false)).first;
+
+    expect(isWorshipWindowPast(morning, 298 + 29), isFalse);
+    expect(isWorshipWindowPast(morning, 298 + 30), isTrue);
+  });
+
   test('пятница добавляет Кахф и час дуа', () {
     final ids = windowsFor(day(friday: true)).map((w) => w.id).toList();
     expect(ids, [TaskId.morning, TaskId.kahf, TaskId.evening, TaskId.dua]);

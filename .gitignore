@@ -5,6 +5,7 @@ venv/
 # Local QA evidence, rollback copies, and generated captures.
 # These files remain on the Mac but are not source code.
 tmp/
+outputs/
 app/test/failures/
 
 # Native build products. Xcode recreates these from the project sources.

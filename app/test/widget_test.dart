@@ -392,6 +392,8 @@ void main() {
     await tester.pump();
     (tester.state(find.byType(HomeScreen)) as dynamic).swipeProgress = 1.0;
     await tester.pump();
+    await tester
+        .pump(); // применить автопозиционирование ленты на актуальном деле
 
     await tester.tap(find.text('Напоминания'));
     for (var i = 0; i < 18; i++) {
@@ -489,17 +491,14 @@ void main() {
     expect(find.text('Фаджр'), findsWidgets);
     expect(find.text('Восход'), findsWidgets);
     expect(find.text('Иша'), findsWidgets);
-    // По пятницам есть и задача дня, и компактный постоянный вход
-    // в читалку в нижней панели.
-    expect(find.text('Сура аль-Кахф'), findsOneWidget);
+    // В 20:11 утреннее окно и аль-Кахф уже закрыты больше 30 минут:
+    // лента сама начинает со следующих актуальных дел, но постоянный вход
+    // в читалку аль-Кахф остаётся в нижней панели.
+    expect(find.text('Сура аль-Кахф'), findsNothing);
     expect(find.text('аль-Кахф'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Час дуа'),
-      100,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.textContaining('Вечерние'), findsWidgets);
     expect(find.text('Час дуа'), findsOneWidget);
+    expect(find.byKey(const ValueKey('today-task-forward-hint')), findsNothing);
     expect(find.textContaining(RegExp(r'^42:\d{2}$')), findsWidgets);
     expect(find.text('Тетрадь постоянства'), findsOneWidget);
     expect(find.byType(SingleChildScrollView), findsNothing);

@@ -347,12 +347,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _openContent(String target) {
     if (target == 'kahf') {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (_) => const KahfReaderScreen(),
-        ),
-      );
+      Navigator.of(context).push(kahfReaderRoute());
       return;
     }
     _openReader(target);
@@ -1707,12 +1702,26 @@ class _ModernTasksCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = palette.colors;
+    final windows = {
+      for (final window in windowsFor(t)) window.id.name: window,
+    };
     final tasks =
-        <({String id, String label, bool active, VoidCallback onTap})>[
+        <
+          ({
+            String id,
+            String label,
+            bool active,
+            int orderMinute,
+            int expiresAt,
+            VoidCallback onTap,
+          })
+        >[
           (
             id: 'morning',
             label: s.morningTitle,
             active: false,
+            orderMinute: windows['morning']!.start,
+            expiresAt: windows['morning']!.end + taskRailGraceMinutes,
             onTap: () => onReader('morning'),
           ),
           if (t.isFriday)
@@ -1720,12 +1729,16 @@ class _ModernTasksCard extends StatelessWidget {
               id: 'kahf',
               label: s.kahfTitle,
               active: false,
+              orderMinute: windows['kahf']!.start,
+              expiresAt: windows['kahf']!.end + taskRailGraceMinutes,
               onTap: () => onReader('kahf'),
             ),
           (
             id: 'evening',
             label: s.eveningTitle,
             active: eveningOpen && !app.isDone('evening'),
+            orderMinute: windows['evening']!.start,
+            expiresAt: windows['evening']!.end + taskRailGraceMinutes,
             onTap: () => onReader('evening'),
           ),
           if (t.isFriday)
@@ -1733,6 +1746,8 @@ class _ModernTasksCard extends StatelessWidget {
               id: 'dua',
               label: s.duaTitle,
               active: false,
+              orderMinute: windows['dua']!.start,
+              expiresAt: windows['dua']!.end + taskRailGraceMinutes,
               onTap: () => app.markDone('dua'),
             ),
           for (final reminder in app.customReminders.where(
@@ -1742,11 +1757,28 @@ class _ModernTasksCard extends StatelessWidget {
               id: 'custom:${reminder.id}',
               label: reminder.title,
               active: false,
+              orderMinute: reminder.isPrayerLinked
+                  ? t.times[Prayer.values[reminder.prayer.clamp(0, 5)]]! +
+                        reminder.offsetMin
+                  : reminder.fixedHour * 60 + reminder.fixedMinute,
+              expiresAt:
+                  (reminder.isPrayerLinked
+                      ? t.times[Prayer.values[reminder.prayer.clamp(0, 5)]]! +
+                            reminder.offsetMin
+                      : reminder.fixedHour * 60 + reminder.fixedMinute) +
+                  taskRailGraceMinutes,
               onTap: () => app.markDone('custom:${reminder.id}'),
             ),
         ];
+    tasks.sort((a, b) => a.orderMinute.compareTo(b.orderMinute));
     final doneCount = tasks.where((task) => app.isDone(task.id)).length;
     final hasCustomTasks = tasks.length > (t.isFriday ? 4 : 2);
+    final firstRelevant = tasks.indexWhere(
+      (task) => !app.isDone(task.id) && nowMin < task.expiresAt,
+    );
+    final startIndex = firstRelevant >= 0
+        ? firstRelevant
+        : math.max(0, tasks.length - 2);
 
     return _SurfaceCard(
       palette: palette,
@@ -1777,7 +1809,12 @@ class _ModernTasksCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 7),
-          _HorizontalTaskRail(tasks: tasks, app: app, c: c),
+          _HorizontalTaskRail(
+            tasks: tasks,
+            startIndex: startIndex,
+            app: app,
+            c: c,
+          ),
         ],
       ),
     );
@@ -1787,12 +1824,23 @@ class _ModernTasksCard extends StatelessWidget {
 class _HorizontalTaskRail extends StatefulWidget {
   const _HorizontalTaskRail({
     required this.tasks,
+    required this.startIndex,
     required this.app,
     required this.c,
   });
 
-  final List<({String id, String label, bool active, VoidCallback onTap})>
+  final List<
+    ({
+      String id,
+      String label,
+      bool active,
+      int orderMinute,
+      int expiresAt,
+      VoidCallback onTap,
+    })
+  >
   tasks;
+  final int startIndex;
   final AppState app;
   final JColors c;
 
@@ -1803,20 +1851,48 @@ class _HorizontalTaskRail extends StatefulWidget {
 class _HorizontalTaskRailState extends State<_HorizontalTaskRail> {
   final _scroll = ScrollController();
   bool _hintScheduled = false;
+  bool _canScrollForward = false;
+  int _positionedStartIndex = -1;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _scheduleHint();
+  void initState() {
+    super.initState();
+    _scroll.addListener(_updateForwardHint);
   }
 
   @override
   void didUpdateWidget(_HorizontalTaskRail oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.tasks.length != widget.tasks.length) {
+    if (oldWidget.tasks.length != widget.tasks.length ||
+        oldWidget.startIndex != widget.startIndex) {
       _hintScheduled = false;
-      _scheduleHint();
+      _positionedStartIndex = -1;
     }
+  }
+
+  void _updateForwardHint() {
+    if (!mounted || !_scroll.hasClients) return;
+    // Последние 22 px — только декоративный trailing padding. Подсказка
+    // нужна, лишь пока справа действительно остаётся ещё одна карточка.
+    final canScroll = _scroll.position.extentAfter > 24;
+    if (canScroll != _canScrollForward) {
+      setState(() => _canScrollForward = canScroll);
+    }
+  }
+
+  void _positionOnRelevantTask(double tileWidth) {
+    if (_positionedStartIndex == widget.startIndex) return;
+    _positionedStartIndex = widget.startIndex;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      final target = math.min(
+        widget.startIndex * (tileWidth + 8),
+        _scroll.position.maxScrollExtent,
+      );
+      _scroll.jumpTo(target);
+      _updateForwardHint();
+      _scheduleHint();
+    });
   }
 
   void _scheduleHint() {
@@ -1825,12 +1901,13 @@ class _HorizontalTaskRailState extends State<_HorizontalTaskRail> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted ||
           !_scroll.hasClients ||
-          _scroll.position.maxScrollExtent <= 0) {
+          _scroll.position.extentAfter <= 24) {
         return;
       }
       await Future<void>.delayed(const Duration(milliseconds: 650));
       if (!mounted || !_scroll.hasClients) return;
-      final peek = math.min(28.0, _scroll.position.maxScrollExtent);
+      final origin = _scroll.offset;
+      final peek = math.min(origin + 28.0, _scroll.position.maxScrollExtent);
       await _scroll.animateTo(
         peek,
         duration: const Duration(milliseconds: 360),
@@ -1840,7 +1917,7 @@ class _HorizontalTaskRailState extends State<_HorizontalTaskRail> {
       await Future<void>.delayed(const Duration(milliseconds: 110));
       if (!mounted || !_scroll.hasClients) return;
       await _scroll.animateTo(
-        0,
+        origin,
         duration: const Duration(milliseconds: 420),
         curve: Curves.easeOutBack,
       );
@@ -1849,6 +1926,7 @@ class _HorizontalTaskRailState extends State<_HorizontalTaskRail> {
 
   @override
   void dispose() {
+    _scroll.removeListener(_updateForwardHint);
     _scroll.dispose();
     super.dispose();
   }
@@ -1861,6 +1939,7 @@ class _HorizontalTaskRailState extends State<_HorizontalTaskRail> {
         final tileWidth = overflow
             ? math.min(158.0, constraints.maxWidth * .47)
             : (constraints.maxWidth - 8) / 2;
+        _positionOnRelevantTask(tileWidth);
         return SizedBox(
           height: 52,
           child: Stack(
@@ -1890,8 +1969,9 @@ class _HorizontalTaskRailState extends State<_HorizontalTaskRail> {
                   );
                 },
               ),
-              if (overflow)
+              if (overflow && _canScrollForward)
                 Positioned(
+                  key: const ValueKey('today-task-forward-hint'),
                   top: 0,
                   right: 0,
                   bottom: 0,

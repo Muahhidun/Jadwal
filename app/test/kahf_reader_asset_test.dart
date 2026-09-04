@@ -23,7 +23,17 @@ void main() {
     expect(html, contains("line.classList.add('justified')"));
     expect(html, contains('function fitPage(page)'));
     expect(html, contains("postMessage('toggleChrome')"));
+    expect(html, contains("post('page'"));
+    expect(html, contains("post('complete')"));
+    expect(html, isNot(contains("post('dismissMove'")));
+    expect(html, isNot(contains("post('dismissEnd'")));
+    expect(html, contains("reader.addEventListener('touchend'"));
     expect(html, contains("slot.className = 'page-slot'"));
+    expect(html, contains("intro.className = 'kahf-intro'"));
+    expect(html, contains('entry.page === 293 && number <= 9'));
+    expect(html, contains('Прочитавшему её в пятницу'));
+    expect(html, contains('аль-Байхаки, 6209'));
+    expect(html, contains('«Сахих аль-Джами‘», 6470'));
     for (final theme in const ['paper', 'monoLight', 'monoDark', 'softDark']) {
       expect(html, contains(theme));
     }

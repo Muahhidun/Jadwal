@@ -34,9 +34,19 @@ class _CelebrationScreenState extends State<CelebrationScreen>
     final app = AppScope.of(context);
     final s = S.of(app.lang);
     final quote = s.quotes[quoteIdx];
-    final title = widget.collectionId == 'morning'
-        ? s.doneTitleMorning
-        : s.doneTitleEvening;
+    final title = switch (widget.collectionId) {
+      'morning' => s.doneTitleMorning,
+      'kahf' =>
+        app.lang == 'kz'
+            ? '«әл-Кәһф» сүресі оқылды'
+            : 'Сура аль-Кахф прочитана',
+      _ => s.doneTitleEvening,
+    };
+    final doneCaption = widget.collectionId == 'kahf'
+        ? (app.lang == 'kz'
+              ? 'БҮГІНГІ ТАПСЫРМА ОРЫНДАЛДЫ'
+              : 'ЗАДАЧА НА СЕГОДНЯ ВЫПОЛНЕНА')
+        : s.doneSub;
 
     final pop = CurvedAnimation(
       parent: _ctrl,
@@ -115,7 +125,7 @@ class _CelebrationScreenState extends State<CelebrationScreen>
                       ),
                       const SizedBox(height: 28),
                       Text(
-                        s.doneSub,
+                        doneCaption,
                         style: JType.caption(JPaper.accent, size: 10),
                       ),
                     ],
