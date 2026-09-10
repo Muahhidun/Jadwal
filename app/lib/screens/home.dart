@@ -701,6 +701,7 @@ class _DoneChips extends StatelessWidget {
       padding: const EdgeInsets.only(top: 14),
       child: Center(
         child: Container(
+          key: const ValueKey('home-done-chips'),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.15),
@@ -852,6 +853,27 @@ class _HomeLayer extends StatelessWidget {
         app,
         onReader,
       );
+      final doneChipCount = <String>[
+        if (app.isDone('morning')) 'morning',
+        if (app.isDone('kahf')) 'kahf',
+        if (app.isDone('evening')) 'evening',
+        if (app.isDone('dua')) 'dua',
+      ].length;
+      final timerSeconds = heroTimer(s, t, nowSec, nowMin, schedule, app).$2;
+      final timerHeight = (timerSeconds >= 3600 ? 76.0 : 84.0) * 1.12;
+      final doneChipsHeight = doneChipCount == 0
+          ? 22.0
+          : 14.0 +
+                20.0 +
+                doneChipCount * 16.0 +
+                math.max(0, doneChipCount - 1) * 8.0;
+      // Таймер и выполненные дела находятся в соседнем слое. Вычисляем
+      // нижнюю границу этого блока, чтобы действие окна всегда шло после
+      // него и не перекрывало вторую или третью выполненную задачу.
+      final actionTop = math.max(
+        h * 0.49,
+        h * 0.35 + 18 + 6 + timerHeight + doneChipsHeight + 28,
+      );
       topBlock = Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -897,12 +919,13 @@ class _HomeLayer extends StatelessWidget {
                   // На активном окне город поднимается достаточно высоко,
                   // поэтому действия держим в свободной зоне сразу под
                   // таймером, а не поверх башни Абрадж аль-Бейт.
-                  top: h * 0.49,
+                  top: actionTop,
                   child: Column(
                     children: [
                       GestureDetector(
                         onTap: onBtn,
                         child: Container(
+                          key: const ValueKey('home-window-action'),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 44,
                             vertical: 16,
@@ -1305,13 +1328,6 @@ class _DayLayer extends StatelessWidget {
                                 c: c,
                                 onTap: () => onReader('morning'),
                               ),
-                              if (t.isFriday)
-                                _TaskRow(
-                                  label: s.kahfTitle,
-                                  done: app.isDone('kahf'),
-                                  c: c,
-                                  onTap: () => onReader('kahf'),
-                                ),
                               _TaskRow(
                                 label: s.eveningTitle,
                                 done: app.isDone('evening'),
@@ -1666,7 +1682,6 @@ class _ModernDayLayer extends StatelessWidget {
                   child: _UtilityDock(
                     s: s,
                     palette: palette,
-                    onKahf: () => onReader('kahf'),
                     onReminders: () => RemindersScreen.open(context),
                     onLanguage: () => LanguagePicker.open(context),
                   ),
@@ -1724,15 +1739,6 @@ class _ModernTasksCard extends StatelessWidget {
             expiresAt: windows['morning']!.end + taskRailGraceMinutes,
             onTap: () => onReader('morning'),
           ),
-          if (t.isFriday)
-            (
-              id: 'kahf',
-              label: s.kahfTitle,
-              active: false,
-              orderMinute: windows['kahf']!.start,
-              expiresAt: windows['kahf']!.end + taskRailGraceMinutes,
-              onTap: () => onReader('kahf'),
-            ),
           (
             id: 'evening',
             label: s.eveningTitle,
@@ -1772,7 +1778,7 @@ class _ModernTasksCard extends StatelessWidget {
         ];
     tasks.sort((a, b) => a.orderMinute.compareTo(b.orderMinute));
     final doneCount = tasks.where((task) => app.isDone(task.id)).length;
-    final hasCustomTasks = tasks.length > (t.isFriday ? 4 : 2);
+    final hasCustomTasks = tasks.length > (t.isFriday ? 3 : 2);
     final firstRelevant = tasks.indexWhere(
       (task) => !app.isDone(task.id) && nowMin < task.expiresAt,
     );
@@ -1850,9 +1856,9 @@ class _HorizontalTaskRail extends StatefulWidget {
 
 class _HorizontalTaskRailState extends State<_HorizontalTaskRail> {
   final _scroll = ScrollController();
-  bool _hintScheduled = false;
   bool _canScrollForward = false;
   int _positionedStartIndex = -1;
+  bool _snapInProgress = false;
 
   @override
   void initState() {
@@ -1865,7 +1871,6 @@ class _HorizontalTaskRailState extends State<_HorizontalTaskRail> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.tasks.length != widget.tasks.length ||
         oldWidget.startIndex != widget.startIndex) {
-      _hintScheduled = false;
       _positionedStartIndex = -1;
     }
   }
@@ -1891,37 +1896,34 @@ class _HorizontalTaskRailState extends State<_HorizontalTaskRail> {
       );
       _scroll.jumpTo(target);
       _updateForwardHint();
-      _scheduleHint();
     });
   }
 
-  void _scheduleHint() {
-    if (_hintScheduled || widget.tasks.length <= 2) return;
-    _hintScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted ||
-          !_scroll.hasClients ||
-          _scroll.position.extentAfter <= 24) {
-        return;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 650));
-      if (!mounted || !_scroll.hasClients) return;
-      final origin = _scroll.offset;
-      final peek = math.min(origin + 28.0, _scroll.position.maxScrollExtent);
-      await _scroll.animateTo(
-        peek,
-        duration: const Duration(milliseconds: 360),
-        curve: Curves.easeOutCubic,
-      );
-      if (!mounted || !_scroll.hasClients) return;
-      await Future<void>.delayed(const Duration(milliseconds: 110));
-      if (!mounted || !_scroll.hasClients) return;
-      await _scroll.animateTo(
-        origin,
-        duration: const Duration(milliseconds: 420),
-        curve: Curves.easeOutBack,
-      );
-    });
+  void _snapToTask(double itemExtent) {
+    if (!mounted || !_scroll.hasClients || _snapInProgress) return;
+    final index = (_scroll.offset / itemExtent).round().clamp(
+      0,
+      widget.tasks.length - 1,
+    );
+    final target = math.min(
+      index * itemExtent,
+      _scroll.position.maxScrollExtent,
+    );
+    if ((target - _scroll.offset).abs() < .5) {
+      _updateForwardHint();
+      return;
+    }
+    _snapInProgress = true;
+    _scroll
+        .animateTo(
+          target,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        )
+        .whenComplete(() {
+          _snapInProgress = false;
+          _updateForwardHint();
+        });
   }
 
   @override
@@ -1939,35 +1941,49 @@ class _HorizontalTaskRailState extends State<_HorizontalTaskRail> {
         final tileWidth = overflow
             ? math.min(158.0, constraints.maxWidth * .47)
             : (constraints.maxWidth - 8) / 2;
+        final itemExtent = tileWidth + 8;
+        // Дополнительный хвост позволяет и последней карточке встать ровно
+        // у левого края. Справа при этом по-прежнему виден следующий элемент,
+        // пока он действительно существует.
+        final trailingPadding = overflow
+            ? math.max(22.0, constraints.maxWidth - tileWidth)
+            : 0.0;
         _positionOnRelevantTask(tileWidth);
         return SizedBox(
           height: 52,
           child: Stack(
             children: [
-              ListView.separated(
-                key: const ValueKey('today-task-rail'),
-                controller: _scroll,
-                primary: false,
-                scrollDirection: Axis.horizontal,
-                physics: overflow
-                    ? const BouncingScrollPhysics()
-                    : const NeverScrollableScrollPhysics(),
-                padding: EdgeInsets.only(right: overflow ? 22 : 0),
-                itemCount: widget.tasks.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final task = widget.tasks[index];
-                  return SizedBox(
-                    width: tileWidth,
-                    child: _CompactTaskTile(
-                      label: task.label,
-                      done: widget.app.isDone(task.id),
-                      active: task.active,
-                      c: widget.c,
-                      onTap: task.onTap,
-                    ),
-                  );
+              NotificationListener<ScrollEndNotification>(
+                onNotification: (_) {
+                  if (overflow) _snapToTask(itemExtent);
+                  return false;
                 },
+                child: ListView.separated(
+                  key: const ValueKey('today-task-rail'),
+                  controller: _scroll,
+                  primary: false,
+                  scrollDirection: Axis.horizontal,
+                  physics: overflow
+                      ? const BouncingScrollPhysics()
+                      : const NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.only(right: trailingPadding),
+                  itemCount: widget.tasks.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final task = widget.tasks[index];
+                    return SizedBox(
+                      key: ValueKey('today-task-${task.id}'),
+                      width: tileWidth,
+                      child: _CompactTaskTile(
+                        label: task.label,
+                        done: widget.app.isDone(task.id),
+                        active: task.active,
+                        c: widget.c,
+                        onTap: task.onTap,
+                      ),
+                    );
+                  },
+                ),
               ),
               if (overflow && _canScrollForward)
                 Positioned(
@@ -1983,8 +1999,11 @@ class _HorizontalTaskRailState extends State<_HorizontalTaskRail> {
                           begin: Alignment.centerLeft,
                           end: Alignment.centerRight,
                           colors: [
-                            widget.c.bg.withValues(alpha: 0),
-                            widget.c.bg.withValues(alpha: .72),
+                            Colors.transparent,
+                            // Только слегка затемняем край той же карточки.
+                            // Прежний `c.bg` создавал отдельный белёсый блок,
+                            // особенно заметный в переходной палитре заката.
+                            widget.c.ink.withValues(alpha: .055),
                           ],
                         ),
                       ),
@@ -2084,14 +2103,13 @@ class _UtilityDock extends StatelessWidget {
   const _UtilityDock({
     required this.s,
     required this.palette,
-    required this.onKahf,
     required this.onReminders,
     required this.onLanguage,
   });
 
   final S s;
   final DaySurfacePalette palette;
-  final VoidCallback onKahf, onReminders, onLanguage;
+  final VoidCallback onReminders, onLanguage;
 
   @override
   Widget build(BuildContext context) {
@@ -2120,19 +2138,6 @@ class _UtilityDock extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Expanded(
-                  child: _DockAction(
-                    icon: CupertinoIcons.book,
-                    label: s == S.kz ? 'әл-Кәһф' : 'аль-Кахф',
-                    color: c.ink,
-                    onTap: onKahf,
-                  ),
-                ),
-                Container(
-                  width: 0.8,
-                  height: 24,
-                  color: c.hair.withValues(alpha: 0.65),
-                ),
                 Expanded(
                   child: _DockAction(
                     icon: CupertinoIcons.bell,

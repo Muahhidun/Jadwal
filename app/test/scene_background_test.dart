@@ -39,6 +39,19 @@ void main() {
     expect(palette.bottom.computeLuminance(), lessThan(0.03));
   });
 
+  test('до Магриба нижний экран сохраняет чистую светлую поверхность', () {
+    final palette = daySurfacePalette(
+      times,
+      (times.times[Prayer.maghrib]! - 25) * 60,
+    );
+
+    expect(palette.isLight, isTrue);
+    expect(palette.surface.r, greaterThan(0.98));
+    expect(palette.surface.g, greaterThan(0.98));
+    expect(palette.surface.b, greaterThan(0.98));
+    expect(palette.surface.a, closeTo(0xB8 / 255, 0.001));
+  });
+
   test('нижний экран плавно проходит через границу Магриба', () {
     final before = daySurfacePalette(times, (1209 * 60));
     final after = daySurfacePalette(times, (1211 * 60));

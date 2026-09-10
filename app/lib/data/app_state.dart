@@ -71,12 +71,12 @@ class AppState extends ChangeNotifier {
   void setNotifWindow(String id, bool v) =>
       saveReminderConfig(getReminderConfig(id, lang).copyWith(enabled: v));
 
-  /// Оповещение о каждом намазе отдельно (fajr/dhuhr/asr/maghrib/isha).
+  /// Оповещение о каждом намазе и восходе отдельно.
   bool notifPrayer(String id) => getReminderConfig(id, lang).enabled;
   void setNotifPrayer(String id, bool v) =>
       saveReminderConfig(getReminderConfig(id, lang).copyWith(enabled: v));
 
-  /// Громкие системные будильники для пяти намазов.
+  /// Громкие системные будильники для пяти намазов и восхода.
   ///
   /// Старые ключи Фаджра читаются как fallback, чтобы обновление
   /// не сбрасывало уже выбранные пользователем настройки.
@@ -284,15 +284,9 @@ class AppState extends ChangeNotifier {
 
   /// Показывается ли пользовательское дело в конкретный день.
   ///
-  /// Правило совпадает с планировщиком уведомлений: ежедневное — каждый день,
-  /// еженедельное — в выбранный день недели, ежемесячное — первого числа.
+  /// Правило совпадает с планировщиком уведомлений для всех частот.
   bool reminderOccursOn(ReminderConfig reminder, DateTime date) {
-    if (!reminder.enabled) return false;
-    return switch (reminder.repeat) {
-      'weekly' => date.weekday == reminder.weekday,
-      'monthly' => date.day == 1,
-      _ => true,
-    };
+    return reminder.enabled && reminder.occursOn(date);
   }
 
   /// Реальный прогресс дня для кольца тетради: базовые дела плюс все
@@ -353,8 +347,10 @@ class ReminderConfig {
   final String anchor; // 'prayer' — от намаза, 'clock' — в фиксированное время
   final int fixedHour, fixedMinute;
   final bool enabled;
-  final String repeat; // 'daily' / 'weekly' / 'monthly'
-  final int weekday; // день недели (1-7, default 5 = пятница)
+  final String repeat; // 'once' / 'daily' / 'weekly' / 'monthly' / 'yearly'
+  final int weekday; // legacy: один день недели (1-7)
+  final List<int> weekdays; // выбранные дни недели для weekly
+  final int scheduleYear, scheduleMonth, scheduleDay;
 
   const ReminderConfig({
     required this.id,
@@ -367,9 +363,28 @@ class ReminderConfig {
     this.enabled = true,
     this.repeat = 'daily',
     this.weekday = 5,
+    this.weekdays = const [],
+    this.scheduleYear = 0,
+    this.scheduleMonth = 1,
+    this.scheduleDay = 1,
   });
 
   bool get isPrayerLinked => anchor != 'clock';
+  List<int> get effectiveWeekdays => weekdays.isEmpty ? [weekday] : weekdays;
+
+  bool matchesScheduleDate(DateTime date) =>
+      scheduleYear > 0 &&
+      date.year == scheduleYear &&
+      date.month == scheduleMonth &&
+      date.day == scheduleDay;
+
+  bool occursOn(DateTime date) => switch (repeat) {
+    'once' => matchesScheduleDate(date),
+    'weekly' => effectiveWeekdays.contains(date.weekday),
+    'monthly' => date.day == scheduleDay,
+    'yearly' => date.month == scheduleMonth && date.day == scheduleDay,
+    _ => true,
+  };
 
   ReminderConfig copyWith({
     String? title,
@@ -381,6 +396,10 @@ class ReminderConfig {
     int? fixedMinute,
     String? repeat,
     int? weekday,
+    List<int>? weekdays,
+    int? scheduleYear,
+    int? scheduleMonth,
+    int? scheduleDay,
   }) => ReminderConfig(
     id: id,
     title: title ?? this.title,
@@ -392,6 +411,10 @@ class ReminderConfig {
     enabled: enabled ?? this.enabled,
     repeat: repeat ?? this.repeat,
     weekday: weekday ?? this.weekday,
+    weekdays: weekdays ?? this.weekdays,
+    scheduleYear: scheduleYear ?? this.scheduleYear,
+    scheduleMonth: scheduleMonth ?? this.scheduleMonth,
+    scheduleDay: scheduleDay ?? this.scheduleDay,
   );
 
   Map<String, dynamic> toJson() => {
@@ -405,6 +428,10 @@ class ReminderConfig {
     'e': enabled,
     'r': repeat,
     'w': weekday,
+    'ws': weekdays,
+    'sy': scheduleYear,
+    'sm': scheduleMonth,
+    'sd': scheduleDay,
   };
 
   factory ReminderConfig.fromJson(Map<String, dynamic> j) => ReminderConfig(
@@ -418,5 +445,11 @@ class ReminderConfig {
     enabled: (j['e'] as bool?) ?? true,
     repeat: (j['r'] as String?) ?? 'daily',
     weekday: (j['w'] as int?) ?? 5,
+    weekdays:
+        (j['ws'] as List?)?.whereType<num>().map((e) => e.toInt()).toList() ??
+        const [],
+    scheduleYear: (j['sy'] as int?) ?? 0,
+    scheduleMonth: (j['sm'] as int?) ?? 1,
+    scheduleDay: (j['sd'] as int?) ?? 1,
   );
 }

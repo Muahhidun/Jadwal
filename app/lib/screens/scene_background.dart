@@ -402,13 +402,30 @@ Color _ensureContrast(
 
 DaySurfacePalette daySurfacePalette(DayTimes t, int nowSec) {
   final sky = _skyAt(t, nowSec ~/ 60);
-  // Раньше весь нижний экран мгновенно переключался между двумя готовыми
-  // палитрами. Теперь дневная, предзакатная, закатная, сумеречная и ночная
-  // атмосферы непрерывно интерполируются из того же `sky.day`, что рисует
-  // главное небо. Поэтому за 10 минут до Магриба оба экрана уже находятся
-  // в одной фазе, а после Магриба нет скачка в тёмно-синий.
-  final daylight = _smoothStep(0.08, 0.72, sky.day);
-  final nightBlend = 1 - daylight;
+  final fajrSec = t.times[Prayer.fajr]! * 60;
+  final sunriseSec = t.times[Prayer.sunrise]! * 60;
+  final maghribSec = t.times[Prayer.maghrib]! * 60;
+  final ishaSec = t.times[Prayer.isha]! * 60;
+
+  // Небо начинает краснеть заранее, но это не повод заранее смешивать
+  // светлую поверхность с тёмно-серой темой. Именно такая смесь делала весь
+  // нижний экран мутным за 20–30 минут до Магриба. До самого Магриба держим
+  // чистую светлую основу; затем плавно переходим в ночную к Иша. На рассвете
+  // выполняем обратный переход от Фаджра до восхода.
+  final double nightBlend;
+  if (nowSec < fajrSec) {
+    nightBlend = 1;
+  } else if (nowSec < sunriseSec) {
+    final dawnProgress = (nowSec - fajrSec) / (sunriseSec - fajrSec);
+    nightBlend = 1 - _smoothStep(0, 1, dawnProgress);
+  } else if (nowSec < maghribSec) {
+    nightBlend = 0;
+  } else if (nowSec < ishaSec) {
+    final duskProgress = (nowSec - maghribSec) / (ishaSec - maghribSec);
+    nightBlend = _smoothStep(0, 1, duskProgress);
+  } else {
+    nightBlend = 1;
+  }
   final surfaceBlend = _smoothStep(0.18, 0.92, nightBlend);
 
   final lightTop = Color.lerp(const Color(0xFFDDE8ED), sky.bottom, 0.38)!;

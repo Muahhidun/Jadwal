@@ -10,15 +10,17 @@ import '../theme/tokens.dart';
 import 'settings_shell.dart';
 
 const _prayerIds = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
-const _actualPrayerIds = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
+const _alarmPrayerIds = _prayerIds;
 const _prayersRu = ['Фаджр', 'Восход', 'Зухр', 'Аср', 'Магриб', 'Иша'];
 const _prayersKz = ['Таң', 'Күн шығуы', 'Бесін', 'Екінті', 'Ақшам', 'Құптан'];
 
 List<String> _prayers(bool kz) => kz ? _prayersKz : _prayersRu;
 
 String _repeatLabel(bool kz, String repeat) => switch (repeat) {
-  'weekly' => kz ? 'Әр аптада' : 'Каждую неделю',
+  'once' => kz ? 'Бір рет' : 'Без повторения',
+  'weekly' => kz ? 'Апта күндері' : 'По дням недели',
   'monthly' => kz ? 'Әр айда' : 'Каждый месяц',
+  'yearly' => kz ? 'Жыл сайын' : 'Каждый год',
   _ => kz ? 'Күн сайын' : 'Каждый день',
 };
 
@@ -33,15 +35,69 @@ String _offsetLabel(bool kz, int offset) {
 
 String _configLabel(bool kz, ReminderConfig config) {
   if (!config.enabled) return kz ? 'Өшірулі' : 'Выключено';
+  final repeat = config.repeat == 'weekly'
+      ? _weekdaysLabel(kz, config.effectiveWeekdays)
+      : _repeatLabel(kz, config.repeat);
   if (!config.isPrayerLinked) {
     final time = _clockLabel(config.fixedHour, config.fixedMinute);
-    return '$time · ${_repeatLabel(kz, config.repeat)}';
+    return '$time · $repeat';
   }
-  return '${_offsetLabel(kz, config.offsetMin)} · ${_repeatLabel(kz, config.repeat)}';
+  return '${_offsetLabel(kz, config.offsetMin)} · $repeat';
 }
 
 String _clockLabel(int hour, int minute) =>
     '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+
+String _weekdaysLabel(bool kz, Iterable<int> days) {
+  const ru = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+  const kk = ['Дс', 'Сс', 'Ср', 'Бс', 'Жм', 'Сб', 'Жс'];
+  final names = kz ? kk : ru;
+  final sorted = days.toSet().where((day) => day >= 1 && day <= 7).toList()
+    ..sort();
+  return sorted.map((day) => names[day - 1]).join(', ');
+}
+
+String _scheduleDateLabel(bool kz, DateTime date, String repeat) {
+  const ruMonths = [
+    'января',
+    'февраля',
+    'марта',
+    'апреля',
+    'мая',
+    'июня',
+    'июля',
+    'августа',
+    'сентября',
+    'октября',
+    'ноября',
+    'декабря',
+  ];
+  const kkMonths = [
+    'қаңтар',
+    'ақпан',
+    'наурыз',
+    'сәуір',
+    'мамыр',
+    'маусым',
+    'шілде',
+    'тамыз',
+    'қыркүйек',
+    'қазан',
+    'қараша',
+    'желтоқсан',
+  ];
+  if (repeat == 'monthly') {
+    return kz ? 'Айдың ${date.day}-күні' : '${date.day}-е число';
+  }
+  final month = (kz ? kkMonths : ruMonths)[date.month - 1];
+  return repeat == 'once'
+      ? '${date.day} $month ${date.year}'
+      : '${date.day} $month';
+}
+
+DateTime _scheduleDateFor(ReminderConfig config) => config.scheduleYear > 0
+    ? DateTime(config.scheduleYear, config.scheduleMonth, config.scheduleDay)
+    : DateUtils.dateOnly(DateTime.now());
 
 /// Корневой центр напоминаний. Вся дальнейшая навигация происходит внутри
 /// одной модальной панели через CupertinoPageRoute.
@@ -503,6 +559,10 @@ Future<void> _showReminderHelp(BuildContext context, _ReminderHelpTopic topic) {
   final p = dauamSettingsPalette(context);
   final c = p.colors;
   final accent = dauamSettingsAccent(context);
+  final opaqueSurface = Color.alphaBlend(
+    p.surface,
+    p.middle,
+  ).withValues(alpha: 1);
   final data = switch (topic) {
     _ReminderHelpTopic.prayer => (
       icon: CupertinoIcons.clock,
@@ -568,10 +628,13 @@ Future<void> _showReminderHelp(BuildContext context, _ReminderHelpTopic topic) {
     builder: (context) => SafeArea(
       top: false,
       child: Container(
+        key: const ValueKey('reminder-help-surface'),
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
         padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
         decoration: BoxDecoration(
-          color: p.surface,
+          // Справка должна перекрывать список полностью: полупрозрачная
+          // стеклянная карточка смешивала текст с настройками под ней.
+          color: opaqueSurface,
           borderRadius: BorderRadius.circular(30),
           border: Border.all(color: p.border.withValues(alpha: .45)),
           boxShadow: [
@@ -873,7 +936,8 @@ class _ReminderEditorScreenState extends State<ReminderEditorScreen> {
   int _fixedHour = 9;
   int _fixedMinute = 0;
   String _repeat = 'daily';
-  int _weekday = DateTime.friday;
+  final Set<int> _weekdays = {DateTime.friday};
+  DateTime _scheduleDate = DateUtils.dateOnly(DateTime.now());
 
   @override
   void dispose() {
@@ -916,6 +980,28 @@ class _ReminderEditorScreenState extends State<ReminderEditorScreen> {
     if (mounted && result != null) setState(() => _repeat = result);
   }
 
+  Future<void> _selectWeekdays() async {
+    final result = await Navigator.of(context).push<List<int>>(
+      dauamSettingsRoute(WeekdayChoiceScreen(selected: _weekdays.toList())),
+    );
+    if (mounted && result != null) {
+      setState(() {
+        _weekdays
+          ..clear()
+          ..addAll(result);
+      });
+    }
+  }
+
+  Future<void> _selectScheduleDate() async {
+    final result = await Navigator.of(context).push<DateTime>(
+      dauamSettingsRoute(
+        ScheduleDateChoiceScreen(selected: _scheduleDate, repeat: _repeat),
+      ),
+    );
+    if (mounted && result != null) setState(() => _scheduleDate = result);
+  }
+
   void _add() {
     final title = _title.text.trim();
     if (title.isEmpty) return;
@@ -931,7 +1017,11 @@ class _ReminderEditorScreenState extends State<ReminderEditorScreen> {
         fixedHour: _fixedHour,
         fixedMinute: _fixedMinute,
         repeat: _repeat,
-        weekday: _weekday,
+        weekday: _weekdays.first,
+        weekdays: _weekdays.toList()..sort(),
+        scheduleYear: _scheduleDate.year,
+        scheduleMonth: _scheduleDate.month,
+        scheduleDay: _scheduleDate.day,
       ),
     );
     syncNotifications(app, schedule);
@@ -1033,18 +1123,17 @@ class _ReminderEditorScreenState extends State<ReminderEditorScreen> {
               ),
               if (_repeat == 'weekly')
                 DauamSettingsRow(
-                  title: kz ? 'Апта күні' : 'День недели',
-                  value: _weekdayLabel(kz, _weekday),
-                  onTap: () async {
-                    final result = await Navigator.of(context).push<int>(
-                      dauamSettingsRoute(
-                        WeekdayChoiceScreen(selected: _weekday),
-                      ),
-                    );
-                    if (mounted && result != null) {
-                      setState(() => _weekday = result);
-                    }
-                  },
+                  title: kz ? 'Апта күндері' : 'Дни недели',
+                  value: _weekdaysLabel(kz, _weekdays),
+                  onTap: _selectWeekdays,
+                ),
+              if (const {'once', 'monthly', 'yearly'}.contains(_repeat))
+                DauamSettingsRow(
+                  title: _repeat == 'monthly'
+                      ? (kz ? 'Ай күні' : 'День месяца')
+                      : (kz ? 'Күні' : 'Дата'),
+                  value: _scheduleDateLabel(kz, _scheduleDate, _repeat),
+                  onTap: _selectScheduleDate,
                 ),
             ],
           ),
@@ -1147,7 +1236,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
     final accent = dauamSettingsAccent(context);
     final config = _config!;
     final prayers = _prayers(kz);
-    final alarmPrayerId = _actualPrayerIds.contains(_activeConfigId)
+    final alarmPrayerId = _alarmPrayerIds.contains(_activeConfigId)
         ? _activeConfigId
         : null;
     final alarmEnabled = alarmPrayerId != null
@@ -1212,8 +1301,8 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
             DauamSection(
               label: kz ? 'ЖҮЙЕЛІК БУДИЛЬНИК' : 'СИСТЕМНЫЙ БУДИЛЬНИК',
               footer: kz
-                  ? 'Жүйелік будильник iOS «Мазаламау» режимінде де соғылады. Күн шығуы намаз емес, сондықтан онда бұл баптау жоқ.'
-                  : 'Системный будильник iOS сработает даже в режиме «Не беспокоить». Восход — не намаз, поэтому для него будильника нет.',
+                  ? 'Жүйелік будильник iOS «Мазаламау» режимінде де соғылады. Күн шығуы намаз емес, жеке уақыт белгісі ретінде қолжетімді.'
+                  : 'Системный будильник iOS сработает даже в режиме «Не беспокоить». Восход доступен как отдельная временная точка, но не является молитвой.',
               children: [
                 DauamSwitchRow(
                   icon: CupertinoIcons.alarm,
@@ -1233,7 +1322,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                     offset: alarmOffset,
                     kz: kz,
                     onMinus: () {
-                      final next = (alarmOffset - 5).clamp(-60, 30);
+                      final next = (alarmOffset - 5).clamp(-60, 60);
                       if (next != alarmOffset) {
                         app.setAlarmOffsetMinutes(alarmPrayerId, next);
                         AlarmService.sync(app, ScheduleScope.of(context));
@@ -1241,7 +1330,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                       }
                     },
                     onPlus: () {
-                      final next = (alarmOffset + 5).clamp(-60, 30);
+                      final next = (alarmOffset + 5).clamp(-60, 60);
                       if (next != alarmOffset) {
                         app.setAlarmOffsetMinutes(alarmPrayerId, next);
                         AlarmService.sync(app, ScheduleScope.of(context));
@@ -1396,22 +1485,68 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                       ),
                     );
                     if (mounted && result != null) {
-                      _persist(config.copyWith(repeat: result));
+                      final date = _scheduleDateFor(config);
+                      _persist(
+                        config.copyWith(
+                          repeat: result,
+                          scheduleYear: date.year,
+                          scheduleMonth: date.month,
+                          scheduleDay: date.day,
+                        ),
+                      );
                     }
                   },
                 ),
                 if (config.repeat == 'weekly')
                   DauamSettingsRow(
-                    title: kz ? 'Апта күні' : 'День недели',
-                    value: _weekdayLabel(kz, config.weekday),
+                    title: kz ? 'Апта күндері' : 'Дни недели',
+                    value: _weekdaysLabel(kz, config.effectiveWeekdays),
                     onTap: () async {
-                      final result = await Navigator.of(context).push<int>(
+                      final result = await Navigator.of(context)
+                          .push<List<int>>(
+                            dauamSettingsRoute(
+                              WeekdayChoiceScreen(
+                                selected: config.effectiveWeekdays,
+                              ),
+                            ),
+                          );
+                      if (mounted && result != null) {
+                        _persist(
+                          config.copyWith(
+                            weekday: result.first,
+                            weekdays: result,
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                if (const {'once', 'monthly', 'yearly'}.contains(config.repeat))
+                  DauamSettingsRow(
+                    title: config.repeat == 'monthly'
+                        ? (kz ? 'Ай күні' : 'День месяца')
+                        : (kz ? 'Күні' : 'Дата'),
+                    value: _scheduleDateLabel(
+                      kz,
+                      _scheduleDateFor(config),
+                      config.repeat,
+                    ),
+                    onTap: () async {
+                      final result = await Navigator.of(context).push<DateTime>(
                         dauamSettingsRoute(
-                          WeekdayChoiceScreen(selected: config.weekday),
+                          ScheduleDateChoiceScreen(
+                            selected: _scheduleDateFor(config),
+                            repeat: config.repeat,
+                          ),
                         ),
                       );
                       if (mounted && result != null) {
-                        _persist(config.copyWith(weekday: result));
+                        _persist(
+                          config.copyWith(
+                            scheduleYear: result.year,
+                            scheduleMonth: result.month,
+                            scheduleDay: result.day,
+                          ),
+                        );
                       }
                     },
                   ),
@@ -1930,7 +2065,7 @@ class RepeatChoiceScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final kz = AppScope.of(context).lang == 'kz';
-    const values = ['daily', 'weekly', 'monthly'];
+    const values = ['once', 'daily', 'weekly', 'monthly', 'yearly'];
     return DauamSettingsPage(
       title: kz ? 'Қайталау' : 'Повторение',
       child: ListView(
@@ -1974,15 +2109,30 @@ String _weekdayLabel(bool kz, int day) {
   return (kz ? kk : ru)[day.clamp(1, 7) - 1];
 }
 
-class WeekdayChoiceScreen extends StatelessWidget {
+class WeekdayChoiceScreen extends StatefulWidget {
   const WeekdayChoiceScreen({super.key, required this.selected});
-  final int selected;
+  final List<int> selected;
+
+  @override
+  State<WeekdayChoiceScreen> createState() => _WeekdayChoiceScreenState();
+}
+
+class _WeekdayChoiceScreenState extends State<WeekdayChoiceScreen> {
+  late final Set<int> _selected = widget.selected.toSet();
 
   @override
   Widget build(BuildContext context) {
     final kz = AppScope.of(context).lang == 'kz';
     return DauamSettingsPage(
-      title: kz ? 'Апта күні' : 'День недели',
+      title: kz ? 'Апта күндері' : 'Дни недели',
+      trailing: DauamTextAction(
+        label: kz ? 'Дайын' : 'Готово',
+        enabled: _selected.isNotEmpty,
+        onTap: () {
+          final result = _selected.toList()..sort();
+          Navigator.of(context).pop(result);
+        },
+      ),
       child: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         children: [
@@ -1991,12 +2141,76 @@ class WeekdayChoiceScreen extends StatelessWidget {
               for (var day = 1; day <= 7; day++)
                 DauamChoiceRow(
                   title: _weekdayLabel(kz, day),
-                  selected: selected == day,
-                  onTap: () => Navigator.of(context).pop(day),
+                  selected: _selected.contains(day),
+                  onTap: () => setState(() {
+                    if (_selected.contains(day)) {
+                      if (_selected.length > 1) _selected.remove(day);
+                    } else {
+                      _selected.add(day);
+                    }
+                  }),
                 ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class ScheduleDateChoiceScreen extends StatefulWidget {
+  const ScheduleDateChoiceScreen({
+    super.key,
+    required this.selected,
+    required this.repeat,
+  });
+
+  final DateTime selected;
+  final String repeat;
+
+  @override
+  State<ScheduleDateChoiceScreen> createState() =>
+      _ScheduleDateChoiceScreenState();
+}
+
+class _ScheduleDateChoiceScreenState extends State<ScheduleDateChoiceScreen> {
+  late DateTime _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    final today = DateUtils.dateOnly(DateTime.now());
+    _selected = widget.repeat == 'once' && widget.selected.isBefore(today)
+        ? today
+        : widget.selected;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final kz = AppScope.of(context).lang == 'kz';
+    final monthly = widget.repeat == 'monthly';
+    return DauamSettingsPage(
+      title: monthly
+          ? (kz ? 'Ай күні' : 'День месяца')
+          : (kz ? 'Күні' : 'Дата'),
+      trailing: DauamTextAction(
+        label: kz ? 'Дайын' : 'Готово',
+        onTap: () => Navigator.of(context).pop(_selected),
+      ),
+      child: Center(
+        child: SizedBox(
+          height: 250,
+          child: CupertinoDatePicker(
+            mode: CupertinoDatePickerMode.date,
+            initialDateTime: _selected,
+            minimumDate: widget.repeat == 'once'
+                ? DateUtils.dateOnly(DateTime.now())
+                : null,
+            onDateTimeChanged: (value) => setState(() {
+              _selected = DateUtils.dateOnly(value);
+            }),
+          ),
+        ),
       ),
     );
   }

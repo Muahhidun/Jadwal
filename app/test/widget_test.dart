@@ -2,10 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Icons;
+import 'package:flutter/material.dart' show BoxDecoration, Icons, MaterialApp;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:jadwal/data/adhkar.dart';
 import 'package:jadwal/data/app_state.dart';
 import 'package:jadwal/i18n/strings.dart';
 import 'package:jadwal/main.dart';
@@ -13,6 +14,7 @@ import 'package:jadwal/prayer/city.dart';
 import 'package:jadwal/prayer/schedule_service.dart';
 import 'package:jadwal/screens/home.dart';
 import 'package:jadwal/screens/qibla_screen.dart';
+import 'package:jadwal/screens/reader.dart';
 import 'package:jadwal/services/widget_data_service.dart';
 
 /// Фиксированный день из дизайн-прототипа: пятница 03.07.2026, 20:11, Алматы.
@@ -365,6 +367,79 @@ void main() {
     expect(find.text('Час дуа'), findsWidgets);
   });
 
+  testWidgets('действие часа дуа не перекрывает выполненные дела', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({
+      'onboardingDone': true,
+      'lang': 'ru',
+      'done:${AppState.dayKey(DateTime.now())}': ['morning', 'kahf', 'evening'],
+    });
+    final state = await AppState.load();
+    await tester.pumpWidget(
+      JadwalApp(state: state, schedule: await demoSchedule()),
+    );
+    await tester.pump();
+
+    final chips = tester.getRect(find.byKey(const ValueKey('home-done-chips')));
+    final action = tester.getRect(
+      find.byKey(const ValueKey('home-window-action')),
+    );
+
+    expect(find.text('Час дуа'), findsWidgets);
+    expect(action.top, greaterThanOrEqualTo(chips.bottom + 12));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('заголовок читалки центрирован, а пропуск выровнен по Далее', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({
+      'onboardingDone': true,
+      'lang': 'ru',
+    });
+    final state = await AppState.load();
+    final schedule = await demoSchedule();
+    await tester.runAsync(AdhkarRepository.load);
+    await tester.pumpWidget(
+      AppScope(
+        state: state,
+        child: ScheduleScope(
+          service: schedule,
+          child: const MaterialApp(home: ReaderScreen(collectionId: 'morning')),
+        ),
+      ),
+    );
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 30));
+    }
+
+    final title = find.byKey(const ValueKey('reader-title'));
+    final pageCount = find.byWidgetPredicate(
+      (widget) =>
+          widget is Text && RegExp(r'^1 из \d+$').hasMatch(widget.data ?? ''),
+    );
+    final skip = find.byKey(const ValueKey('reader-skip-action'));
+    final next = find.byKey(const ValueKey('reader-next-action'));
+
+    expect(title, findsOneWidget);
+    expect(pageCount, findsOneWidget);
+    expect(tester.getCenter(title).dx, closeTo(196.5, 0.5));
+    expect(tester.getCenter(pageCount).dx, closeTo(196.5, 0.5));
+    expect(tester.getCenter(skip).dx, closeTo(tester.getCenter(next).dx, 0.5));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('центр напоминаний знакомит один раз и оставляет справку', (
     tester,
   ) async {
@@ -451,6 +526,23 @@ void main() {
     }
     expect(find.text('Напоминания о молитвах'), findsOneWidget);
     expect(find.text('Понятно'), findsOneWidget);
+    final helpSurface = tester.widget<Container>(
+      find.byKey(const ValueKey('reminder-help-surface')),
+    );
+    final helpDecoration = helpSurface.decoration! as BoxDecoration;
+    expect(helpDecoration.color!.a, 1);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Понятно'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 30));
+    }
+    await tester.tap(find.text('Восход').last);
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 30));
+    }
+    expect(find.text('СИСТЕМНЫЙ БУДИЛЬНИК'), findsOneWidget);
+    expect(find.textContaining('Восход доступен'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -491,13 +583,37 @@ void main() {
     expect(find.text('Фаджр'), findsWidgets);
     expect(find.text('Восход'), findsWidgets);
     expect(find.text('Иша'), findsWidgets);
-    // В 20:11 утреннее окно и аль-Кахф уже закрыты больше 30 минут:
-    // лента сама начинает со следующих актуальных дел, но постоянный вход
-    // в читалку аль-Кахф остаётся в нижней панели.
+    // В 20:11 утреннее окно уже закрыто больше 30 минут. Аль-Кахф больше
+    // не занимает постоянное место: вход остаётся только через напоминание.
     expect(find.text('Сура аль-Кахф'), findsNothing);
-    expect(find.text('аль-Кахф'), findsOneWidget);
+    expect(find.text('аль-Кахф'), findsNothing);
     expect(find.textContaining('Вечерние'), findsWidgets);
     expect(find.text('Час дуа'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('today-task-evening'))).dx,
+      closeTo(
+        tester.getTopLeft(find.byKey(const ValueKey('today-task-rail'))).dx,
+        0.5,
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('today-task-forward-hint')),
+      findsOneWidget,
+    );
+    await tester.drag(
+      find.byKey(const ValueKey('today-task-rail')),
+      const Offset(-180, 0),
+    );
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 30));
+    }
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('today-task-dua'))).dx,
+      closeTo(
+        tester.getTopLeft(find.byKey(const ValueKey('today-task-rail'))).dx,
+        0.5,
+      ),
+    );
     expect(find.byKey(const ValueKey('today-task-forward-hint')), findsNothing);
     expect(find.textContaining(RegExp(r'^42:\d{2}$')), findsWidgets);
     expect(find.text('Тетрадь постоянства'), findsOneWidget);

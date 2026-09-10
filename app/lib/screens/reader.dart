@@ -270,64 +270,87 @@ class _ReaderScreenState extends State<ReaderScreen> {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        ZikrSpeechService.stop();
-                        LiveActivityService.stopActivity();
-                        Navigator.of(context).pop();
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.all(6),
-                        child: Icon(
-                          Icons.close,
-                          size: 22,
-                          color: palette.source,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Text(title, style: JType.caption(palette.accent)),
-                          const SizedBox(height: 2),
-                          if (remainingMin > 0)
-                            Text(
-                              '$timerCaption · $remaining',
-                              style: JType.ui(11, color: palette.source),
+                child: SizedBox(
+                  height: remainingMin > 0 ? 48 : 34,
+                  child: Stack(
+                    alignment: Alignment.topCenter,
+                    children: [
+                      Align(
+                        alignment: Alignment.topLeft,
+                        child: GestureDetector(
+                          onTap: () {
+                            ZikrSpeechService.stop();
+                            LiveActivityService.stopActivity();
+                            Navigator.of(context).pop();
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(6),
+                            child: Icon(
+                              Icons.close,
+                              size: 22,
+                              color: palette.source,
                             ),
-                        ],
-                      ),
-                    ),
-                    GestureDetector(
-                      key: const ValueKey('reader-palette-button'),
-                      onTap: () => _showPalettePicker(app, palette),
-                      behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding: const EdgeInsets.all(6),
-                        child: Icon(
-                          Icons.palette_outlined,
-                          size: 22,
-                          color: palette.source,
+                          ),
                         ),
                       ),
-                    ),
-                    GestureDetector(
-                      key: const ValueKey('reader-speech-toggle'),
-                      onTap: _toggleSpeech,
-                      child: Padding(
-                        padding: const EdgeInsets.all(6),
-                        child: Icon(
-                          isSpeaking
-                              ? Icons.volume_up_rounded
-                              : Icons.volume_off_rounded,
-                          size: 22,
-                          color: isSpeaking ? palette.accent : palette.source,
+                      Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              title,
+                              key: const ValueKey('reader-title'),
+                              textAlign: TextAlign.center,
+                              style: JType.caption(palette.accent),
+                            ),
+                            const SizedBox(height: 2),
+                            if (remainingMin > 0)
+                              Text(
+                                '$timerCaption · $remaining',
+                                style: JType.ui(11, color: palette.source),
+                              ),
+                          ],
                         ),
                       ),
-                    ),
-                  ],
+                      Align(
+                        alignment: Alignment.topRight,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            GestureDetector(
+                              key: const ValueKey('reader-palette-button'),
+                              onTap: () => _showPalettePicker(app, palette),
+                              behavior: HitTestBehavior.opaque,
+                              child: Padding(
+                                padding: const EdgeInsets.all(6),
+                                child: Icon(
+                                  Icons.palette_outlined,
+                                  size: 22,
+                                  color: palette.source,
+                                ),
+                              ),
+                            ),
+                            GestureDetector(
+                              key: const ValueKey('reader-speech-toggle'),
+                              onTap: _toggleSpeech,
+                              child: Padding(
+                                padding: const EdgeInsets.all(6),
+                                child: Icon(
+                                  isSpeaking
+                                      ? Icons.volume_up_rounded
+                                      : Icons.volume_off_rounded,
+                                  size: 22,
+                                  color: isSpeaking
+                                      ? palette.accent
+                                      : palette.source,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 14),
@@ -373,34 +396,46 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                 child: Column(
                   children: [
-                    GestureDetector(
-                      key: const ValueKey('reader-skip-action'),
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        session!.skipCurrent();
-                        if (last) {
-                          _finish();
-                        } else {
-                          _goToIndex(idx + 1);
-                        }
-                      },
-                      behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        child: Text(
-                          app.lang == 'kz'
-                              ? 'Бұл зікірді өткізу'
-                              : 'Пропустить этот зикр',
-                          style: JType.ui(
-                            12,
-                            w: FontWeight.w600,
-                            color: palette.source,
+                    Row(
+                      children: [
+                        // Ровно та же левая зона, что занята кнопкой «назад»
+                        // и промежутком под ней в строке ниже.
+                        const SizedBox(width: 64),
+                        Expanded(
+                          child: Center(
+                            child: GestureDetector(
+                              key: const ValueKey('reader-skip-action'),
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                session!.skipCurrent();
+                                if (last) {
+                                  _finish();
+                                } else {
+                                  _goToIndex(idx + 1);
+                                }
+                              },
+                              behavior: HitTestBehavior.opaque,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                child: Text(
+                                  app.lang == 'kz'
+                                      ? 'Бұл зікірді өткізу'
+                                      : 'Пропустить этот зикр',
+                                  textAlign: TextAlign.center,
+                                  style: JType.ui(
+                                    12,
+                                    w: FontWeight.w600,
+                                    color: palette.source,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Row(

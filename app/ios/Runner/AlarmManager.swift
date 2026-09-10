@@ -26,6 +26,7 @@ public final class AlarmManager: NSObject, FlutterPlugin {
   )!
   private static let prayerAlarmIDs: [String: UUID] = [
     "fajr": fajrAlarmID,
+    "sunrise": UUID(uuidString: "DA0A0000-0000-4000-8000-000000000007")!,
     "dhuhr": UUID(uuidString: "DA0A0000-0000-4000-8000-000000000003")!,
     "asr": UUID(uuidString: "DA0A0000-0000-4000-8000-000000000004")!,
     "maghrib": UUID(uuidString: "DA0A0000-0000-4000-8000-000000000005")!,

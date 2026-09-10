@@ -212,6 +212,34 @@ class NotificationService {
     int count = 0;
     final details = _details();
 
+    // Редкие расписания не должны зависеть от 14-дневного окна ежедневной
+    // очереди. Для одноразового, ежемесячного и ежегодного напоминания заранее
+    // ставим ближайшее срабатывание, после чего обычная синхронизация при
+    // следующем открытии приложения продлит последовательность.
+    for (final rc in configs.where(
+      (item) =>
+          item.enabled &&
+          const {'once', 'monthly', 'yearly'}.contains(item.repeat),
+    )) {
+      if (count >= _cap) break;
+      for (final date in _sparseCandidateDates(rc, now)) {
+        final t = _schedule.timesFor(city, date);
+        if (rc.isPrayerLinked && t == null) continue;
+        final scheduledTime = reminderScheduledTime(rc, date, t);
+        if (!scheduledTime.isAfter(now)) continue;
+        final txt = _getNotificationText(lang, rc);
+        await _schedule0(
+          900000 + _slotFor(rc.id, configs),
+          scheduledTime,
+          txt,
+          notificationTargetFor(rc.id),
+          details,
+        );
+        count++;
+        break;
+      }
+    }
+
     for (var d = 0; d < _daysAhead && count < _cap; d++) {
       final date = DateTime(now.year, now.month, now.day + d);
       final t = _schedule.timesFor(city, date);
@@ -219,16 +247,11 @@ class NotificationService {
 
       for (final rc in configs) {
         if (!rc.enabled) continue;
+        if (const {'once', 'monthly', 'yearly'}.contains(rc.repeat)) continue;
 
         // Фильтр по частоте повторения
         if (rc.repeat == 'weekly') {
-          if (rc.id == 'kahf' || rc.id == 'dua') {
-            if (date.weekday != DateTime.friday) continue;
-          } else {
-            if (date.weekday != rc.weekday) continue;
-          }
-        } else if (rc.repeat == 'monthly') {
-          if (date.day != 1) continue;
+          if (!rc.effectiveWeekdays.contains(date.weekday)) continue;
         }
 
         // Проверяем, выполнено ли сегодня
@@ -279,6 +302,50 @@ class NotificationService {
               count++;
             }
           }
+        }
+      }
+    }
+  }
+
+  Iterable<DateTime> _sparseCandidateDates(
+    ReminderConfig reminder,
+    DateTime now,
+  ) sync* {
+    if (reminder.repeat == 'once') {
+      if (reminder.scheduleYear > 0) {
+        yield DateTime(
+          reminder.scheduleYear,
+          reminder.scheduleMonth,
+          reminder.scheduleDay,
+        );
+      }
+      return;
+    }
+
+    if (reminder.repeat == 'monthly') {
+      for (var delta = 0; delta <= 12; delta++) {
+        final monthStart = DateTime(now.year, now.month + delta);
+        final candidate = DateTime(
+          monthStart.year,
+          monthStart.month,
+          reminder.scheduleDay,
+        );
+        if (candidate.month == monthStart.month) yield candidate;
+      }
+      return;
+    }
+
+    if (reminder.repeat == 'yearly') {
+      for (var delta = 0; delta <= 1; delta++) {
+        final year = now.year + delta;
+        final candidate = DateTime(
+          year,
+          reminder.scheduleMonth,
+          reminder.scheduleDay,
+        );
+        if (candidate.month == reminder.scheduleMonth &&
+            candidate.day == reminder.scheduleDay) {
+          yield candidate;
         }
       }
     }

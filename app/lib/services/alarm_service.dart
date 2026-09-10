@@ -18,12 +18,13 @@ class AlarmOperationResult {
   final String? message;
 }
 
-/// Сервис управления нативными системными будильниками намазов.
+/// Сервис управления нативными системными будильниками временных точек дня.
 class AlarmService {
   static const MethodChannel _channel = MethodChannel('kz.dauam/alarm');
 
   static const _prayers = <(String, Prayer)>[
     ('fajr', Prayer.fajr),
+    ('sunrise', Prayer.sunrise),
     ('dhuhr', Prayer.dhuhr),
     ('asr', Prayer.asr),
     ('maghrib', Prayer.maghrib),
@@ -53,6 +54,7 @@ class AlarmService {
     final kz = app.lang == 'kz';
     const titlesRu = <String, String>{
       'fajr': 'Фаджр',
+      'sunrise': 'Восход',
       'dhuhr': 'Зухр',
       'asr': 'Аср',
       'maghrib': 'Магриб',
@@ -60,6 +62,7 @@ class AlarmService {
     };
     const titlesKz = <String, String>{
       'fajr': 'Таң намазы',
+      'sunrise': 'Күн шығуы',
       'dhuhr': 'Бесін намазы',
       'asr': 'Екінті намазы',
       'maghrib': 'Ақшам намазы',

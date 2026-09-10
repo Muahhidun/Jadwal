@@ -6,6 +6,7 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
   private var methodChannel: FlutterMethodChannel?
   private static weak var activeInstance: LiveActivityManager?
   private static var pendingDeepLink: String?
+  @MainActor private static var prayerExpiryTasks = [String: Task<Void, Never>]()
 
   @objc public static func handleDeepLink(_ rawValue: String) {
     pendingDeepLink = rawValue
@@ -30,10 +31,43 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
     return Date(timeIntervalSince1970: targetTimestamp)
   }
 
+  /// Планирует явное завершение молитвенной Live Activity на границе намаза.
+  /// `staleDate` сам по себе лишь помечает данные устаревшими и не удаляет
+  /// системную карточку. Отдельная задача закрывает её, пока процесс приложения
+  /// ещё получает время выполнения; повторное обновление заменяет старый таймер.
+  @available(iOS 16.1, *)
+  @MainActor private static func observePrayerExpiry(
+    _ activity: Activity<JadwalActivityAttributes>
+  ) {
+    let content = state(of: activity)
+    guard content.mode == "prayer" else { return }
+    prayerExpiryTasks[activity.id]?.cancel()
+
+    prayerExpiryTasks[activity.id] = Task { @MainActor in
+      let delay = max(0, content.targetTimestamp - Date.now.timeIntervalSince1970)
+      do {
+        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+      } catch {
+        return
+      }
+
+      guard !Task.isCancelled else { return }
+      let latest = state(of: activity)
+      if latest.mode == "prayer"
+        && latest.targetTimestamp <= Date.now.timeIntervalSince1970 + 0.5
+      {
+        await activity.end(dismissalPolicy: .immediate)
+      }
+      prayerExpiryTasks[activity.id] = nil
+    }
+  }
+
   @objc public static func stopAllActivities() {
     guard #available(iOS 16.1, *) else { return }
     Task { @MainActor in
       for activity in Activity<JadwalActivityAttributes>.activities {
+        prayerExpiryTasks[activity.id]?.cancel()
+        prayerExpiryTasks[activity.id] = nil
         await activity.end(dismissalPolicy: .immediate)
       }
     }
@@ -48,7 +82,11 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
       for activity in Activity<JadwalActivityAttributes>.activities {
         let content = state(of: activity)
         if content.mode == "prayer" && content.targetTimestamp <= now {
+          prayerExpiryTasks[activity.id]?.cancel()
+          prayerExpiryTasks[activity.id] = nil
           await activity.end(dismissalPolicy: .immediate)
+        } else if content.mode == "prayer" {
+          observePrayerExpiry(activity)
         }
       }
     }
@@ -172,6 +210,8 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
 
       if mode == "zikr" {
         for activity in activeActivities where Self.state(of: activity).mode == "prayer" {
+          Self.prayerExpiryTasks[activity.id]?.cancel()
+          Self.prayerExpiryTasks[activity.id] = nil
           await activity.end(dismissalPolicy: .immediate)
         }
       }
@@ -186,6 +226,9 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
         } else {
           await currentActivity.update(using: state)
         }
+        if mode == "prayer" {
+          Self.observePrayerExpiry(currentActivity)
+        }
         result(currentActivity.id)
         return
       }
@@ -197,6 +240,9 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
             content: ActivityContent(state: state, staleDate: expiresAt),
             pushType: nil
           )
+          if mode == "prayer" {
+            Self.observePrayerExpiry(activity)
+          }
           result(activity.id)
         } catch {
           result(FlutterError(code: "START_FAILED", message: error.localizedDescription, details: nil))
@@ -208,6 +254,9 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
             contentState: state,
             pushType: nil
           )
+          if mode == "prayer" {
+            Self.observePrayerExpiry(activity)
+          }
           result(activity.id)
         } catch {
           result(FlutterError(code: "START_FAILED", message: error.localizedDescription, details: nil))
@@ -260,6 +309,9 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
         } else {
           await activity.update(using: state)
         }
+        if mode == "prayer" {
+          Self.observePrayerExpiry(activity)
+        }
       }
       result(true)
     }
@@ -273,6 +325,8 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
 
     Task { @MainActor in
       for activity in Activity<JadwalActivityAttributes>.activities {
+        Self.prayerExpiryTasks[activity.id]?.cancel()
+        Self.prayerExpiryTasks[activity.id] = nil
         await activity.end(dismissalPolicy: .immediate)
       }
       result(true)
@@ -288,6 +342,8 @@ public class LiveActivityManager: NSObject, FlutterPlugin {
     Task { @MainActor in
       for activity in Activity<JadwalActivityAttributes>.activities {
         if Self.state(of: activity).mode == "prayer" {
+          Self.prayerExpiryTasks[activity.id]?.cancel()
+          Self.prayerExpiryTasks[activity.id] = nil
           await activity.end(dismissalPolicy: .immediate)
         }
       }

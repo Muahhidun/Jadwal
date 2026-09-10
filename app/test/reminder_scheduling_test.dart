@@ -100,4 +100,58 @@ void main() {
     expect(notificationTargetFor('morning'), 'morning');
     expect(notificationTargetFor('dua'), isEmpty);
   });
+
+  test('еженедельное напоминание работает в несколько выбранных дней', () {
+    const reminder = ReminderConfig(
+      id: 'weekdays',
+      title: 'Понедельник, среда, пятница',
+      prayer: 0,
+      offsetMin: 0,
+      repeat: 'weekly',
+      weekdays: [DateTime.monday, DateTime.wednesday, DateTime.friday],
+    );
+
+    expect(reminder.occursOn(DateTime(2026, 9, 7)), isTrue);
+    expect(reminder.occursOn(DateTime(2026, 9, 8)), isFalse);
+    expect(reminder.occursOn(DateTime(2026, 9, 9)), isTrue);
+    expect(reminder.occursOn(DateTime(2026, 9, 11)), isTrue);
+  });
+
+  test('одноразовая дата и ежегодный повтор не теряются после JSON', () {
+    const reminder = ReminderConfig(
+      id: 'yearly',
+      title: 'Ежегодное дело',
+      prayer: 0,
+      offsetMin: 0,
+      repeat: 'yearly',
+      weekday: DateTime.monday,
+      weekdays: [DateTime.monday, DateTime.wednesday],
+      scheduleYear: 2026,
+      scheduleMonth: 9,
+      scheduleDay: 5,
+    );
+
+    final restored = ReminderConfig.fromJson(reminder.toJson());
+    expect(restored.repeat, 'yearly');
+    expect(restored.weekdays, [DateTime.monday, DateTime.wednesday]);
+    expect(restored.scheduleYear, 2026);
+    expect(restored.occursOn(DateTime(2030, 9, 5)), isTrue);
+    expect(restored.occursOn(DateTime(2030, 9, 6)), isFalse);
+  });
+
+  test('напоминание без повтора срабатывает только в свою дату', () {
+    const reminder = ReminderConfig(
+      id: 'once',
+      title: 'Один раз',
+      prayer: 0,
+      offsetMin: 0,
+      repeat: 'once',
+      scheduleYear: 2026,
+      scheduleMonth: 9,
+      scheduleDay: 5,
+    );
+
+    expect(reminder.occursOn(DateTime(2026, 9, 5)), isTrue);
+    expect(reminder.occursOn(DateTime(2027, 9, 5)), isFalse);
+  });
 }
