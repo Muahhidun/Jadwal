@@ -17,6 +17,7 @@ class QiblaView extends StatefulWidget {
   final City? selectedCity;
   final bool showAppBar;
   final bool embedded;
+  final bool hapticsEnabled;
   final GestureDragStartCallback? onVerticalDragStart;
   final GestureDragUpdateCallback? onVerticalDragUpdate;
   final GestureDragEndCallback? onVerticalDragEnd;
@@ -27,6 +28,7 @@ class QiblaView extends StatefulWidget {
     this.selectedCity,
     this.showAppBar = true,
     this.embedded = false,
+    this.hapticsEnabled = true,
     this.onVerticalDragStart,
     this.onVerticalDragUpdate,
     this.onVerticalDragEnd,
@@ -55,6 +57,14 @@ class _QiblaViewState extends State<QiblaView>
   final MapController _mapController = MapController();
 
   int get selectedTab => _selectedTab;
+
+  @override
+  void didUpdateWidget(covariant QiblaView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.hapticsEnabled && !widget.hapticsEnabled) {
+      _hapticStage = 0;
+    }
+  }
 
   @override
   void initState() {
@@ -379,7 +389,16 @@ class _QiblaViewState extends State<QiblaView>
         // Ступень 2: Точно (absDiff < 4°) -> mediumImpact
         // Ступень 1: Близко (4° <= absDiff <= 12°) -> lightImpact
         // Ступень 0: Далеко (absDiff > 12°) -> нет вибрации
-        if (absDiff < 4.0) {
+        final routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+        final canUseHaptics =
+            widget.hapticsEnabled &&
+            _selectedTab == 0 &&
+            routeIsCurrent &&
+            TickerMode.valuesOf(context).enabled;
+
+        if (!canUseHaptics) {
+          _hapticStage = 0;
+        } else if (absDiff < 4.0) {
           if (_hapticStage != 2) {
             _hapticStage = 2;
             HapticFeedback.mediumImpact();

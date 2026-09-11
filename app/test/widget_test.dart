@@ -135,6 +135,12 @@ void main() {
     expect(find.text('свайп вниз — назад'), findsOneWidget);
 
     final qibla = find.byType(QiblaView);
+    expect(tester.widget<QiblaView>(qibla).hapticsEnabled, isTrue);
+    homeState().swipeProgress = -0.75;
+    await tester.pump();
+    expect(tester.widget<QiblaView>(qibla).hapticsEnabled, isFalse);
+    homeState().swipeProgress = -1.0;
+    await tester.pump();
     expect(
       find.descendant(
         of: qibla,
@@ -496,7 +502,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 30));
     }
     expect(find.text('Времена молитв'), findsOneWidget);
-    expect(find.text('Зикры и пятница'), findsOneWidget);
+    expect(find.text('ЕЖЕДНЕВНЫЕ'), findsOneWidget);
+    expect(find.text('ЕЖЕНЕДЕЛЬНЫЕ'), findsOneWidget);
+    expect(find.text('Утренние зикры'), findsOneWidget);
+    expect(find.text('Вечерние зикры'), findsOneWidget);
+    expect(find.text('Сура аль-Кахф'), findsOneWidget);
+    expect(find.bySemanticsLabel('Читать суру'), findsOneWidget);
+    expect(find.text('Час дуа в пятницу'), findsOneWidget);
     expect(find.text('Добавить напоминание'), findsOneWidget);
     expect(find.text('Название'), findsNothing);
     expect(state.remindersGuideSeen, isTrue);
@@ -583,10 +595,6 @@ void main() {
     expect(find.text('Фаджр'), findsWidgets);
     expect(find.text('Восход'), findsWidgets);
     expect(find.text('Иша'), findsWidgets);
-    // В 20:11 утреннее окно уже закрыто больше 30 минут. Аль-Кахф больше
-    // не занимает постоянное место: вход остаётся только через напоминание.
-    expect(find.text('Сура аль-Кахф'), findsNothing);
-    expect(find.text('аль-Кахф'), findsNothing);
     expect(find.textContaining('Вечерние'), findsWidgets);
     expect(find.text('Час дуа'), findsOneWidget);
     expect(
@@ -600,9 +608,20 @@ void main() {
       find.byKey(const ValueKey('today-task-forward-hint')),
       findsOneWidget,
     );
+    // Аль-Кахф остаётся делом всю пятницу, даже если окно
+    // напоминания уже закрыто. Тап по делу ведёт во встроенную читалку.
     await tester.drag(
       find.byKey(const ValueKey('today-task-rail')),
-      const Offset(-180, 0),
+      const Offset(500, 0),
+    );
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 30));
+    }
+    expect(find.byKey(const ValueKey('today-task-kahf')), findsOneWidget);
+    expect(find.text('Сура аль-Кахф'), findsOneWidget);
+    await tester.drag(
+      find.byKey(const ValueKey('today-task-rail')),
+      const Offset(-500, 0),
     );
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 30));
@@ -648,7 +667,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 30));
     }
     expect(find.text('Времена молитв'), findsOneWidget);
-    expect(find.text('Зикры и пятница'), findsOneWidget);
+    expect(find.text('Сура аль-Кахф'), findsOneWidget);
+    expect(find.bySemanticsLabel('Читать суру'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

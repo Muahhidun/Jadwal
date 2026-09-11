@@ -7,6 +7,7 @@ import '../notifications/notifications.dart';
 import '../prayer/schedule_service.dart';
 import '../services/alarm_service.dart';
 import '../theme/tokens.dart';
+import 'kahf_reader.dart';
 import 'settings_shell.dart';
 
 const _prayerIds = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
@@ -160,7 +161,7 @@ class RemindersScreen extends StatelessWidget {
           padding: const EdgeInsets.only(top: 8, bottom: 30),
           children: [
             DauamSection(
-              label: kz ? 'ДАЙЫН' : 'ГОТОВЫЕ',
+              label: kz ? 'НАМАЗ УАҚЫТТАРЫ' : 'ВРЕМЕНА МОЛИТВ',
               children: [
                 DauamSettingsRow(
                   icon: CupertinoIcons.clock,
@@ -172,16 +173,62 @@ class RemindersScreen extends StatelessWidget {
                     context,
                   ).push(dauamSettingsRoute(const PrayerRemindersScreen())),
                 ),
+              ],
+            ),
+            DauamSection(
+              label: kz ? 'КҮН САЙЫН' : 'ЕЖЕДНЕВНЫЕ',
+              children: [
+                for (final item in [
+                  ('morning', kz ? 'Таңғы зікірлер' : 'Утренние зикры'),
+                  ('evening', kz ? 'Кешкі зікірлер' : 'Вечерние зикры'),
+                ])
+                  DauamSettingsRow(
+                    icon: CupertinoIcons.book,
+                    title: item.$2,
+                    subtitle: _configLabel(
+                      kz,
+                      app.getReminderConfig(item.$1, app.lang),
+                    ),
+                    onTap: () => Navigator.of(context).push(
+                      dauamSettingsRoute(
+                        ReminderDetailScreen(configId: item.$1),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            DauamSection(
+              label: kz ? 'ӘР АПТАДА' : 'ЕЖЕНЕДЕЛЬНЫЕ',
+              children: [
                 DauamSettingsRow(
                   icon: CupertinoIcons.book,
-                  title: kz ? 'Зікірлер мен жұма' : 'Зикры и пятница',
-                  trailing: _ReminderCount(
-                    value:
-                        '${_enabledCount(app, const ['morning', 'evening', 'kahf', 'dua'])}/4',
+                  title: kz ? '«әл-Кәһф» сүресі' : 'Сура аль-Кахф',
+                  subtitle: _configLabel(
+                    kz,
+                    app.getReminderConfig('kahf', app.lang),
                   ),
-                  onTap: () => Navigator.of(
-                    context,
-                  ).push(dauamSettingsRoute(const WorshipRemindersScreen())),
+                  trailing: _KahfReadAction(
+                    kz: kz,
+                    onTap: () => _openKahfReader(context),
+                  ),
+                  onTap: () => Navigator.of(context).push(
+                    dauamSettingsRoute(
+                      const ReminderDetailScreen(configId: 'kahf'),
+                    ),
+                  ),
+                ),
+                DauamSettingsRow(
+                  icon: CupertinoIcons.hand_raised,
+                  title: kz ? 'Жұма күнгі дұға сағаты' : 'Час дуа в пятницу',
+                  subtitle: _configLabel(
+                    kz,
+                    app.getReminderConfig('dua', app.lang),
+                  ),
+                  onTap: () => Navigator.of(context).push(
+                    dauamSettingsRoute(
+                      const ReminderDetailScreen(configId: 'dua'),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -206,6 +253,46 @@ class RemindersScreen extends StatelessWidget {
                 ],
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+void _openKahfReader(BuildContext context) {
+  final rootNavigator = Navigator.of(context, rootNavigator: true);
+  rootNavigator.pop();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    rootNavigator.push(kahfReaderRoute());
+  });
+}
+
+class _KahfReadAction extends StatelessWidget {
+  const _KahfReadAction({required this.kz, required this.onTap});
+
+  final bool kz;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = dauamSettingsAccent(context);
+    return Semantics(
+      button: true,
+      label: kz ? 'Сүрені оқу' : 'Читать суру',
+      child: Material(
+        color: accent.withValues(alpha: .11),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            HapticFeedback.selectionClick();
+            onTap();
+          },
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Icon(CupertinoIcons.book_fill, size: 18, color: accent),
+          ),
         ),
       ),
     );

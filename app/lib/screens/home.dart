@@ -460,6 +460,7 @@ class _HomeScreenState extends State<HomeScreen>
                                     selectedCity: app.city,
                                     showAppBar: true,
                                     embedded: true,
+                                    hapticsEnabled: p <= -0.85,
                                     onVerticalDragStart: _onDragStart,
                                     onVerticalDragUpdate: (details) =>
                                         _onDragUpdate(details, h),
@@ -1739,6 +1740,15 @@ class _ModernTasksCard extends StatelessWidget {
             expiresAt: windows['morning']!.end + taskRailGraceMinutes,
             onTap: () => onReader('morning'),
           ),
+          if (t.isFriday)
+            (
+              id: 'kahf',
+              label: s.kahfTitle,
+              active: false,
+              orderMinute: windows['kahf']!.start,
+              expiresAt: windows['kahf']!.end + taskRailGraceMinutes,
+              onTap: () => onReader('kahf'),
+            ),
           (
             id: 'evening',
             label: s.eveningTitle,
@@ -1778,7 +1788,7 @@ class _ModernTasksCard extends StatelessWidget {
         ];
     tasks.sort((a, b) => a.orderMinute.compareTo(b.orderMinute));
     final doneCount = tasks.where((task) => app.isDone(task.id)).length;
-    final hasCustomTasks = tasks.length > (t.isFriday ? 3 : 2);
+    final hasCustomTasks = tasks.length > (t.isFriday ? 4 : 2);
     final firstRelevant = tasks.indexWhere(
       (task) => !app.isDone(task.id) && nowMin < task.expiresAt,
     );
