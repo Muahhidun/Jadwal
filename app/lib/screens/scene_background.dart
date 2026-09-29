@@ -756,6 +756,8 @@ class _ScenePainter extends CustomPainter {
         _nature(canvas, W, horizon, sky, night, cx, cy, isDay, alt);
       case HomeScene.minimal:
         _minimalHorizon(canvas, W, horizon, sky, night);
+      case HomeScene.ornament:
+        _ornament(canvas, W, horizon, sky, night, cx, cy, isDay, alt);
     }
   }
 
@@ -1075,6 +1077,137 @@ class _ScenePainter extends CustomPainter {
           colors: [Colors.transparent, sky.bottom.withValues(alpha: .18)],
         ).createShader(veil),
     );
+  }
+
+  /// Тема «Орнамент»: исламская геометрия вместо пейзажа. По низу сцены —
+  /// резная решётка-машрабия со стрельчатой аркадой, сквозь которую проходит
+  /// свет того же солнца/луны, что движется во всех темах. Рисуется кодом,
+  /// поэтому не требует ассетов и одинаково чётко выглядит на любом экране.
+  void _ornament(
+    Canvas canvas,
+    double width,
+    double horizon,
+    _Sky sky,
+    double night,
+    double celestialX,
+    double celestialY,
+    bool isDay,
+    double altitude,
+  ) {
+    // Тёплое свечение за решёткой — источник света остаётся общим для всех тем.
+    final glowStrength = isDay
+        ? (1 - altitude).clamp(0.0, 1.0) * .22
+        : night * .12;
+    final glowRect = Rect.fromLTRB(0, 0, width, horizon + 12);
+    canvas.drawRect(
+      glowRect,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          Offset(celestialX, min(celestialY, horizon - 8)),
+          width * .55,
+          [
+            (isDay ? const Color(0xFFFFCE8A) : const Color(0xFFBFD0E4))
+                .withValues(alpha: glowStrength),
+            Colors.transparent,
+          ],
+        ),
+    );
+
+    // Силуэт остаётся тёмным днём и лишь слегка светлеет ночью, чтобы узор
+    // читался на любом небе.
+    final silhouette = Color.lerp(
+      const Color(0xFF0B1118),
+      const Color(0xFF1A2230),
+      night * .55,
+    )!;
+    // Золото узора приглушается днём, когда небо само по себе яркое.
+    final line = const Color(0xFFD2A74E)
+        .withValues(alpha: .34 + night * .30);
+
+    // Пропорции: аркада стоит на горизонте, решётка звёзд идёт над ней,
+    // поэтому мотивы не накладываются друг на друга.
+    final archH = width * .18;
+    final archTop = horizon - archH;
+
+    // 1. Аркада из стрельчатых арок — силуэт галереи мечети.
+    const arches = 5;
+    final archW = width / arches;
+    final pierW = archW * .13;
+    final springing = archTop + archH * .34;
+
+    final wall = Path()
+      ..moveTo(0, horizon)
+      ..lineTo(0, archTop);
+    for (var i = 0; i < arches; i++) {
+      final left = i * archW;
+      final mid = left + archW / 2;
+      final right = left + archW;
+      final apex = archTop - archH * .30;
+      wall
+        ..lineTo(left + pierW, archTop)
+        ..lineTo(left + pierW, springing)
+        // Стрельчатая арка: две дуги с контролем у самого острия, поэтому
+        // вершина остаётся угловатой, а не полукруглой.
+        ..quadraticBezierTo(left + archW * .30, apex + archH * .16, mid, apex)
+        ..quadraticBezierTo(right - archW * .30, apex + archH * .16,
+            right - pierW, springing)
+        ..lineTo(right - pierW, archTop)
+        ..lineTo(right, archTop);
+    }
+    wall
+      ..lineTo(width, horizon)
+      ..close();
+    canvas.drawPath(wall, Paint()..color = silhouette);
+
+    // 2. Решётка: два ряда восьмиконечных звёзд над аркадой, со сдвигом —
+    // классическое шахматное поле гириха.
+    final starPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..color = line;
+    final step = width / 5;
+    final radius = step * .30;
+    final gridBottom = archTop - archH * .34;
+    for (var row = 0; row < 2; row++) {
+      final cy = gridBottom - row * step * .52;
+      final offset = row.isOdd ? step / 2 : 0.0;
+      for (var i = -1; i <= 5; i++) {
+        _eightPointStar(
+          canvas,
+          Offset(i * step + offset, cy),
+          radius,
+          starPaint,
+        );
+      }
+    }
+
+    // 3. Тонкая золотая грань по горизонту — завершает композицию.
+    canvas.drawRect(
+      Rect.fromLTWH(0, horizon - 1.2, width, 1.2),
+      Paint()..color = line.withValues(alpha: .55),
+    );
+  }
+
+  /// Восьмиконечная звезда (хатам) — два наложенных квадрата, базовый мотив
+  /// исламской геометрии.
+  void _eightPointStar(Canvas canvas, Offset center, double r, Paint paint) {
+    for (final turn in [0.0, pi / 4]) {
+      final path = Path();
+      for (var i = 0; i < 4; i++) {
+        final a = turn + i * pi / 2;
+        final p = Offset(
+          center.dx + cos(a) * r,
+          center.dy + sin(a) * r,
+        );
+        if (i == 0) {
+          path.moveTo(p.dx, p.dy);
+        } else {
+          path.lineTo(p.dx, p.dy);
+        }
+      }
+      path.close();
+      canvas.drawPath(path, paint);
+    }
   }
 
   void _minimalHorizon(
