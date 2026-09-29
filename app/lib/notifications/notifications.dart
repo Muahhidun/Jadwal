@@ -169,7 +169,14 @@ Future<void> applyNotificationAction(
   tzdata.initializeTimeZones();
   final at = DateTime.now().add(const Duration(minutes: kSnoozeMinutes));
   final id = 950000 + (at.millisecondsSinceEpoch ~/ 1000) % 40000;
-  await _scheduleSnooze(plugin, id, at, payload);
+  await _scheduleSnooze(
+    plugin,
+    id,
+    at,
+    payload,
+    soundId: prefs.getString('sound:task') ?? 'default',
+    lang: prefs.getString('lang') ?? 'ru',
+  );
   final snoozes = _readSnoozes(prefs)
     ..removeWhere((s) => !s.at.isAfter(DateTime.now()))
     ..add(_Snooze(id, at, payload));
@@ -225,12 +232,18 @@ Future<void> _scheduleSnooze(
   FlutterLocalNotificationsPlugin plugin,
   int id,
   DateTime at,
-  NotificationPayload payload,
-) async {
+  NotificationPayload payload, {
+  String soundId = 'default',
+  String lang = 'ru',
+}) async {
   await plugin.zonedSchedule(
     id: id,
     scheduledDate: tz.TZDateTime.from(at.toUtc(), tz.UTC),
-    notificationDetails: _taskDetails(),
+    notificationDetails: notificationDetailsFor(
+      soundId: soundId,
+      task: true,
+      lang: lang,
+    ),
     androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     title: payload.title,
     body: payload.body,
@@ -238,26 +251,70 @@ Future<void> _scheduleSnooze(
   );
 }
 
-NotificationDetails _taskDetails({String lang = 'ru'}) => NotificationDetails(
-  android: AndroidNotificationDetails(
-    'jadwal_worship',
-    'Поклонение',
-    channelDescription: 'Напоминания об окнах зикра и намазах',
-    importance: Importance.high,
-    priority: Priority.high,
-    actions: [
-      AndroidNotificationAction(
-        kActionDone,
-        lang == 'kz' ? 'Орындалды' : 'Выполнено',
-      ),
-      AndroidNotificationAction(
-        kActionSnooze,
-        lang == 'kz' ? '10 минуттан кейін' : 'Через 10 мин',
-      ),
-    ],
-  ),
-  iOS: const DarwinNotificationDetails(categoryIdentifier: kTaskCategory),
+// ── Звуки уведомлений ────────────────────────────────────────────────────────
+// iPhone не даёт приложениям брать встроенные мелодии телефона, поэтому свой
+// набор: системный звук и три спокойных сигнала (синтезированы для Дауам).
+// На Android у каждого звука свой канал — так требует система.
+
+class NotifSound {
+  const NotifSound(this.id, this.ru, this.kz, {this.file = ''});
+
+  final String id, ru, kz;
+
+  /// Имя файла без расширения (ios/Runner/*.wav, res/raw/*.wav);
+  /// пусто — системный звук.
+  final String file;
+
+  String title(String lang) => lang == 'kz' ? kz : ru;
+}
+
+const kNotifSounds = [
+  NotifSound('default', 'Стандартный', 'Стандартты'),
+  NotifSound('bell', 'Колокольчик', 'Қоңырау', file: 'dauam_bell'),
+  NotifSound('chime', 'Перезвон', 'Сыңғыр', file: 'dauam_chime'),
+  NotifSound('drop', 'Капля', 'Тамшы', file: 'dauam_drop'),
+];
+
+NotifSound notifSound(String id) => kNotifSounds.firstWhere(
+  (sound) => sound.id == id,
+  orElse: () => kNotifSounds.first,
 );
+
+/// Оформление уведомления: звук и, для дел, кнопки «Выполнено» / «Через 10 мин».
+NotificationDetails notificationDetailsFor({
+  required String soundId,
+  required bool task,
+  String lang = 'ru',
+}) {
+  final sound = notifSound(soundId);
+  final custom = sound.file.isNotEmpty;
+  return NotificationDetails(
+    android: AndroidNotificationDetails(
+      custom ? 'jadwal_worship_${sound.id}' : 'jadwal_worship',
+      custom ? 'Поклонение · ${sound.ru}' : 'Поклонение',
+      channelDescription: 'Напоминания об окнах зикра и намазах',
+      importance: Importance.high,
+      priority: Priority.high,
+      sound: custom ? RawResourceAndroidNotificationSound(sound.file) : null,
+      actions: task
+          ? [
+              AndroidNotificationAction(
+                kActionDone,
+                lang == 'kz' ? 'Орындалды' : 'Выполнено',
+              ),
+              AndroidNotificationAction(
+                kActionSnooze,
+                lang == 'kz' ? '10 минуттан кейін' : 'Через 10 мин',
+              ),
+            ]
+          : null,
+    ),
+    iOS: DarwinNotificationDetails(
+      categoryIdentifier: task ? kTaskCategory : null,
+      sound: custom ? '${sound.file}.wav' : null,
+    ),
+  );
+}
 
 /// Перепланировать очередь из текущего состояния приложения.
 Future<void> syncNotifications(AppState app, ScheduleService schedule) async {
@@ -293,6 +350,8 @@ Future<void> syncNotifications(AppState app, ScheduleService schedule) async {
       for (final id in TaskId.values)
         if (app.isDone(id.name)) id,
     },
+    prayerSound: app.prayerSound,
+    taskSound: app.taskSound,
   );
   await AlarmService.sync(app, schedule);
 }
@@ -436,15 +495,19 @@ class NotificationService {
     return false;
   }
 
-  NotificationDetails _details() => const NotificationDetails(
-    android: AndroidNotificationDetails(
-      'jadwal_worship',
-      'Поклонение',
-      channelDescription: 'Напоминания об окнах зикра и намазах',
-      importance: Importance.high,
-      priority: Priority.high,
+  /// Прослушать звук: сразу показать пробное уведомление с ним — так
+  /// слышно ровно то, что прозвучит в напоминании.
+  Future<void> preview(String soundId, {required String lang}) => _plugin.show(
+    id: 999001,
+    title: lang == 'kz' ? 'Дауам' : 'Дауам',
+    body: lang == 'kz'
+        ? 'Еске салу осылай естіледі'
+        : 'Так будет звучать напоминание',
+    notificationDetails: notificationDetailsFor(
+      soundId: soundId,
+      task: false,
+      lang: lang,
     ),
-    iOS: DarwinNotificationDetails(),
   );
 
   /// Перепланировать всю очередь. Вызывать при старте, смене города/настроек
@@ -454,12 +517,22 @@ class NotificationService {
     required City city,
     required List<ReminderConfig> configs,
     required Set<TaskId> doneToday,
+    String prayerSound = 'default',
+    String taskSound = 'default',
   }) async {
     await _plugin.cancelAll();
     final now = _schedule.now();
     int count = 0;
-    final details = _details();
-    final taskDetails = _taskDetails(lang: lang);
+    final details = notificationDetailsFor(
+      soundId: prayerSound,
+      task: false,
+      lang: lang,
+    );
+    final taskDetails = notificationDetailsFor(
+      soundId: taskSound,
+      task: true,
+      lang: lang,
+    );
 
     // Отложенные «через 10 минут» переживают перепланирование очереди.
     try {
@@ -467,7 +540,14 @@ class NotificationService {
       final snoozes = _readSnoozes(prefs)
         ..removeWhere((s) => !s.at.isAfter(DateTime.now()));
       for (final snooze in snoozes) {
-        await _scheduleSnooze(_plugin, snooze.id, snooze.at, snooze.payload);
+        await _scheduleSnooze(
+          _plugin,
+          snooze.id,
+          snooze.at,
+          snooze.payload,
+          soundId: taskSound,
+          lang: lang,
+        );
         count++;
       }
       await prefs.setString(

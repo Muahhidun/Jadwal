@@ -1336,6 +1336,14 @@ class _PagesSettingsPage extends StatelessWidget {
                   value: kz ? 'Қазақша' : 'Русский',
                   onTap: () => openAfterClose(LanguagePicker.open),
                 ),
+                DauamSettingsRow(
+                  icon: CupertinoIcons.speaker_2,
+                  title: kz ? 'Дыбыстар' : 'Звуки',
+                  value: notifSound(app.prayerSound).title(app.lang),
+                  onTap: () => Navigator.of(
+                    context,
+                  ).push(dauamSettingsRoute(const SoundsScreen())),
+                ),
               ],
             ),
             DauamSection(

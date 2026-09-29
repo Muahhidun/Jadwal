@@ -24,6 +24,7 @@ import 'kahf_reader.dart';
 import 'reminders.dart';
 import 'scene_background.dart';
 import 'settings_shell.dart';
+import 'sounds_screen.dart';
 import 'swipe_hint.dart';
 
 import '../services/live_activity_service.dart';

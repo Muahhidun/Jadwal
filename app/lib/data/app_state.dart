@@ -322,6 +322,12 @@ class AppState extends ChangeNotifier {
   });
   set dateGregorian(bool v) => _set(() => _prefs.setBool('dateGregorian', v));
   set dayLayout(String v) => _set(() => _prefs.setString('dayLayout', v));
+
+  /// Звук уведомлений о времени намаза и о делах (id из kNotifSounds).
+  String get prayerSound => _prefs.getString('sound:prayer') ?? 'default';
+  String get taskSound => _prefs.getString('sound:task') ?? 'default';
+  set prayerSound(String v) => _set(() => _prefs.setString('sound:prayer', v));
+  set taskSound(String v) => _set(() => _prefs.setString('sound:task', v));
   set readerPalette(String v) =>
       _set(() => _prefs.setString('readerPalette', v));
   set kahfTajweed(bool v) => _set(() => _prefs.setBool('kahfTajweed', v));
