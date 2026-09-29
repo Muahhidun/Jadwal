@@ -33,6 +33,37 @@ GitHub: https://github.com/Muahhidun/Jadwal (публичный, владеле�
 7. ✅ Виджеты iOS (домашний+блокировка+StandBy+Today) → ✅ Apple Watch (код, simulator QA, подпись и установка на физические часы завершены) → Live Activity → Android-полировка → Mac.
 Позже: проверка контента у специалиста (блокер релиза), аккаунты сторов, Android-устройство (владелец найдёт).
 
+- **Сессия 29.09.2026 (Claude Opus 5) — актуализация, сохранение работы, тема «Орнамент»:**
+  Проект больше двух месяцев велся в ChatGPT Codex; на момент сессии в рабочем дереве
+  лежало **60 незакоммиченных файлов** (снова риск потери — закоммичено и запушено).
+  Что накопилось и сохранено коммитом `e9abda2`:
+  - **Темы главного экрана** (`lib/theme/home_scene.dart`): Мекка / Природа / Минимализм,
+    хранятся отдельно от города расчёта; экран выбора — в `language_picker.dart`
+    (`_ScenePreviewPainter` рисует превью карточек).
+  - **Android**: полноценный будильник Фаджра (`AndroidAlarmScheduler` + receivers +
+    ringing service/activity, звук `DauamWake.caf`) и виджеты молитв/задач.
+  - **Адаптивная вёрстка** (`theme/adaptive_layout.dart`) — по логическому вьюпорту
+    (Fold, планшет, многооконность), а не по модели устройства.
+  - `compass_capability_service` (проверка компаса для Киблы), переработанные
+    reader/reminders/qibla/scene_background, golden-снимки тем.
+  - **Новая тема «Орнамент»** (`680c7f4`): исламская геометрия — стрельчатая аркада и
+    решётка восьмиконечных звёзд (хатам), рисуется кодом без ассетов, работает во всех
+    фазах неба. Канонично: геометрия вместо изображений живого.
+  - ⚠️ **Грабли Dart:** пустой `case` в `switch` **проваливается** в следующую ветку.
+    Из-за этого карточка «Природа» в превью показала чужой рисунок, когда новая ветка
+    была вставлена между ней и `minimal`. Новые ветки добавлять **в конец** switch.
+  - **Состояние:** `flutter analyze` чисто, **90/90 тестов** проходят (было 27).
+  - ⚠️ **Грабли сборки IPA:** архив падает с `No available simulator runtimes for
+    platform watchsimulator`, если не установлен **симулятор watchOS** — при наличии
+    Watch-таргета Xcode требует его даже для device-архива. Лечение:
+    `xcodebuild -downloadPlatform watchOS` (несколько ГБ; заранее освободить место).
+  - **TestFlight:** сборка поднята с 18 до **22** (`CURRENT_PROJECT_VERSION` во всех
+    15 местах pbxproj + `pubspec.yaml` 1.0.0+22). Загрузка — через
+    `flutter build ipa --export-options-plist=app/tmp/testflight-upload/ExportOptions.plist`
+    (`destination: upload`, `method: app-store-connect`, team `ZV5872VU8H`, автоподпись).
+  - ⚠️ **Документы расходились:** `AGENTS.md` не обновлялся с августа, `CLAUDE.md` —
+    короткий указатель на него. Обновлять AGENTS.md в конце каждой сессии.
+
 - **Воспроизводимые release-сборки (28.07.2026, ШАГ 2 СДЕЛАН):** Android release исправлен: включён core library desugaring (`desugar_jdk_libs 2.1.5`), удалена небезопасная подпись debug-ключом, а настоящий release signing подхватывается только из локального исключённого из Git `android/key.properties`. Чистые `flutter build apk --release` (62,1 МБ) и `flutter build appbundle --release` (52,7 МБ) успешны; до Google Play нужен upload keystore владельца. На iOS воспроизведён и устранён системный сбой `AssetCatalogSimulatorAgent` через чистый прямой device-build Xcode; после этого подписанная и неподписанная `flutter build ios --release` успешно собирают Runner, WidgetKit, Watch app и Watch Widgets. Глубокая проверка `codesign` чистая. Свежий release 40,8 МБ установлен и запущен на iPhone 17 Pro, процессы Runner и WidgetKit подтверждены. Apple Watch в финальном цикле был недоступен Mac, но подписанный Watch-пакет находится внутри установленного release. `flutter analyze` чисто, 27/27 тестов проходят. Следующий шаг — надёжность очереди уведомлений.
 - **Стабилизационный snapshot (28.07.2026, СДЕЛАНО):** создана ветка `codex/stabilization-snapshot-2026-07-28`; вся актуальная незакоммиченная работа Flutter/iOS/WidgetKit/Apple Watch/AlarmKit/App Intents/Live Activity/TTS сохранена контрольным коммитом `5faedf1`. Build-продукты, `tmp/` и golden failures исключены через `.gitignore`, но физически не удалялись. Staged secret scan чистый; `flutter analyze` без замечаний, 27/27 тестов проходят. Следующий шаг по `TECHNICAL_AUDIT_2026-07-28.md` — восстановить воспроизводимые release-сборки iOS и Android.
 - **AlarmKit — исправление ложного успеха и notification fallback (27.07.2026, СДЕЛАНО И УСТАНОВЛЕНО, НУЖНА ФИЗИЧЕСКАЯ ПРОВЕРКА):** реализация Antigravity при любой ошибке `AlarmKit` молча создавала обычный `UNNotificationRequest`, а Flutter получал `true` ещё до завершения нативного `schedule`, поэтому тестовая кнопка всегда сообщала об успехе, хотя срабатывало уведомление. `AlarmManager.swift` переписан на настоящий async-вызов `AlarmKit.AlarmManager.shared.schedule`: проверяется/запрашивается авторизация, успех возвращается только после фактического планирования, ошибки и отказ в доступе передаются Flutter, обычный notification fallback удалён. Добавлен обязательный `NSAlarmKitUsageDescription`; тестовый будильник использует фиксированный UUID и одноразовое время через 10 секунд, регулярный Фаджр — отдельный UUID. `getPendingAlarms` теперь читает AlarmKit, отключение отменяет нативные alarms. Экран теста показывает успех только для `mode=alarmKit`. `flutter analyze` чисто, 27/27 тестов проходят; Swift успешно компилируется Xcode 26.6 / iOS 26.5 SDK. Подписанный билд 6 вручную проверен `codesign --deep --strict`, установлен и запущен на iPhone 17 Pro. Осталось нажать тест и подтвердить системное разрешение AlarmKit на самом iPhone. Отдельно: обычная подписанная Xcode-сборка сейчас блокируется системным сбоем установленного watchOS runtime (`AssetCatalogSimulatorAgent`, подпись CoreGraphics); установка выполнена из уже успешно собранного полного пакета с ручной штатной подписью всех вложений.
