@@ -67,15 +67,24 @@ Future<void> _render(
 void main() {
   testWidgets('страницы — вечер четверга', (tester) async {
     await _render(tester, DateTime(2026, 7, 23, 18, 30), {
+      0.55: 'pages_0_entering',
       1.0: 'pages_1_prayers',
+      1.45: 'pages_mid_swipe',
       2.0: 'pages_2_deeds',
       3.0: 'pages_3_consistency',
-      1.5: 'pages_mid_swipe',
+      0.0: 'pages_main_dots',
+      -1.0: 'pages_qibla',
     });
   });
   testWidgets('страницы — пятница утром', (tester) async {
     await _render(tester, DateTime(2026, 7, 24, 10, 15), {
       2.0: 'pages_2_deeds_friday',
+    });
+  });
+  testWidgets('страницы — поздний вечер', (tester) async {
+    await _render(tester, DateTime(2026, 7, 23, 23, 10), {
+      1.0: 'pages_1_prayers_night',
+      2.0: 'pages_2_deeds_night',
     });
   });
 }

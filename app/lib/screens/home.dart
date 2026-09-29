@@ -589,6 +589,41 @@ class _HomeScreenState extends State<HomeScreen>
                             schedule: schedule,
                             app: app,
                           ),
+                          // Индикатор ленты — на всех экранах: Кибла, таймер
+                          // и страницы. Цвет перетекает от неба к странице.
+                          if (_maxPage > 1)
+                            Positioned(
+                              right: 9,
+                              top: 0,
+                              bottom: 0,
+                              child: IgnorePointer(
+                                child: Center(
+                                  child: _PageDots(
+                                    progress: pRaw + 1,
+                                    color: Color.lerp(
+                                      fg.text,
+                                      dayPalette!.colors.ink,
+                                      _seg(pRaw, 0.3, 0.9),
+                                    )!,
+                                    labels: s == S.kz
+                                        ? const [
+                                            'Құбыла',
+                                            'Таймер',
+                                            'Намаздар',
+                                            'Істер',
+                                            'Тұрақтылық',
+                                          ]
+                                        : const [
+                                            'Кибла',
+                                            'Таймер',
+                                            'Намазы',
+                                            'Дела',
+                                            'Постоянство',
+                                          ],
+                                  ),
+                                ),
+                              ),
+                            ),
                         ] else
                           Center(
                             child: CircularProgressIndicator(color: c.gold),
@@ -2845,6 +2880,7 @@ class _Notebook extends StatelessWidget {
     this.onDayTap,
     this.compact = false,
     this.since,
+    this.softEmpty = false,
   });
   final JColors c;
   final AppState app;
@@ -2854,6 +2890,10 @@ class _Notebook extends StatelessWidget {
 
   /// Если задано — дни раньше этой даты рисуются без кольца, как будущие.
   final DateTime? since;
+
+  /// Пустой прошедший день — едва заметная точка, а не серое кольцо:
+  /// месяц из пустых колец читается как упрёк.
+  final bool softEmpty;
 
   static const _weekdays = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 
@@ -2979,6 +3019,7 @@ class _Notebook extends StatelessWidget {
       gold: c.gold,
       faint: c.faint,
       expanded: expanded,
+      softEmpty: softEmpty && !isToday,
     );
   }
 }
@@ -2994,12 +3035,14 @@ class _RingCell extends StatelessWidget {
     required this.gold,
     required this.faint,
     this.expanded = false,
+    this.softEmpty = false,
   });
   final int day;
   final double frac;
   final bool isToday;
   final Color gold, faint;
   final bool expanded;
+  final bool softEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -3008,7 +3051,13 @@ class _RingCell extends StatelessWidget {
       width: expanded ? 36 : 28,
       height: expanded ? 36 : 28,
       child: CustomPaint(
-        painter: _RingPainter(frac: frac, gold: gold, faint: faint, full: full),
+        painter: _RingPainter(
+          frac: frac,
+          gold: gold,
+          faint: faint,
+          full: full,
+          softEmpty: softEmpty,
+        ),
         child: Center(
           child: Text(
             '$day',
@@ -3032,15 +3081,27 @@ class _RingPainter extends CustomPainter {
     required this.gold,
     required this.faint,
     required this.full,
+    this.softEmpty = false,
   });
   final double frac;
   final Color gold, faint;
   final bool full;
+  final bool softEmpty;
 
   @override
   void paint(Canvas canvas, Size size) {
     final cCenter = Offset(size.width / 2, size.height / 2);
     final r = size.width / 2 - 1.5;
+    if (softEmpty && frac <= 0) {
+      // Прошедший день без отметок: крошечная точка под числом отличает
+      // его от будущих дней, но не кричит о «пропуске».
+      canvas.drawCircle(
+        Offset(size.width / 2, size.height - 2.5),
+        1.6,
+        Paint()..color = faint.withValues(alpha: 0.55),
+      );
+      return;
+    }
     final base = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.2
@@ -3076,7 +3137,8 @@ class _RingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RingPainter o) => o.frac != frac || o.full != full;
+  bool shouldRepaint(_RingPainter o) =>
+      o.frac != frac || o.full != full || o.softEmpty != softEmpty;
 }
 
 class _SmallOutlineButton extends StatelessWidget {
