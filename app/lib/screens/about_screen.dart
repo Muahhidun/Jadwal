@@ -90,8 +90,14 @@ class AboutScreen extends StatelessWidget {
                     : '© участники OpenStreetMap',
               ),
               _SourceRow(
+                title: kz ? 'Азан' : 'Азан',
+                text: kz
+                    ? 'Әл-Харам мешітіндегі ақшам азаны, 25.02.2012 — жазба: 3omar Faruq, CC BY 3.0 (Wikimedia Commons). Қосымшада — басы, 30 секунд.'
+                    : 'Азан магриба в Масджид аль-Харам, 25.02.2012 — запись: 3omar Faruq, CC BY 3.0 (Wikimedia Commons). В приложении — начало, 30 секунд.',
+              ),
+              _SourceRow(
                 title: kz ? 'Қаріптер' : 'Шрифты',
-                text: 'Manrope, Literata, Amiri — SIL Open Font License',
+                text: 'Manrope, Inter, Literata, Amiri — SIL Open Font License',
               ),
             ],
           ),

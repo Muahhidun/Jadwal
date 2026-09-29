@@ -257,9 +257,18 @@ Future<void> _scheduleSnooze(
 // На Android у каждого звука свой канал — так требует система.
 
 class NotifSound {
-  const NotifSound(this.id, this.ru, this.kz, {this.file = ''});
+  const NotifSound(
+    this.id,
+    this.ru,
+    this.kz, {
+    this.file = '',
+    this.prayerOnly = false,
+  });
 
   final String id, ru, kz;
+
+  /// Только для времени намаза (азан), не для напоминаний о делах.
+  final bool prayerOnly;
 
   /// Имя файла без расширения (ios/Runner/*.wav, res/raw/*.wav);
   /// пусто — системный звук.
@@ -273,6 +282,15 @@ const kNotifSounds = [
   NotifSound('bell', 'Колокольчик', 'Қоңырау', file: 'dauam_bell'),
   NotifSound('chime', 'Перезвон', 'Сыңғыр', file: 'dauam_chime'),
   NotifSound('drop', 'Капля', 'Тамшы', file: 'dauam_drop'),
+  // Начало азана магриба в Масджид аль-Харам (25.02.2012), 29,8 с — лимит
+  // звука уведомления в iOS 30 с. Запись: 3omar Faruq, CC BY 3.0, Wikimedia.
+  NotifSound(
+    'adhan_haram',
+    'Азан (Масджид аль-Харам)',
+    'Азан (Әл-Харам мешіті)',
+    file: 'dauam_adhan_haram',
+    prayerOnly: true,
+  ),
 ];
 
 NotifSound notifSound(String id) => kNotifSounds.firstWhere(

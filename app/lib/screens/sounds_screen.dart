@@ -34,6 +34,9 @@ class SoundsScreen extends StatelessWidget {
           children: [
             DauamSection(
               label: kz ? 'Намаз уақыты' : 'Время намаза',
+              footer: kz
+                  ? 'Азан — әл-Харам мешітіндегі ақшам азанының басы (30 секунд: iPhone хабарламаның дыбысын осымен шектейді).'
+                  : 'Азан — начало азана магриба в Масджид аль-Харам (30 секунд: iPhone ограничивает так звук уведомления).',
               children: [
                 for (final sound in kNotifSounds)
                   DauamChoiceRow(
@@ -49,7 +52,7 @@ class SoundsScreen extends StatelessWidget {
                   ? 'Таңдағанда осы дыбыспен сынақ хабарлама келеді. Телефон дыбыссыз режимде болса, дыбыс естілмейді.'
                   : 'При выборе придёт пробное уведомление с этим звуком. Если телефон в беззвучном режиме, звука не будет.',
               children: [
-                for (final sound in kNotifSounds)
+                for (final sound in kNotifSounds.where((s) => !s.prayerOnly))
                   DauamChoiceRow(
                     title: sound.title(app.lang),
                     selected: app.taskSound == sound.id,
