@@ -132,3 +132,59 @@ GitHub: https://github.com/Muahhidun/Jadwal (публичный, владеле�
 - **Нижний экран + единые настройки, итерация 3 (22.07, СДЕЛАНО и на iPhone):** карточка задач получила стабильную высоту: в обычный день 2 полноширинные строки, в пятницу 4 дела сеткой 2×2 без скролла. В расписании ближайшая из всех 6 точек (включая Восход) показывает компактный посекундный countdown между названием и абсолютным временем; после Иша корректно берётся завтрашний Фаджр. Quick settings молитвы и вся иерархия `Напоминания → молитвы/зикры/свои → детали` переведены с жёсткого `JColors.night` на `daySurfacePalette`: общий дневной/сумеречный/ночной градиент, атмосферный radial glow, material-карточки с адаптивным контрастом и округлением 22/30 pt. Исправлены скрытые горизонтальные overflow на 393 px. Русские месяцы хиджры теперь в именительном падеже (`8 сафар`, не `8 сафара`) в `S.ru` и `dateLine`. Точный rollback итерации 2: `tmp/lower-screen-iteration2-rollback-2026-07-22/`. `flutter analyze` чисто, 24/24 теста; signed release 30,8 МБ установлен и запущен на iPhone в 20:39.
 - **⚠️ Знать про сборку на iPhone:** По кабелю или Wi-Fi, при успешном `Xcode build done` можно ставить через `flutter install -d <id>`.
 - **Место под WidgetKit/watchOS освобождено (23.07):** очищены восстанавливаемые кэши и выбранные владельцем приложения; свободно ~70 ГБ. Блокер по диску снят, можно начинать общую App Group-модель и набор iOS-виджетов.
+
+## Публикация сборок (настроено 29.09.2026) — ЧИТАТЬ ПЕРЕД ЛЮБОЙ ПУБЛИКАЦИЕЙ
+
+**iOS / TestFlight работает полностью автоматически, без пароля и без Xcode-аккаунта.**
+
+Сертификата `Apple Distribution` в локальной связке ключей НЕТ и он там не нужен:
+подпись делается облачным сервисом Apple (cloud signing) по ключу App Store Connect API.
+Поэтому `security find-identity` показывает только Apple Development — это нормально,
+не пытаться «чинить» установкой сертификата.
+
+Рабочие данные:
+- ключ: `~/.appstoreconnect/private_keys/AuthKey_A85C737K58.p8` (права 600)
+- Key ID: `A85C737K58`, роль **Администратор**
+- Issuer ID: `56f6413b-040f-468e-9502-8f01c320a35b`
+- Team ID: `ZV5872VU8H`, App ID в App Store Connect: `6804798418`
+- настройки: `app/tmp/testflight-upload/ExportOptions.plist`
+
+Порядок (номер сборки — `CURRENT_PROJECT_VERSION` в project.pbxproj, все 15 вхождений,
+плюс `version:` в pubspec.yaml):
+```
+cd app && flutter build ipa --release --export-options-plist=tmp/testflight-upload/ExportOptions.plist
+```
+Если экспорт сорвётся, архив уже собран — повторять только выгрузку, без пересборки:
+```
+xcodebuild -exportArchive -allowProvisioningUpdates \
+  -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_A85C737K58.p8 \
+  -authenticationKeyID A85C737K58 \
+  -authenticationKeyIssuerID 56f6413b-040f-468e-9502-8f01c320a35b \
+  -archivePath app/build/ios/archive/Runner.xcarchive \
+  -exportPath app/build/ios/ipa \
+  -exportOptionsPlist app/tmp/testflight-upload/ExportOptions.plist
+```
+
+### Грабли, стоившие часа — не наступать заново
+1. **Роль ключа API обязана быть «Администратор».** С ролью «Менеджер приложения»
+   выгрузка падает с `Cloud signing permission error`: этой роли не хватает прав на
+   выпуск сертификата. Роль ключа после создания изменить НЕЛЬЗЯ — только новый ключ.
+2. **Ключи `authenticationKey*` внутри ExportOptions.plist Xcode игнорирует** и всё равно
+   лезет в аккаунты (`Failed to Use Accounts`). Передавать их флагами командной строки.
+3. **Файл `.p8` скачивается ровно один раз.** Скачивать только настоящим браузером
+   (Safari/Chrome): встроенная панель браузера Claude загрузку не сохраняет, попытка
+   расходуется впустую и ключ становится мёртвым. Так на диске появились бесполезные
+   `AuthKey_SC9AVCCU3N.p8` и `AuthKey_Z4565RUBD8.p8` — их можно удалить.
+4. **Сборка требует симулятор watchOS**, иначе `No available simulator runtimes for
+   platform watchsimulator`. Ставится через `xcodebuild -downloadPlatform watchOS`
+   (~4 ГБ). Device-сборка тоже это требует — обойти нельзя.
+
+### Android / Google Play
+Внутреннее тестирование, ключ подписи `app/android/upload-keystore.jks` + `key.properties`
+(оба вне Git). Сборка: `cd app && flutter build appbundle --release` →
+`app/build/app/outputs/bundle/release/app-release.aab`. Сервисного аккаунта Play API
+на машине НЕТ, поэтому загрузка в Play Console — вручную, перетаскиванием файла.
+
+### Предупреждения Apple, требующие внимания до релиза
+- `Deployment target too low`: сейчас iOS 13.0, с апреля 2027 минимум iOS 15.0.
+- Экран запуска — стандартная заглушка, заменить перед публикацией в App Store.
