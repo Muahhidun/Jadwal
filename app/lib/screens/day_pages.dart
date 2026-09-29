@@ -567,6 +567,25 @@ class _TodayPage extends StatelessWidget {
                 c: c,
               ),
             ),
+            // За границей — честно: это местный расчёт, а не таблица ДУМК.
+            if (app.city.isLocalCalc)
+              _Beat(
+                enter: enter,
+                leave: leave,
+                at: 0.02,
+                from: const Offset(-18, 0),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 8),
+                  child: Text(
+                    kz
+                        ? '${app.city.displayName(app.lang)} · жергілікті есеп (Aladhan)'
+                        : '${app.city.displayName(app.lang)} · местный расчёт (Aladhan)',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: JType.ui(12, color: c.sub),
+                  ),
+                ),
+              ),
             _Beat(
               enter: enter,
               leave: leave,

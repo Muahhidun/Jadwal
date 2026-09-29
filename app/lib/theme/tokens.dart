@@ -95,6 +95,11 @@ class JPaper {
 /// Фирменный терракотовый цвет из логотипа.
 const jSplash = Color(0xFFC4552D);
 
+/// В Manrope нет казахских букв Ә Ғ Қ Ң Ұ: без запасного шрифта телефон
+/// брал их из системного — жирнее и другой формы. Inter вариативный, поэтому
+/// эти буквы получают ту же толщину через ось wght.
+const kKazakhFallback = ['Inter'];
+
 class JType {
   // Вариативный Manrope: вес задаём и через fontWeight, и через ось wght
   // (иначе вариативный шрифт рендерится дефолтным весом и выглядит иначе).
@@ -110,6 +115,7 @@ class JType {
     double? h,
   }) => TextStyle(
     fontFamily: 'Manrope',
+    fontFamilyFallback: kKazakhFallback,
     fontSize: size,
     fontWeight: w,
     fontVariations: _wght(w),
@@ -121,6 +127,7 @@ class JType {
   /// Каптион-«шапка»: 11px/700, letter-spacing, UPPERCASE (текст подаёт вызывающий).
   static TextStyle caption(Color color, {double size = 11}) => TextStyle(
     fontFamily: 'Manrope',
+    fontFamilyFallback: kKazakhFallback,
     fontSize: size,
     fontWeight: FontWeight.w700,
     fontVariations: _wght(FontWeight.w700),
@@ -131,6 +138,7 @@ class JType {
   /// Таймер 52–72px/300 tabular-nums.
   static TextStyle timer(double size, Color color) => TextStyle(
     fontFamily: 'Manrope',
+    fontFamilyFallback: kKazakhFallback,
     fontSize: size,
     fontWeight: FontWeight.w300,
     fontVariations: _wght(FontWeight.w300),

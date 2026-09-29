@@ -16,6 +16,7 @@ class LocationChangePrompt extends StatelessWidget {
     super.key,
     required this.currentCity,
     required this.detectedCity,
+    this.abroad = false,
     required this.lang,
     required this.palette,
     required this.accent,
@@ -25,6 +26,9 @@ class LocationChangePrompt extends StatelessWidget {
 
   final City currentCity;
   final City detectedCity;
+
+  /// Новое место — за пределами Казахстана: времена будут местным расчётом.
+  final bool abroad;
   final String lang;
   final DaySurfacePalette palette;
   final Color accent;
@@ -102,8 +106,12 @@ class LocationChangePrompt extends StatelessWidget {
                           children: [
                             Text(
                               _kz
-                                  ? 'Басқа қалаға келдіңіз бе?'
-                                  : 'Похоже, вы сменили город',
+                                  ? (abroad
+                                        ? 'Қазақстаннан тыссыз ба?'
+                                        : 'Басқа қалаға келдіңіз бе?')
+                                  : (abroad
+                                        ? 'Похоже, вы за пределами Казахстана'
+                                        : 'Похоже, вы сменили город'),
                               style: JType.ui(
                                 21,
                                 w: FontWeight.w700,
@@ -115,8 +123,12 @@ class LocationChangePrompt extends StatelessWidget {
                             const SizedBox(height: 7),
                             Text(
                               _kz
-                                  ? 'Намаз кестесі мен виджеттерді жаңа қалаға сай жаңартайық па?'
-                                  : 'Обновить расписание молитв и виджеты для нового места?',
+                                  ? (abroad
+                                        ? 'Бұл жерде ҚМДБ кестесі жоқ. Намаз уақыттарын жергілікті есеппен (Aladhan) көрсетейік пе?'
+                                        : 'Намаз кестесі мен виджеттерді жаңа қалаға сай жаңартайық па?')
+                                  : (abroad
+                                        ? 'Здесь нет таблицы ДУМК. Показывать время намаза по местному расчёту (Aladhan)?'
+                                        : 'Обновить расписание молитв и виджеты для нового места?'),
                               style: JType.ui(14, color: c.sub, h: 1.4),
                             ),
                           ],

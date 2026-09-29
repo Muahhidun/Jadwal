@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'city.dart';
+import 'aladhan.dart';
 import 'muftyat.dart';
 import 'schedule.dart';
 
@@ -59,15 +60,20 @@ class ScheduleService extends ChangeNotifier {
     if (_loading || (_loadedKey == ck && _loadedYear == year)) return;
     _loading = true;
     try {
+      final local = city.isLocalCalc;
       final cached = _prefs.getString(_prefsKey(ck, year));
       if (cached != null) {
-        _apply(ck, year, cached, 'ДУМК (кеш)');
+        _apply(ck, year, cached, local ? 'Aladhan (кеш)' : 'ДУМК (кеш)');
         return;
       }
-      final data = await MuftyatApi.fetchYear(city.latStr, city.lngStr, year);
+      // За пределами Казахстана — Aladhan по координатам места; в Казахстане
+      // — только ДУМК по точным координатам справочника.
+      final data = local
+          ? await AladhanApi.fetchYear(city.lat, city.lng, year)
+          : await MuftyatApi.fetchYear(city.latStr, city.lngStr, year);
       final encoded = jsonEncode(data);
       await _prefs.setString(_prefsKey(ck, year), encoded);
-      _apply(ck, year, encoded, 'ДУМК');
+      _apply(ck, year, encoded, local ? 'Aladhan' : 'ДУМК');
     } catch (_) {
       source = 'астрономический расчёт';
     } finally {

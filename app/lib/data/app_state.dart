@@ -105,6 +105,7 @@ class AppState extends ChangeNotifier {
     _prefs.getString('cityLatStr') ?? kDefaultCity.latStr,
     _prefs.getString('cityLngStr') ?? kDefaultCity.lngStr,
     region: _prefs.getString('cityRegion') ?? kDefaultCity.region,
+    source: _prefs.getString('citySource') ?? '',
   );
 
   // ── Настройки уведомлений ──────────────────────────────────────────────
@@ -330,6 +331,7 @@ class AppState extends ChangeNotifier {
     _prefs.setString('cityLatStr', c.latStr);
     _prefs.setString('cityLngStr', c.lngStr);
     _prefs.setString('cityRegion', c.region);
+    _prefs.setString('citySource', c.source);
   });
 
   /// Отметки за день: ключи morning / kahf / evening / dua.

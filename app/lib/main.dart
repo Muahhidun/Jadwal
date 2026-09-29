@@ -57,6 +57,10 @@ class JadwalApp extends StatelessWidget {
 
   ThemeData _theme(JColors c, Brightness b) => ThemeData(
     brightness: b,
+    // Казахские буквы, которых нет в Manrope, берутся из Inter — для всех
+    // текстов приложения, включая стили без явного JType.
+    fontFamily: 'Manrope',
+    fontFamilyFallback: kKazakhFallback,
     scaffoldBackgroundColor: c.bg,
     colorScheme: ColorScheme.fromSeed(seedColor: c.gold, brightness: b),
     splashFactory: NoSplash.splashFactory,

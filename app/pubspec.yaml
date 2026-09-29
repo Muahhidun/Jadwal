@@ -75,6 +75,7 @@ flutter:
     - assets/data/adhkar.json
     - assets/data/cities.json
     - assets/quran/kahf_reader.html
+    - assets/quran/kahf/
     - assets/images/scene_bg.png
     - assets/images/mecca_silhouette.png
     - assets/images/mecca_master_v1.png
@@ -96,6 +97,11 @@ flutter:
     - family: Manrope
       fonts:
         - asset: assets/fonts/Manrope.ttf
+    # Запасной шрифт для казахских букв Ә Ғ Қ Ң Ұ — в Manrope их нет.
+    # SIL Open Font License (assets/fonts/Inter-OFL.txt).
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
     - family: Literata
       fonts:
         - asset: assets/fonts/Literata.ttf

@@ -12,7 +12,22 @@ class City {
   final String latStr, lngStr;
   final String region;
 
-  const City(this.name, this.latStr, this.lngStr, {this.region = ''});
+  /// Откуда берутся времена: '' — справочник и API ДУМК (по умолчанию),
+  /// [sourceLocal] — место за пределами Казахстана, местный расчёт (Aladhan).
+  final String source;
+
+  const City(
+    this.name,
+    this.latStr,
+    this.lngStr, {
+    this.region = '',
+    this.source = '',
+  });
+
+  static const sourceLocal = 'local';
+
+  /// За пределами справочника ДУМК: времена — местный расчёт, не таблица ДУМК.
+  bool get isLocalCalc => source == sourceLocal;
 
   double get lat => double.parse(latStr);
   double get lng => double.parse(lngStr);
@@ -20,10 +35,11 @@ class City {
   /// Название из ДУМК остаётся каноническим ключом для расписания, а в UI
   /// показываем привычную форму выбранного языка.
   String displayName(String lang) =>
-      lang == 'kz' ? name : _russianCityName(name);
+      isLocalCalc ? name : (lang == 'kz' ? name : _russianCityName(name));
 
-  String displayRegion(String lang) =>
-      lang == 'kz' ? region : _russianRegionName(region);
+  String displayRegion(String lang) => isLocalCalc
+      ? region
+      : (lang == 'kz' ? region : _russianRegionName(region));
 
   factory City.fromJson(Map<String, dynamic> j) => City(
     j['t'] as String,
@@ -60,7 +76,15 @@ class CityRepository {
   }
 
   /// Ближайший к координатам пункт (гаверсинус). Для авто-определения по GPS.
-  static Future<City> nearest(double lat, double lng) async {
+  static Future<City> nearest(double lat, double lng) async =>
+      (await nearestWithDistance(lat, lng)).$1;
+
+  /// Ближайший пункт справочника и расстояние до него в километрах. Если
+  /// расстояние большое — человек за пределами Казахстана.
+  static Future<(City, double)> nearestWithDistance(
+    double lat,
+    double lng,
+  ) async {
     final all = await load();
     City best = all.first;
     double bestD = double.infinity;
@@ -71,8 +95,16 @@ class CityRepository {
         best = c;
       }
     }
-    return best;
+    return (best, bestD);
   }
+
+  /// Расстояние между точками в километрах.
+  static double distanceKm(
+    double lat1,
+    double lng1,
+    double lat2,
+    double lng2,
+  ) => _haversine(lat1, lng1, lat2, lng2);
 
   static String _normalize(String s) {
     return s
