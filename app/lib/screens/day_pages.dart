@@ -328,13 +328,18 @@ class _PageDots extends StatelessWidget {
               builder: (context) {
                 final near = (1 - (progress - i).abs()).clamp(0.0, 1.0);
                 final eased = Curves.easeOut.transform(near);
+                // Крупнее и контрастнее: индикатор должен читаться сразу,
+                // и над светлым небом тоже — отсюда лёгкая тень.
                 return Container(
-                  margin: const EdgeInsets.symmetric(vertical: 3),
-                  width: 4,
-                  height: 5 + 13 * eased,
+                  margin: const EdgeInsets.symmetric(vertical: 3.5),
+                  width: 5.5,
+                  height: 6 + 18 * eased,
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.25 + 0.6 * eased),
+                    color: color.withValues(alpha: 0.4 + 0.55 * eased),
                     borderRadius: BorderRadius.circular(3),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x33000000), blurRadius: 3),
+                    ],
                   ),
                 );
               },
@@ -1303,6 +1308,7 @@ class _PagesSettingsPage extends StatelessWidget {
                 DauamSettingsRow(
                   icon: CupertinoIcons.paintbrush,
                   title: kz ? 'Көрініс' : 'Оформление',
+                  value: homeSceneTitle(app.homeScene, kz),
                   onTap: () => openAfterClose(AppearancePicker.open),
                 ),
                 DauamSettingsRow(
@@ -1310,6 +1316,17 @@ class _PagesSettingsPage extends StatelessWidget {
                   title: kz ? 'Тіл' : 'Язык',
                   value: kz ? 'Қазақша' : 'Русский',
                   onTap: () => openAfterClose(LanguagePicker.open),
+                ),
+              ],
+            ),
+            DauamSection(
+              children: [
+                DauamSettingsRow(
+                  icon: CupertinoIcons.info,
+                  title: kz ? 'Қосымша туралы' : 'О приложении',
+                  onTap: () => Navigator.of(
+                    context,
+                  ).push(dauamSettingsRoute(const AboutScreen())),
                 ),
               ],
             ),

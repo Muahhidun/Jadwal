@@ -2,7 +2,18 @@ import 'package:flutter/material.dart';
 
 /// Дизайн-токены из design_handoff_jadwal/README.md — источник правды по UI.
 class JColors {
-  final Color bg, ink, sub, faint, hair, gold, green, gdim, red, card, btnbg, btnink;
+  final Color bg,
+      ink,
+      sub,
+      faint,
+      hair,
+      gold,
+      green,
+      gdim,
+      red,
+      card,
+      btnbg,
+      btnink;
 
   const JColors({
     required this.bg,
@@ -87,47 +98,64 @@ const jSplash = Color(0xFFC4552D);
 class JType {
   // Вариативный Manrope: вес задаём и через fontWeight, и через ось wght
   // (иначе вариативный шрифт рендерится дефолтным весом и выглядит иначе).
-  static List<FontVariation> _wght(FontWeight w) =>
-      [FontVariation('wght', w.value.toDouble())];
+  static List<FontVariation> _wght(FontWeight w) => [
+    FontVariation('wght', w.value.toDouble()),
+  ];
 
-  static TextStyle ui(double size,
-          {FontWeight w = FontWeight.w400, Color? color, double? ls, double? h}) =>
-      TextStyle(
-          fontFamily: 'Manrope',
-          fontSize: size,
-          fontWeight: w,
-          fontVariations: _wght(w),
-          color: color,
-          letterSpacing: ls,
-          height: h);
+  static TextStyle ui(
+    double size, {
+    FontWeight w = FontWeight.w400,
+    Color? color,
+    double? ls,
+    double? h,
+  }) => TextStyle(
+    fontFamily: 'Manrope',
+    fontSize: size,
+    fontWeight: w,
+    fontVariations: _wght(w),
+    color: color,
+    letterSpacing: ls,
+    height: h,
+  );
 
   /// Каптион-«шапка»: 11px/700, letter-spacing, UPPERCASE (текст подаёт вызывающий).
   static TextStyle caption(Color color, {double size = 11}) => TextStyle(
-      fontFamily: 'Manrope',
-      fontSize: size,
-      fontWeight: FontWeight.w700,
-      fontVariations: _wght(FontWeight.w700),
-      color: color,
-      letterSpacing: size * .15);
+    fontFamily: 'Manrope',
+    fontSize: size,
+    fontWeight: FontWeight.w700,
+    fontVariations: _wght(FontWeight.w700),
+    color: color,
+    letterSpacing: size * .15,
+  );
 
   /// Таймер 52–72px/300 tabular-nums.
   static TextStyle timer(double size, Color color) => TextStyle(
-      fontFamily: 'Manrope',
-      fontSize: size,
-      fontWeight: FontWeight.w300,
-      fontVariations: _wght(FontWeight.w300),
-      color: color,
-      fontFeatures: const [FontFeature.tabularFigures()]);
+    fontFamily: 'Manrope',
+    fontSize: size,
+    fontWeight: FontWeight.w300,
+    fontVariations: _wght(FontWeight.w300),
+    color: color,
+    fontFeatures: const [FontFeature.tabularFigures()],
+  );
 
-  static TextStyle reading(double size,
-          {Color? color, FontStyle? style, double h = 1.75}) =>
-      TextStyle(
-          fontFamily: 'Literata',
-          fontSize: size,
-          color: color,
-          fontStyle: style,
-          height: h);
+  static TextStyle reading(
+    double size, {
+    Color? color,
+    FontStyle? style,
+    double h = 1.75,
+  }) => TextStyle(
+    fontFamily: 'Literata',
+    fontSize: size,
+    color: color,
+    fontStyle: style,
+    height: h,
+  );
 
   static TextStyle arabic(double size, {Color color = JPaper.arabic}) =>
-      TextStyle(fontFamily: 'Amiri', fontSize: size, color: color, height: 1.95);
+      TextStyle(
+        fontFamily: 'Amiri',
+        fontSize: size,
+        color: color,
+        height: 1.95,
+      );
 }

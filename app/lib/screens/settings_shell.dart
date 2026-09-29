@@ -561,13 +561,16 @@ class DauamSettingsRow extends StatelessWidget {
                 ),
                 if (value != null) ...[
                   const SizedBox(width: 10),
-                  Flexible(
+                  // Значение прижато вправо, к стрелке: у всех строк стрелки
+                  // и значения стоят в одну линию.
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 150),
                     child: Text(
                       value!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.right,
-                      style: JType.ui(13.5, color: c.sub),
+                      style: JType.ui(14, color: c.sub),
                     ),
                   ),
                 ],

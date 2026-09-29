@@ -47,6 +47,7 @@ dependencies:
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   webview_flutter: ^4.13.0
+  package_info_plus: ^10.2.0
 
 dev_dependencies:
   flutter_test:

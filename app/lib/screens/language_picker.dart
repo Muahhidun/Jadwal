@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -135,11 +134,13 @@ class AppearancePicker extends StatelessWidget {
   }
 }
 
+/// Название темы — для строки «Оформление» в настройках.
+String homeSceneTitle(HomeScene scene, bool kz) => _sceneTitle(scene, kz);
+
 String _sceneTitle(HomeScene scene, bool kz) => switch (scene) {
   HomeScene.mecca => kz ? 'Мекке' : 'Мекка',
   HomeScene.nature => kz ? 'Табиғат' : 'Природа',
   HomeScene.minimal => kz ? 'Минимализм' : 'Минимализм',
-  HomeScene.ornament => kz ? 'Өрнек' : 'Орнамент',
 };
 
 String _sceneSubtitle(HomeScene scene, bool kz) => switch (scene) {
@@ -147,8 +148,6 @@ String _sceneSubtitle(HomeScene scene, bool kz) => switch (scene) {
     kz ? 'Қағба және Харам мешіті' : 'Кааба и Заповедная мечеть',
   HomeScene.nature => kz ? 'Таулар мен дала' : 'Горы и степь',
   HomeScene.minimal => kz ? 'Тек аспан мен жарық' : 'Только небо и свет',
-  HomeScene.ornament =>
-      kz ? 'Жұлдызды өрнек пен аркалар' : 'Звёздный узор и аркада',
 };
 
 class _SceneChoiceRow extends StatelessWidget {
@@ -231,12 +230,17 @@ class _ScenePreview extends StatelessWidget {
       duration: const Duration(milliseconds: 180),
       width: 70,
       height: 52,
-      decoration: BoxDecoration(
+      // Обводка — поверх картинки: иначе превью темы перекрывало её и
+      // рамка выбранной темы выглядела обрезанной.
+      foregroundDecoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: selected ? accent : Colors.white.withValues(alpha: .22),
           width: selected ? 2 : 1,
         ),
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
         boxShadow: selected
             ? [
                 BoxShadow(
@@ -324,50 +328,6 @@ class _ScenePreviewPainter extends CustomPainter {
               colors: [Colors.transparent, Color(0x33131F27)],
             ).createShader(rect),
         );
-      case HomeScene.ornament:
-        final line = const Color(0xFFD2A74E);
-        // Аркада
-        final wall = Path()
-          ..moveTo(0, size.height)
-          ..lineTo(0, size.height * .62);
-        const arches = 3;
-        final aw = size.width / arches;
-        for (var i = 0; i < arches; i++) {
-          final left = i * aw;
-          wall.lineTo(left + aw * .12, size.height * .62);
-          wall.lineTo(left + aw * .12, size.height * .70);
-          wall.quadraticBezierTo(
-            left + aw * .5,
-            size.height * .48,
-            left + aw * .88,
-            size.height * .70,
-          );
-          wall.lineTo(left + aw * .88, size.height * .62);
-          wall.lineTo(left + aw, size.height * .62);
-        }
-        wall
-          ..lineTo(size.width, size.height)
-          ..close();
-        canvas.drawPath(wall, Paint()..color = const Color(0xFF0B1118));
-        // Звезда-мотив над аркадой
-        final star = Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1
-          ..color = line.withValues(alpha: .75);
-        for (var i = 0; i < 3; i++) {
-          final c = Offset(size.width * (.24 + i * .26), size.height * .46);
-          final r = size.height * .07;
-          for (final turn in [0.0, 0.7853981633974483]) {
-            final path = Path();
-            for (var k = 0; k < 4; k++) {
-              final a = turn + k * 1.5707963267948966;
-              final pt = Offset(c.dx + cos(a) * r, c.dy + sin(a) * r);
-              k == 0 ? path.moveTo(pt.dx, pt.dy) : path.lineTo(pt.dx, pt.dy);
-            }
-            path.close();
-            canvas.drawPath(path, star);
-          }
-        }
     }
   }
 

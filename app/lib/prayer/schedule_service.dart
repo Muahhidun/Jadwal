@@ -11,7 +11,7 @@ import 'schedule.dart';
 /// астрономический расчёт (офлайн-запас). Какой источник в работе — в [source].
 class ScheduleService extends ChangeNotifier {
   ScheduleService(this._prefs, {DateTime Function()? now})
-      : _now = now ?? DateTime.now;
+    : _now = now ?? DateTime.now;
 
   final SharedPreferences _prefs;
   final DateTime Function() _now;
@@ -41,9 +41,10 @@ class ScheduleService extends ChangeNotifier {
     }
     final t = y[_dateKey(date)];
     if (t == null) return calculateDayTimes(city, date);
-    return DayTimes(date: DateTime(date.year, date.month, date.day), times: {
-      for (final (i, p) in Prayer.values.indexed) p: t[i],
-    });
+    return DayTimes(
+      date: DateTime(date.year, date.month, date.day),
+      times: {for (final (i, p) in Prayer.values.indexed) p: t[i]},
+    );
   }
 
   /// Принудительно загрузить данные для города на указанный год.
@@ -85,7 +86,12 @@ class ScheduleService extends ChangeNotifier {
 
   /// Для тестов: подложить данные без сети.
   @visibleForTesting
-  void preload(City city, int year, Map<String, List<int>> data, {String src = 'test'}) {
+  void preload(
+    City city,
+    int year,
+    Map<String, List<int>> data, {
+    String src = 'test',
+  }) {
     _year = data;
     _loadedKey = cityKey(city);
     _loadedYear = year;
@@ -94,8 +100,11 @@ class ScheduleService extends ChangeNotifier {
 }
 
 class ScheduleScope extends InheritedNotifier<ScheduleService> {
-  const ScheduleScope({super.key, required ScheduleService service, required super.child})
-      : super(notifier: service);
+  const ScheduleScope({
+    super.key,
+    required ScheduleService service,
+    required super.child,
+  }) : super(notifier: service);
 
   static ScheduleService of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<ScheduleScope>()!.notifier!;

@@ -13,8 +13,10 @@ Future<void> _fonts() async {
     ('Manrope', 'assets/fonts/Manrope.ttf'),
     ('Literata', 'assets/fonts/Literata.ttf'),
     ('Amiri', 'assets/fonts/Amiri-Regular.ttf'),
-    ('packages/cupertino_icons/CupertinoIcons',
-        'packages/cupertino_icons/assets/CupertinoIcons.ttf'),
+    (
+      'packages/cupertino_icons/CupertinoIcons',
+      'packages/cupertino_icons/assets/CupertinoIcons.ttf',
+    ),
   ]) {
     await (FontLoader(family)..addFont(rootBundle.load(asset))).load();
   }
@@ -26,6 +28,8 @@ Future<void> _render(
   Map<double, String> shots, {
   Size physical = const Size(1179, 2556),
   double ratio = 3,
+  String scene = 'mecca',
+  Future<void> Function(WidgetTester)? after,
 }) async {
   await _fonts();
   // В тестовой среде нет компаса: отдаём пустой поток.
@@ -43,6 +47,7 @@ Future<void> _render(
     'onboardingDone': true,
     'lang': 'ru',
     'dayLayout': 'pages',
+    'homeScene': scene,
     'firstUseDate': '2026-7-20',
     'done:$realKey': ['morning'],
     'done:2026-7-20': ['morning', 'evening'],
@@ -60,6 +65,13 @@ Future<void> _render(
   for (var i = 0; i < 8; i++) {
     await tester.pump(const Duration(milliseconds: 30));
   }
+  // Картинки темы декодируются асинхронно — даём им загрузиться.
+  await tester.runAsync(
+    () => Future<void>.delayed(const Duration(milliseconds: 300)),
+  );
+  for (var i = 0; i < 4; i++) {
+    await tester.pump(const Duration(milliseconds: 30));
+  }
   for (final entry in shots.entries) {
     (tester.state(find.byType(HomeScreen)) as dynamic).swipeProgress =
         entry.key;
@@ -69,6 +81,7 @@ Future<void> _render(
       matchesGoldenFile('${entry.value}.png'),
     );
   }
+  if (after != null) await after(tester);
 }
 
 void main() {
@@ -105,6 +118,38 @@ void main() {
       {1.0: 'p_10_today_se'},
       physical: const Size(750, 1334),
       ratio: 2,
+    );
+  });
+  testWidgets('природа — край пейзажа при свайпе', (tester) async {
+    await _render(tester, DateTime(2026, 7, 23, 23, 10), {
+      0.0: 'p_12_nature_main',
+      0.2: 'p_11_nature_swipe',
+      0.45: 'p_11b_nature_swipe',
+    }, scene: 'nature');
+  });
+  testWidgets('настройки и «О приложении»', (tester) async {
+    await _render(
+      tester,
+      DateTime(2026, 7, 23, 23, 10),
+      {2.0: 'p_13_consistency_night'},
+      after: (tester) async {
+        await tester.tap(find.text('Настройки'));
+        for (var i = 0; i < 30; i++) {
+          await tester.pump(const Duration(milliseconds: 40));
+        }
+        await expectLater(
+          find.byType(JadwalApp),
+          matchesGoldenFile('p_14_settings.png'),
+        );
+        await tester.tap(find.text('О приложении'));
+        for (var i = 0; i < 30; i++) {
+          await tester.pump(const Duration(milliseconds: 40));
+        }
+        await expectLater(
+          find.byType(JadwalApp),
+          matchesGoldenFile('p_15_about.png'),
+        );
+      },
     );
   });
 }

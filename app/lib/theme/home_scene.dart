@@ -3,13 +3,11 @@
 enum HomeScene {
   mecca,
   nature,
-  minimal,
-  ornament;
+  minimal;
 
   static HomeScene fromStorage(String? value) => switch (value) {
     'nature' => HomeScene.nature,
     'minimal' => HomeScene.minimal,
-    'ornament' => HomeScene.ornament,
     _ => HomeScene.mecca,
   };
 

@@ -15,6 +15,7 @@ import '../theme/tokens.dart';
 import '../theme/adaptive_layout.dart';
 import '../theme/system_bars.dart';
 import '../theme/ornament.dart';
+import 'about_screen.dart';
 import 'city_picker.dart';
 import 'language_picker.dart';
 import 'qibla_screen.dart';
@@ -3226,7 +3227,13 @@ class _RingCell extends StatelessWidget {
             style: JType.ui(
               expanded ? 13 : 10,
               w: isToday || full ? FontWeight.w800 : FontWeight.w500,
-              color: isToday || full
+              // На сплошном золоте число контрастное: днём золото тёмное —
+              // число белое, ночью золото светлое — число тёмное.
+              color: full
+                  ? (gold.computeLuminance() < 0.3
+                        ? Colors.white
+                        : const Color(0xFF2A1D08))
+                  : isToday
                   ? gold
                   : (frac > 0 ? gold.withValues(alpha: 0.8) : faint),
             ),
@@ -3271,18 +3278,17 @@ class _RingPainter extends CustomPainter {
     canvas.drawCircle(cCenter, r, base);
     if (frac <= 0) return;
     if (full) {
-      // Сияние + лёгкая заливка — день полностью выполнен.
-      final glow = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 5
-        ..color = gold.withValues(alpha: 0.35)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-      canvas.drawCircle(cCenter, r, glow);
+      // День полностью выполнен — сплошной золотой круг с мягким сиянием:
+      // его видно сразу, без крестиков и оценок остальных дней.
       canvas.drawCircle(
         cCenter,
-        r - 1,
-        Paint()..color = gold.withValues(alpha: 0.14),
+        r + 1,
+        Paint()
+          ..color = gold.withValues(alpha: 0.4)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
       );
+      canvas.drawCircle(cCenter, r + 1, Paint()..color = gold);
+      return;
     }
     final arc = Paint()
       ..style = PaintingStyle.stroke
