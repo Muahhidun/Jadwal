@@ -23,11 +23,13 @@ Future<void> _fonts() async {
 Future<void> _render(
   WidgetTester tester,
   DateTime at,
-  Map<double, String> shots,
-) async {
+  Map<double, String> shots, {
+  Size physical = const Size(1179, 2556),
+  double ratio = 3,
+}) async {
   await _fonts();
-  tester.view.physicalSize = const Size(1179, 2556);
-  tester.view.devicePixelRatio = 3;
+  tester.view.physicalSize = physical;
+  tester.view.devicePixelRatio = ratio;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   final real = DateTime.now();
@@ -67,24 +69,33 @@ Future<void> _render(
 void main() {
   testWidgets('страницы — вечер четверга', (tester) async {
     await _render(tester, DateTime(2026, 7, 23, 18, 30), {
-      0.55: 'pages_0_entering',
-      1.0: 'pages_1_prayers',
-      1.45: 'pages_mid_swipe',
-      2.0: 'pages_2_deeds',
-      3.0: 'pages_3_consistency',
-      0.0: 'pages_main_dots',
-      -1.0: 'pages_qibla',
+      0.0: 'p_00_main',
+      0.25: 'p_01_main_leaving',
+      0.45: 'p_02_main_leaving',
+      0.75: 'p_03_today_entering',
+      1.0: 'p_04_today',
+      1.5: 'p_05_mid',
+      2.0: 'p_06_consistency',
+      -1.0: 'p_07_qibla',
     });
   });
   testWidgets('страницы — пятница утром', (tester) async {
     await _render(tester, DateTime(2026, 7, 24, 10, 15), {
-      2.0: 'pages_2_deeds_friday',
+      1.0: 'p_08_today_friday',
     });
   });
   testWidgets('страницы — поздний вечер', (tester) async {
     await _render(tester, DateTime(2026, 7, 23, 23, 10), {
-      1.0: 'pages_1_prayers_night',
-      2.0: 'pages_2_deeds_night',
+      1.0: 'p_09_today_night',
     });
+  });
+  testWidgets('страницы — iPhone SE, пятница', (tester) async {
+    await _render(
+      tester,
+      DateTime(2026, 7, 24, 10, 15),
+      {1.0: 'p_10_today_se'},
+      physical: const Size(750, 1334),
+      ratio: 2,
+    );
   });
 }

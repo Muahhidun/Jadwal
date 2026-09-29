@@ -1,45 +1,21 @@
 part of 'home.dart';
 
 // ── Прототип «Страницы» ──────────────────────────────────────────────────────
-// Нижний экран — вертикальные страницы: Таймер ↓ Намазы ↓ Дела ↓ Постоянство.
+// Нижний экран — вертикальные страницы: Кибла ↑ Таймер ↓ Сегодня ↓ Постоянство.
 //
-// Переход — не слайд фотографии, а хореография: каждый элемент появляется со
-// своей задержкой и со своего направления, дуга солнца рисуется линией, фон
-// двигается медленнее контента. Всё вычисляется из положения пальца, поэтому
-// переход можно «перематывать»: вести медленно, остановиться, вернуться.
-// Когда элемент встаёт на место, Taptic Engine даёт короткий щелчок.
+// «Сегодня» — два отдельных блока: времена намазов и дела. Их не смешиваем в
+// одну ленту (прошлый прототип показал, что так теряются оба), но держим на
+// одной странице, чтобы она была наполненной.
+//
+// Переход — не слайд фотографии, а хореография: каждый элемент уходит и
+// появляется со своей задержкой и со своего направления, фон движется
+// медленнее контента. Всё вычисляется из положения пальца, поэтому переход
+// можно «перематывать», а доводка после свайпа идёт неспешно — постановку
+// видно и при обычном быстром свайпе. Когда элемент встаёт на место, Taptic
+// Engine даёт короткий щелчок.
 //
 // Включается в «Оформлении» (нижний экран → страницы). Классический вид не
 // меняется.
-
-const _pagesWeekdaysRu = [
-  'Понедельник',
-  'Вторник',
-  'Среда',
-  'Четверг',
-  'Пятница',
-  'Суббота',
-  'Воскресенье',
-];
-const _pagesWeekdaysKz = [
-  'Дүйсенбі',
-  'Сейсенбі',
-  'Сәрсенбі',
-  'Бейсенбі',
-  'Жұма',
-  'Сенбі',
-  'Жексенбі',
-];
-
-/// «Вторник, 29 сентября · 18 раби ас-сани» — обе даты сразу.
-String _pagesDateLine(S s, DateTime now) {
-  final kz = s == S.kz;
-  final weekday = (kz ? _pagesWeekdaysKz : _pagesWeekdaysRu)[now.weekday - 1];
-  final month = (kz ? _gregMonthsKz : _gregMonthsRu)[now.month - 1];
-  final hijri = HijriCalendar.fromDate(now);
-  final hMonth = (kz ? s.hijriMonths : _hijriMonthsRu)[hijri.hMonth - 1];
-  return '$weekday, ${now.day} $month · ${hijri.hDay} $hMonth';
-}
 
 String _pagesHhmm(int minutes) {
   final m = minutes % 1440;
@@ -64,15 +40,14 @@ double _seg(double v, double start, double end) =>
     ((v - start) / (end - start)).clamp(0.0, 1.0);
 
 /// Доля свайпа, после которой начинает входить страница. С таймера — позже:
-/// сначала должны раствориться таймер и кнопки главного экрана.
-double _enterStart(int page) => page == 1 ? 0.55 : 0.35;
+/// сначала по очереди уходят подпись, таймер и кнопки главного экрана.
+double _enterStart(int page) => page == 1 ? 0.5 : 0.35;
 
 // ── Хореография ─────────────────────────────────────────────────────────────
 
 /// Моменты (в долях входа страницы), когда элементы «встают на место».
 /// По ним же звучит Taptic Engine — вибрация совпадает с движением.
-const _prayerRowBeats = [0.34, 0.42, 0.50, 0.58, 0.66, 0.74];
-const _deedBeats = [0.40, 0.56, 0.66, 0.76, 0.86];
+const _todayBeats = [0.40, 0.46, 0.52, 0.58, 0.64, 0.70, 0.80, 0.86, 0.92];
 const _consistencyBeats = [0.40, 0.62, 0.80];
 
 /// Один элемент страницы в хореографии перехода.
@@ -86,7 +61,7 @@ class _Beat extends StatelessWidget {
     required this.leave,
     required this.at,
     required this.child,
-    this.span = 0.34,
+    this.span = 0.3,
     this.from = const Offset(0, 26),
     this.leaveAt = 0.0,
   });
@@ -113,6 +88,36 @@ class _Beat extends StatelessWidget {
   }
 }
 
+/// Уход элемента главного экрана при свайпе к страницам: каждый элемент —
+/// в свою сторону и в своё время, а не весь экран одной картинкой.
+class _Leave extends StatelessWidget {
+  const _Leave({
+    required this.p,
+    required this.start,
+    required this.child,
+    this.span = 0.3,
+    this.to = const Offset(0, -40),
+    this.scaleTo = 0.94,
+  });
+
+  final double p, start, span, scaleTo;
+  final Offset to;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final o = Curves.easeInCubic.transform(_seg(p, start, start + span));
+    if (o <= 0) return child;
+    return Opacity(
+      opacity: (1 - o).clamp(0.0, 1.0),
+      child: Transform.translate(
+        offset: to * o,
+        child: Transform.scale(scale: 1 + (scaleTo - 1) * o, child: child),
+      ),
+    );
+  }
+}
+
 class _PagesDayLayer extends StatefulWidget {
   const _PagesDayLayer({
     required this.p,
@@ -128,7 +133,7 @@ class _PagesDayLayer extends StatefulWidget {
     required this.onGoTo,
   });
 
-  /// Сырой прогресс ленты: 0 — таймер, 1 — Намазы, 2 — Дела, 3 — Постоянство.
+  /// Сырой прогресс ленты: 0 — таймер, 1 — Сегодня, 2 — Постоянство.
   final double p, h;
   final S s;
   final DaySurfacePalette palette;
@@ -149,12 +154,11 @@ class _PagesDayLayerState extends State<_PagesDayLayer> {
   /// Все моменты «элемент встал на место» в координатах ленты.
   static final List<double> _beats = [
     for (final (page, beats) in const [
-      (1, _prayerRowBeats),
-      (2, _deedBeats),
-      (3, _consistencyBeats),
+      (1, _todayBeats),
+      (2, _consistencyBeats),
     ])
       for (final b in beats)
-        page - 1 + _enterStart(page) + (b + 0.16) * (1 - _enterStart(page)),
+        page - 1 + _enterStart(page) + b * (1 - _enterStart(page)),
   ];
 
   @override
@@ -163,9 +167,8 @@ class _PagesDayLayerState extends State<_PagesDayLayer> {
     final from = old.p, to = widget.p;
     if (from == to) return;
     final lo = math.min(from, to), hi = math.max(from, to);
-    final crossed = _beats.any((b) => b > lo && b <= hi);
-    if (!crossed) return;
-    // Не чаще раза в 45 мс: при быстром свайпе получается мягкий каскад,
+    if (!_beats.any((b) => b > lo && b <= hi)) return;
+    // Не чаще раза в 45 мс: при быстром свайпе — мягкий каскад,
     // при медленном — отдельные щелчки, как у застёжки-молнии.
     final now = DateTime.now();
     if (now.difference(_lastTick).inMilliseconds < 45) return;
@@ -177,13 +180,10 @@ class _PagesDayLayerState extends State<_PagesDayLayer> {
   Widget build(BuildContext context) {
     final w = widget;
     final c = w.palette.colors;
-    final now = w.schedule.now();
 
     Widget page(int index, Widget Function(double enter, double leave) build) {
       final d = index - w.p;
       if (d.abs() >= 1.0) return const SizedBox.shrink();
-      // Новая страница начинает появляться, когда старая почти ушла:
-      // сначала уходит прежнее, потом приходит новое, с короткой перекличкой.
       final enter = d > 0 ? _seg(1 - d, _enterStart(index), 1.0) : 1.0;
       final leave = d < 0 ? (-d).clamp(0.0, 1.0) : 0.0;
       return Positioned.fill(
@@ -195,7 +195,7 @@ class _PagesDayLayerState extends State<_PagesDayLayer> {
             ignoring: d.abs() > 0.5,
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(22, 6, 30, 6),
+                padding: const EdgeInsets.fromLTRB(22, 8, 30, 6),
                 child: build(enter, leave),
               ),
             ),
@@ -206,6 +206,24 @@ class _PagesDayLayerState extends State<_PagesDayLayer> {
 
     return Stack(
       children: [
+        // Сплошной фон страниц закрывает картину главного экрана целиком:
+        // иначе сверху оставался «хвост» Мекки или пейзажа.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Opacity(
+              opacity: _seg(w.p, 0.3, 0.85),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [w.palette.top, w.palette.middle, w.palette.bottom],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
         Positioned.fill(
           child: IgnorePointer(
             child: _PagesAmbience(p: w.p, c: c, isLight: w.palette.isLight),
@@ -213,22 +231,7 @@ class _PagesDayLayerState extends State<_PagesDayLayer> {
         ),
         page(
           1,
-          (enter, leave) => _PrayersPage(
-            enter: enter,
-            leave: leave,
-            s: w.s,
-            c: c,
-            palette: w.palette,
-            app: w.app,
-            t: w.t,
-            nowSec: w.nowSec,
-            now: now,
-            onNext: () => w.onGoTo(2),
-          ),
-        ),
-        page(
-          2,
-          (enter, leave) => _DeedsPage(
+          (enter, leave) => _TodayPage(
             enter: enter,
             leave: leave,
             s: w.s,
@@ -237,12 +240,13 @@ class _PagesDayLayerState extends State<_PagesDayLayer> {
             app: w.app,
             t: w.t,
             nowMin: w.nowMin,
+            nowSec: w.nowSec,
             onReader: w.onReader,
-            onNext: () => w.onGoTo(3),
+            onNext: () => w.onGoTo(2),
           ),
         ),
         page(
-          3,
+          2,
           (enter, leave) => _ConsistencyPage(
             enter: enter,
             leave: leave,
@@ -250,7 +254,7 @@ class _PagesDayLayerState extends State<_PagesDayLayer> {
             c: c,
             palette: w.palette,
             app: w.app,
-            now: now,
+            now: w.schedule.now(),
           ),
         ),
       ],
@@ -259,8 +263,7 @@ class _PagesDayLayerState extends State<_PagesDayLayer> {
 }
 
 /// Фон страниц: тонкий узор восьмиконечных звёзд и мягкое золотое свечение.
-/// Узор движется медленнее контента — отсюда ощущение глубины, а страница
-/// не выглядит пустой даже там, где нет элементов.
+/// Узор движется медленнее контента — отсюда ощущение глубины.
 class _PagesAmbience extends StatelessWidget {
   const _PagesAmbience({
     required this.p,
@@ -274,9 +277,8 @@ class _PagesAmbience extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appear = _seg(p, 0.2, 1.0);
     return Opacity(
-      opacity: appear,
+      opacity: _seg(p, 0.3, 1.0),
       child: CustomPaint(
         painter: _AmbiencePainter(
           p: p,
@@ -296,13 +298,10 @@ class _AmbiencePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Свечение плывёт между «главными» местами страниц: над дугой солнца,
-    // над карточкой дела, над хадисом.
-    const anchors = [0.26, 0.30, 0.24];
-    final k = (p - 1).clamp(0.0, 2.0);
-    final lo = k.floor().clamp(0, 2), hi = k.ceil().clamp(0, 2);
-    final f = k - lo;
-    final y = size.height * (anchors[lo] + (anchors[hi] - anchors[lo]) * f);
+    // Свечение плывёт между главными местами страниц: над следующим
+    // намазом и над хадисом.
+    final k = (p - 1).clamp(0.0, 1.0);
+    final y = size.height * (0.28 + (0.24 - 0.28) * k);
     final x = size.width * (0.5 + 0.18 * math.sin(p * 1.9));
     final r = size.width * 0.78;
     canvas.drawCircle(
@@ -355,7 +354,7 @@ class _PageDots extends StatelessWidget {
     required this.labels,
   });
 
-  /// 0 — Кибла, 1 — Таймер, 2 — Намазы, 3 — Дела, 4 — Постоянство.
+  /// 0 — Кибла, 1 — Таймер, 2 — Сегодня, 3 — Постоянство.
   final double progress;
   final Color color;
   final List<String> labels;
@@ -398,11 +397,14 @@ class _PageCaption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text.toUpperCase(),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: JType.caption(c.gold, size: 12),
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Text(
+        text.toUpperCase(),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: JType.caption(c.gold, size: 11.5),
+      ),
     );
   }
 }
@@ -444,428 +446,7 @@ class _NextHint extends StatelessWidget {
   }
 }
 
-// ── Страница 1: Намазы ──────────────────────────────────────────────────────
-
-class _PrayersPage extends StatelessWidget {
-  const _PrayersPage({
-    required this.enter,
-    required this.leave,
-    required this.s,
-    required this.c,
-    required this.palette,
-    required this.app,
-    required this.t,
-    required this.nowSec,
-    required this.now,
-    required this.onNext,
-  });
-
-  final double enter, leave;
-  final S s;
-  final JColors c;
-  final DaySurfacePalette palette;
-  final AppState app;
-  final DayTimes t;
-  final int nowSec;
-  final DateTime now;
-  final VoidCallback onNext;
-
-  @override
-  Widget build(BuildContext context) {
-    final kz = s == S.kz;
-    Prayer? next;
-    var targetSec = t.times[Prayer.fajr]! * 60 + 86400;
-    for (final prayer in Prayer.values) {
-      final candidate = t.times[prayer]! * 60;
-      if (candidate > nowSec) {
-        next = prayer;
-        targetSec = candidate;
-        break;
-      }
-    }
-    next ??= Prayer.fajr;
-    final left = _pagesDuration(s, ((targetSec - nowSec) / 60).ceil());
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Beat(
-          enter: enter,
-          leave: leave,
-          at: 0.0,
-          from: const Offset(-18, 0),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _PageCaption(
-                      kz ? 'Намаз уақыттары' : 'Время намазов',
-                      c: c,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _pagesDateLine(s, now),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: JType.ui(12.5, color: c.sub),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              _CityPill(app: app, c: c, kz: kz),
-            ],
-          ),
-        ),
-        const Spacer(),
-        // Дуга солнца рисуется линией по мере свайпа.
-        _Beat(
-          enter: enter,
-          leave: leave,
-          at: 0.06,
-          span: 0.5,
-          from: const Offset(0, 14),
-          leaveAt: 0.05,
-          child: SizedBox(
-            height: 150,
-            child: CustomPaint(
-              painter: _SunArcPainter(
-                t: t,
-                nowSec: nowSec,
-                next: next,
-                draw: Curves.easeInOutCubic.transform(_seg(enter, 0.08, 0.62)),
-                c: c,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 14),
-        _Beat(
-          enter: enter,
-          leave: leave,
-          at: 0.1,
-          span: 0.3,
-          from: const Offset(0, 30),
-          leaveAt: 0.05,
-          child: _SurfaceCard(
-            palette: palette,
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-            child: Column(
-              children: [
-                for (final (i, prayer) in Prayer.values.indexed)
-                  _Beat(
-                    enter: enter,
-                    leave: leave,
-                    at: _prayerRowBeats[i] - 0.18,
-                    // Строки прилетают попеременно слева и справа и сходятся
-                    // в один столбец.
-                    from: Offset(i.isEven ? -34 : 34, 10),
-                    leaveAt: 0.012 * i,
-                    child: _PrayerRow(
-                      name: s.prayers[i],
-                      time: t.fmt(prayer),
-                      isSunrise: prayer == Prayer.sunrise,
-                      isNext: prayer == next,
-                      isPast: t.times[prayer]! * 60 <= nowSec && prayer != next,
-                      left: prayer == next
-                          ? (kz ? '$left кейін' : 'через $left')
-                          : null,
-                      c: c,
-                      onTap: () => _showQuickSettings(
-                        context,
-                        prayer.name,
-                        s.prayers[i],
-                        c,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        const Spacer(flex: 2),
-        _Beat(
-          enter: enter,
-          leave: leave,
-          at: 0.7,
-          span: 0.3,
-          from: const Offset(0, 10),
-          child: _NextHint(
-            label: kz ? 'Бүгінгі істер' : 'Дела сегодня',
-            c: c,
-            onTap: onNext,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Путь солнца за день. Горизонт — линия восхода и Магриба: днём солнце
-/// идёт дугой над ним, а Фаджр и Иша лежат под горизонтом, как в жизни.
-/// Пройденная часть дня — золотая, следующий намаз — яркая точка.
-class _SunArcPainter extends CustomPainter {
-  _SunArcPainter({
-    required this.t,
-    required this.nowSec,
-    required this.next,
-    required this.draw,
-    required this.c,
-  });
-
-  final DayTimes t;
-  final int nowSec;
-  final Prayer next;
-
-  /// Насколько дуга «дорисована» (0…1) — привязано к свайпу.
-  final double draw;
-  final JColors c;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final fajr = t.times[Prayer.fajr]!.toDouble();
-    final sunrise = t.times[Prayer.sunrise]!.toDouble();
-    final maghrib = t.times[Prayer.maghrib]!.toDouble();
-    final isha = t.times[Prayer.isha]!.toDouble();
-    const pad = 14.0;
-    final base = size.height * 0.66;
-    final ry = base - 14;
-
-    Offset at(double minute) {
-      final m = minute.clamp(fajr, isha);
-      final x = pad + (size.width - pad * 2) * (m - fajr) / (isha - fajr);
-      final sine = math.sin(math.pi * (m - sunrise) / (maghrib - sunrise));
-      // Под горизонтом кривая неглубокая: сумерки, а не полночь.
-      return Offset(x, base - ry * math.max(sine, -0.42));
-    }
-
-    final path = Path();
-    const samples = 90;
-    for (var i = 0; i <= samples; i++) {
-      final pt = at(fajr + (isha - fajr) * i / samples);
-      i == 0 ? path.moveTo(pt.dx, pt.dy) : path.lineTo(pt.dx, pt.dy);
-    }
-    final metric = path.computeMetrics().first;
-    final full = metric.length;
-    double lengthAt(double minute) {
-      final f = ((minute - fajr) / (isha - fajr)).clamp(0.0, 1.0);
-      // Длина по кривой почти пропорциональна времени — для обрезки хватает.
-      return full * f;
-    }
-
-    // Горизонт проявляется от центра к краям.
-    final half = size.width / 2 * Curves.easeOut.transform(_seg(draw, 0, 0.5));
-    canvas.drawLine(
-      Offset(size.width / 2 - half, base),
-      Offset(size.width / 2 + half, base),
-      Paint()
-        ..color = c.hair
-        ..strokeWidth = 1,
-    );
-
-    canvas.drawPath(
-      metric.extractPath(0, full * draw),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.4
-        ..strokeCap = StrokeCap.round
-        ..color = c.sub.withValues(alpha: 0.42),
-    );
-
-    final nowMin = nowSec / 60;
-    // После Иша впереди уже завтрашний день — пройденного на нём нет.
-    final passedLen = nowMin >= isha
-        ? 0.0
-        : math.min(lengthAt(nowMin), full * draw);
-    if (nowMin > fajr && passedLen > 0) {
-      canvas.drawPath(
-        metric.extractPath(0, passedLen),
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.2
-          ..strokeCap = StrokeCap.round
-          ..color = c.gold.withValues(alpha: 0.85),
-      );
-    }
-
-    // Точки намазов появляются, когда до них дорисовалась кривая.
-    for (final prayer in Prayer.values) {
-      final m = t.times[prayer]!.toDouble();
-      final f = ((m - fajr) / (isha - fajr)).clamp(0.0, 1.0);
-      final show = _seg(draw, f - 0.02, f + 0.06);
-      if (show <= 0) continue;
-      final pt = at(m);
-      final isNext = prayer == next;
-      final isSunrise = prayer == Prayer.sunrise;
-      final r = (isNext ? 5.5 : (isSunrise ? 2.5 : 3.5)) * show;
-      if (isNext) {
-        canvas.drawCircle(
-          pt,
-          r * 3,
-          Paint()
-            ..color = c.gold.withValues(alpha: 0.28 * show)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-        );
-      }
-      canvas.drawCircle(
-        pt,
-        r,
-        Paint()
-          ..color = isNext
-              ? c.gold
-              : (m <= nowMin && nowMin < isha
-                    ? c.gold.withValues(alpha: 0.9)
-                    : c.sub),
-      );
-    }
-
-    // Светило: днём — солнце над горизонтом, в сумерках — тусклая точка.
-    if (nowMin > fajr && nowMin < isha) {
-      final f = (nowMin - fajr) / (isha - fajr);
-      final show = _seg(draw, f - 0.02, f + 0.1);
-      if (show > 0) {
-        final pt = at(nowMin);
-        final day = nowMin > sunrise && nowMin < maghrib;
-        final light = day ? const Color(0xFFFFE2A3) : c.sub;
-        canvas.drawCircle(
-          pt,
-          (day ? 18 : 10) * show,
-          Paint()
-            ..color = light.withValues(alpha: (day ? 0.35 : 0.2) * show)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
-        );
-        canvas.drawCircle(pt, (day ? 7 : 4) * show, Paint()..color = light);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_SunArcPainter o) =>
-      o.draw != draw || o.nowSec ~/ 60 != nowSec ~/ 60 || o.next != next;
-}
-
-class _CityPill extends StatelessWidget {
-  const _CityPill({required this.app, required this.c, required this.kz});
-
-  final AppState app;
-  final JColors c;
-  final bool kz;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: kz ? 'Қаланы өзгерту' : 'Сменить город',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.selectionClick();
-          CityPicker.open(context);
-        },
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 32),
-          padding: const EdgeInsets.symmetric(horizontal: 11),
-          decoration: BoxDecoration(
-            color: c.ink.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(100),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(CupertinoIcons.location_solid, size: 12, color: c.sub),
-              const SizedBox(width: 5),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 110),
-                child: Text(
-                  app.city.displayName(app.lang),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: JType.ui(12.5, w: FontWeight.w600, color: c.ink),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PrayerRow extends StatelessWidget {
-  const _PrayerRow({
-    required this.name,
-    required this.time,
-    required this.isSunrise,
-    required this.isNext,
-    required this.isPast,
-    required this.left,
-    required this.c,
-    required this.onTap,
-  });
-
-  final String name, time;
-  final String? left;
-  final bool isSunrise, isNext, isPast;
-  final JColors c;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    // Восход — граница времени Фаджра, а не намаз: мельче и тише.
-    final color = isNext ? c.gold : (isPast || isSunrise ? c.sub : c.ink);
-    final size = isSunrise ? 13.0 : 16.0;
-    final weight = isNext
-        ? FontWeight.w700
-        : (isSunrise ? FontWeight.w400 : FontWeight.w500);
-    return _ScalePressed(
-      onTap: onTap,
-      child: Container(
-        constraints: BoxConstraints(minHeight: isSunrise ? 34 : 46),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: isNext ? c.gold.withValues(alpha: 0.10) : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: JType.ui(size, w: weight, color: color),
-              ),
-            ),
-            if (left != null)
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: Text(
-                  left!,
-                  style: JType.ui(
-                    12,
-                    w: FontWeight.w600,
-                    color: c.gold.withValues(alpha: 0.9),
-                  ),
-                ),
-              ),
-            Text(
-              time,
-              style: JType.ui(
-                size,
-                w: weight,
-                color: color,
-              ).copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Страница 2: Дела ────────────────────────────────────────────────────────
+// ── Страница 1: Сегодня ─────────────────────────────────────────────────────
 
 enum _DeedState { upcoming, open, done, passed }
 
@@ -889,8 +470,8 @@ class _Deed {
   bool get isCustom => id.startsWith('custom:');
 }
 
-class _DeedsPage extends StatelessWidget {
-  const _DeedsPage({
+class _TodayPage extends StatelessWidget {
+  const _TodayPage({
     required this.enter,
     required this.leave,
     required this.s,
@@ -899,6 +480,7 @@ class _DeedsPage extends StatelessWidget {
     required this.app,
     required this.t,
     required this.nowMin,
+    required this.nowSec,
     required this.onReader,
     required this.onNext,
   });
@@ -909,7 +491,7 @@ class _DeedsPage extends StatelessWidget {
   final DaySurfacePalette palette;
   final AppState app;
   final DayTimes t;
-  final int nowMin;
+  final int nowMin, nowSec;
   final void Function(String) onReader;
   final VoidCallback onNext;
 
@@ -967,8 +549,24 @@ class _DeedsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final kz = s == S.kz;
+
+    // Следующий намаз — тот же расчёт, что у классического списка.
+    Prayer? next;
+    var targetSec = t.times[Prayer.fajr]! * 60 + 86400;
+    for (final prayer in Prayer.values) {
+      final candidate = t.times[prayer]! * 60;
+      if (candidate > nowSec) {
+        next = prayer;
+        targetSec = candidate;
+        break;
+      }
+    }
+    next ??= Prayer.fajr;
+    final left = _pagesDuration(s, ((targetSec - nowSec) / 60).ceil());
+
     final deeds = _deeds();
-    // Главное дело — открытое сейчас, иначе ближайшее следующее.
+    // Главное дело — открытое сейчас, иначе ближайшее следующее. Если на
+    // сегодня таких нет, остаётся просто список — без лишних объявлений.
     _Deed? hero;
     for (final state in const [_DeedState.open, _DeedState.upcoming]) {
       for (final deed in deeds) {
@@ -983,153 +581,311 @@ class _DeedsPage extends StatelessWidget {
       for (final d in deeds)
         if (d != hero) d,
     ];
-    // Экран не прокручивается (свайп — у ленты страниц), поэтому длинный
-    // список своих напоминаний сворачивается в строку «ещё N».
-    const maxRows = 5;
-    final shown = others.take(maxRows).toList();
-    final hidden = others.length - shown.length;
-    final allDone = deeds.every((d) => app.isDone(d.id));
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Beat(
-          enter: enter,
-          leave: leave,
-          at: 0.0,
-          from: const Offset(-18, 0),
-          child: _PageCaption(kz ? 'Бүгінгі істер' : 'Дела сегодня', c: c),
-        ),
-        const Spacer(),
-        _Beat(
-          enter: enter,
-          leave: leave,
-          at: _deedBeats[0] - 0.26,
-          span: 0.4,
-          from: const Offset(0, 40),
-          child: hero != null
-              ? _HeroDeed(
+    return LayoutBuilder(
+      builder: (context, box) {
+        // На маленьких экранах (iPhone SE) — плотнее, чтобы всё поместилось
+        // без прокрутки: свайп принадлежит ленте страниц.
+        final dense = box.maxHeight < 640;
+        final maxRows = dense ? 3 : 4;
+        final shown = others.take(maxRows).toList();
+        final hidden = others.length - shown.length;
+
+        final body = Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _Beat(
+              enter: enter,
+              leave: leave,
+              at: 0.0,
+              from: const Offset(-18, 0),
+              child: _PageCaption(
+                kz ? 'Намаз уақыттары' : 'Время намазов',
+                c: c,
+              ),
+            ),
+            _Beat(
+              enter: enter,
+              leave: leave,
+              at: 0.04,
+              from: const Offset(0, 30),
+              leaveAt: 0.04,
+              child: _SurfaceCard(
+                palette: palette,
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                child: Column(
+                  children: [
+                    for (final (i, prayer) in Prayer.values.indexed)
+                      _Beat(
+                        enter: enter,
+                        leave: leave,
+                        at: _todayBeats[i] - 0.3,
+                        // Строки прилетают попеременно слева и справа и
+                        // сходятся в один столбец.
+                        from: Offset(i.isEven ? -34 : 34, 8),
+                        leaveAt: 0.012 * i,
+                        child: _PrayerRow(
+                          name: s.prayers[i],
+                          time: t.fmt(prayer),
+                          isSunrise: prayer == Prayer.sunrise,
+                          isNext: prayer == next,
+                          isPast:
+                              t.times[prayer]! * 60 <= nowSec && prayer != next,
+                          left: prayer == next
+                              ? (kz ? '$left кейін' : 'через $left')
+                              : null,
+                          dense: dense,
+                          c: c,
+                          onTap: () => _showQuickSettings(
+                            context,
+                            prayer.name,
+                            s.prayers[i],
+                            c,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(height: dense ? 14 : 22),
+            _Beat(
+              enter: enter,
+              leave: leave,
+              at: 0.34,
+              from: const Offset(-18, 0),
+              leaveAt: 0.06,
+              child: _PageCaption(kz ? 'Бүгінгі істер' : 'Дела сегодня', c: c),
+            ),
+            if (hero != null)
+              _Beat(
+                enter: enter,
+                leave: leave,
+                at: _todayBeats[6] - 0.32,
+                span: 0.32,
+                from: const Offset(0, 44),
+                leaveAt: 0.07,
+                child: _HeroDeed(
                   deed: hero,
                   state: _stateOf(hero),
                   nowMin: nowMin,
+                  dense: dense,
                   s: s,
                   c: c,
                   palette: palette,
-                )
-              : _RestCard(allDone: allDone, s: s, c: c, palette: palette),
-        ),
-        const SizedBox(height: 14),
-        if (shown.isNotEmpty)
-          _Beat(
-            enter: enter,
-            leave: leave,
-            at: 0.3,
-            span: 0.3,
-            from: const Offset(0, 30),
-            leaveAt: 0.05,
-            child: _SurfaceCard(
-              palette: palette,
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              child: Column(
-                children: [
-                  for (final (i, deed) in shown.indexed)
-                    _Beat(
-                      enter: enter,
-                      leave: leave,
-                      at:
-                          _deedBeats[math.min(i + 1, _deedBeats.length - 1)] -
-                          0.18,
-                      from: Offset(i.isEven ? 30 : -30, 8),
-                      leaveAt: 0.012 * i,
-                      child: _DeedRow(
-                        deed: deed,
-                        state: _stateOf(deed),
-                        s: s,
-                        c: c,
-                      ),
-                    ),
-                  if (hidden > 0)
-                    _Beat(
-                      enter: enter,
-                      leave: leave,
-                      at: 0.8,
-                      span: 0.2,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => RemindersScreen.open(context),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Text(
-                            kz ? 'Тағы $hidden' : 'Ещё $hidden',
-                            textAlign: TextAlign.center,
+                ),
+              ),
+            if (hero != null && shown.isNotEmpty) const SizedBox(height: 10),
+            if (shown.isNotEmpty)
+              _Beat(
+                enter: enter,
+                leave: leave,
+                at: 0.5,
+                from: const Offset(0, 30),
+                leaveAt: 0.08,
+                child: _SurfaceCard(
+                  palette: palette,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 3,
+                  ),
+                  child: Column(
+                    children: [
+                      for (final (i, deed) in shown.indexed)
+                        _Beat(
+                          enter: enter,
+                          leave: leave,
+                          at:
+                              _todayBeats[math.min(
+                                7 + i,
+                                _todayBeats.length - 1,
+                              )] -
+                              0.3,
+                          from: Offset(i.isEven ? 30 : -30, 8),
+                          leaveAt: 0.08 + 0.012 * i,
+                          child: _DeedRow(
+                            deed: deed,
+                            state: _stateOf(deed),
+                            s: s,
+                            c: c,
+                          ),
+                        ),
+                      if (hidden > 0)
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => RemindersScreen.open(context),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 9),
+                            child: Text(
+                              kz ? 'Тағы $hidden' : 'Ещё $hidden',
+                              textAlign: TextAlign.center,
+                              style: JType.ui(
+                                13,
+                                w: FontWeight.w600,
+                                color: c.sub,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            // На маленьком экране ссылка уступает место: кнопка «Напоминания»
+            // есть и на странице постоянства.
+            if (!dense)
+              _Beat(
+                enter: enter,
+                leave: leave,
+                at: 0.66,
+                leaveAt: 0.1,
+                child: Semantics(
+                  button: true,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      RemindersScreen.open(context);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(CupertinoIcons.bell, size: 14, color: c.sub),
+                          const SizedBox(width: 6),
+                          Text(
+                            kz
+                                ? 'Еске салуларды баптау'
+                                : 'Настроить напоминания',
                             style: JType.ui(
                               13,
                               w: FontWeight.w600,
                               color: c.sub,
                             ),
                           ),
-                        ),
+                        ],
                       ),
                     ),
-                ],
+                  ),
+                ),
               ),
-            ),
-          ),
-        const SizedBox(height: 6),
-        _Beat(
-          enter: enter,
-          leave: leave,
-          at: 0.66,
-          span: 0.3,
-          child: Semantics(
-            button: true,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                HapticFeedback.selectionClick();
-                RemindersScreen.open(context);
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(CupertinoIcons.bell, size: 14, color: c.sub),
-                    const SizedBox(width: 6),
-                    Text(
-                      kz ? 'Еске салуларды баптау' : 'Настроить напоминания',
-                      style: JType.ui(13, w: FontWeight.w600, color: c.sub),
-                    ),
-                  ],
+          ],
+        );
+        // Содержимое по центру; если не помещается (маленький экран, много
+        // своих напоминаний) — ужимается целиком, а не обрезается.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, inner) => FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: SizedBox(width: inner.maxWidth, child: body),
                 ),
               ),
             ),
-          ),
-        ),
-        const Spacer(flex: 2),
-        _Beat(
-          enter: enter,
-          leave: leave,
-          at: 0.7,
-          span: 0.3,
-          from: const Offset(0, 10),
-          child: _NextHint(
-            label: _sentenceCase(s.notebookTitle),
-            c: c,
-            onTap: onNext,
-          ),
-        ),
-      ],
+            _Beat(
+              enter: enter,
+              leave: leave,
+              at: 0.7,
+              from: const Offset(0, 10),
+              child: _NextHint(
+                label: _sentenceCase(s.notebookTitle),
+                c: c,
+                onTap: onNext,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
-/// Главная карточка страницы дел: что сделать сейчас или следующим.
+class _PrayerRow extends StatelessWidget {
+  const _PrayerRow({
+    required this.name,
+    required this.time,
+    required this.isSunrise,
+    required this.isNext,
+    required this.isPast,
+    required this.left,
+    required this.dense,
+    required this.c,
+    required this.onTap,
+  });
+
+  final String name, time;
+  final String? left;
+  final bool isSunrise, isNext, isPast, dense;
+  final JColors c;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    // Восход — граница времени Фаджра, а не намаз: мельче и тише.
+    final color = isNext ? c.gold : (isPast || isSunrise ? c.sub : c.ink);
+    final size = isSunrise ? 13.0 : 16.0;
+    final weight = isNext
+        ? FontWeight.w700
+        : (isSunrise ? FontWeight.w400 : FontWeight.w500);
+    return _ScalePressed(
+      onTap: onTap,
+      child: Container(
+        constraints: BoxConstraints(
+          minHeight: isSunrise ? (dense ? 28 : 32) : (dense ? 40 : 44),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: isNext ? c.gold.withValues(alpha: 0.10) : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: JType.ui(size, w: weight, color: color),
+              ),
+            ),
+            if (left != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Text(
+                  left!,
+                  style: JType.ui(
+                    12,
+                    w: FontWeight.w600,
+                    color: c.gold.withValues(alpha: 0.9),
+                  ),
+                ),
+              ),
+            Text(
+              time,
+              style: JType.ui(
+                size,
+                w: weight,
+                color: color,
+              ).copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Главная карточка дел: что сделать сейчас или следующим.
 class _HeroDeed extends StatelessWidget {
   const _HeroDeed({
     required this.deed,
     required this.state,
     required this.nowMin,
+    required this.dense,
     required this.s,
     required this.c,
     required this.palette,
@@ -1138,6 +894,7 @@ class _HeroDeed extends StatelessWidget {
   final _Deed deed;
   final _DeedState state;
   final int nowMin;
+  final bool dense;
   final S s;
   final JColors c;
   final DaySurfacePalette palette;
@@ -1149,12 +906,11 @@ class _HeroDeed extends StatelessWidget {
     final caption = open
         ? (kz ? 'Қазір' : 'Сейчас')
         : (kz ? 'Келесі' : 'Далее');
-    final at = kz
-        ? '${_pagesHhmm(deed.minute)} уақыты'
-        : 'В ${_pagesHhmm(deed.minute)}';
     final String detail;
     if (deed.isCustom) {
-      detail = at;
+      detail = kz
+          ? '${_pagesHhmm(deed.minute)} уақыты'
+          : 'В ${_pagesHhmm(deed.minute)}';
     } else if (open) {
       final left = _pagesDuration(s, deed.end - nowMin);
       detail = kz
@@ -1182,12 +938,17 @@ class _HeroDeed extends StatelessWidget {
           deed.onTap();
         },
         child: Container(
-          padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
+          padding: EdgeInsets.fromLTRB(
+            18,
+            dense ? 12 : 14,
+            14,
+            dense ? 12 : 14,
+          ),
           decoration: BoxDecoration(
             color: open
                 ? c.gold.withValues(alpha: palette.isLight ? 0.13 : 0.12)
                 : c.ink.withValues(alpha: palette.isLight ? 0.06 : 0.07),
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: open ? c.gold.withValues(alpha: 0.5) : c.hair,
               width: open ? 1.1 : 0.8,
@@ -1198,9 +959,9 @@ class _HeroDeed extends StatelessWidget {
             children: [
               Text(
                 caption.toUpperCase(),
-                style: JType.caption(open ? c.gold : c.sub, size: 11),
+                style: JType.caption(open ? c.gold : c.sub, size: 10.5),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 5),
               Row(
                 children: [
                   Expanded(
@@ -1211,14 +972,14 @@ class _HeroDeed extends StatelessWidget {
                           deed.label,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: JType.ui(19, w: FontWeight.w700, color: c.ink),
+                          style: JType.ui(17, w: FontWeight.w700, color: c.ink),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 2),
                         Text(
                           detail,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: JType.ui(13, color: open ? c.gold : c.sub),
+                          style: JType.ui(12.5, color: open ? c.gold : c.sub),
                         ),
                       ],
                     ),
@@ -1226,8 +987,8 @@ class _HeroDeed extends StatelessWidget {
                   const SizedBox(width: 12),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 9,
+                      horizontal: 15,
+                      vertical: 8,
                     ),
                     decoration: BoxDecoration(
                       color: open ? c.gold : c.ink.withValues(alpha: 0.10),
@@ -1236,7 +997,7 @@ class _HeroDeed extends StatelessWidget {
                     child: Text(
                       action,
                       style: JType.ui(
-                        13.5,
+                        13,
                         w: FontWeight.w700,
                         color: open
                             ? (palette.isLight ? Colors.white : c.bg)
@@ -1246,8 +1007,8 @@ class _HeroDeed extends StatelessWidget {
                   ),
                 ],
               ),
-              if (open && !deed.isCustom) ...[
-                const SizedBox(height: 14),
+              if (open && !deed.isCustom && !dense) ...[
+                const SizedBox(height: 12),
                 // Сколько времени окна уже прошло — справка, не оценка.
                 ClipRRect(
                   borderRadius: BorderRadius.circular(2),
@@ -1272,63 +1033,6 @@ class _HeroDeed extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Когда открытых и будущих дел не осталось.
-class _RestCard extends StatelessWidget {
-  const _RestCard({
-    required this.allDone,
-    required this.s,
-    required this.c,
-    required this.palette,
-  });
-
-  final bool allDone;
-  final S s;
-  final JColors c;
-  final DaySurfacePalette palette;
-
-  @override
-  Widget build(BuildContext context) {
-    final kz = s == S.kz;
-    final title = allDone
-        ? (kz ? 'Бүгінгі істер белгіленді' : 'Дела на сегодня отмечены')
-        : (kz ? 'Бүгінгі уақыттар өтті' : 'Окна на сегодня закрыты');
-    final sub = kz
-        ? 'Ертең таңғы зікірлер — бамдаттан кейін'
-        : 'Завтра утренние зикры — после Фаджра';
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: c.ink.withValues(alpha: palette.isLight ? 0.06 : 0.07),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: c.hair, width: 0.8),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            allDone ? CupertinoIcons.checkmark_seal : CupertinoIcons.moon_stars,
-            size: 26,
-            color: allDone ? c.green : c.gold,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: JType.ui(17, w: FontWeight.w700, color: c.ink),
-                ),
-                const SizedBox(height: 3),
-                Text(sub, style: JType.ui(13, color: c.sub)),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1372,7 +1076,7 @@ class _DeedRow extends StatelessWidget {
                 deed.onTap();
               },
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 46),
+          constraints: const BoxConstraints(minHeight: 44),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Row(
@@ -1418,7 +1122,7 @@ class _DeedRow extends StatelessWidget {
   }
 }
 
-// ── Страница 3: Постоянство ─────────────────────────────────────────────────
+// ── Страница 2: Постоянство ─────────────────────────────────────────────────
 
 class _ConsistencyPage extends StatelessWidget {
   const _ConsistencyPage({
@@ -1444,20 +1148,13 @@ class _ConsistencyPage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Beat(
-          enter: enter,
-          leave: leave,
-          at: 0.0,
-          from: const Offset(-18, 0),
-          child: _PageCaption(s.notebookTitle, c: c),
-        ),
         const Spacer(),
         // Хадис о постоянстве — тот же утверждённый текст, что в онбординге.
         _Beat(
           enter: enter,
           leave: leave,
-          at: _consistencyBeats[0] - 0.3,
-          span: 0.45,
+          at: _consistencyBeats[0] - 0.34,
+          span: 0.4,
           from: const Offset(0, 18),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1480,12 +1177,12 @@ class _ConsistencyPage extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 22),
         _Beat(
           enter: enter,
           leave: leave,
-          at: _consistencyBeats[1] - 0.28,
-          span: 0.4,
+          at: _consistencyBeats[1] - 0.3,
+          span: 0.36,
           from: const Offset(0, 36),
           leaveAt: 0.05,
           child: _SurfaceCard(
@@ -1524,12 +1221,11 @@ class _ConsistencyPage extends StatelessWidget {
             ),
           ),
         ),
-        const Spacer(flex: 2),
+        const Spacer(),
         _Beat(
           enter: enter,
           leave: leave,
-          at: _consistencyBeats[2] - 0.2,
-          span: 0.3,
+          at: _consistencyBeats[2] - 0.24,
           from: const Offset(0, 16),
           child: Row(
             children: [

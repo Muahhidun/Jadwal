@@ -64,12 +64,12 @@ class _HomeScreenState extends State<HomeScreen>
     duration: const Duration(milliseconds: 420),
   );
 
-  /// Последняя страница вниз: 1 — классический экран дня, 3 — страницы
-  /// Намазы → Дела → Постоянство (прототип, только телефон).
+  /// Последняя страница вниз: 1 — классический экран дня, 2 — страницы
+  /// Сегодня → Постоянство (прототип, только телефон).
   int get _maxPage {
     // Читаем без подписки: геттер вызывается и из обработчиков жестов.
     final app = context.getInheritedWidgetOfExactType<AppScope>()!.notifier!;
-    return app.dayLayout == 'pages' && !isExpandedLayout(context) ? 3 : 1;
+    return app.dayLayout == 'pages' && !isExpandedLayout(context) ? 2 : 1;
   }
 
   double get swipeProgress => _p.value;
@@ -89,8 +89,22 @@ class _HomeScreenState extends State<HomeScreen>
     final normalizedTarget = target.clamp(-1.0, _maxPage.toDouble());
     final serial = ++_pageAnimationSerial;
     final settlesOnPage = _maxPage > 1 && normalizedTarget >= 1;
+    // В режиме страниц доводка неспешная: иначе при обычном свайпе
+    // хореография элементов пролетает незаметно. Длительность — по
+    // оставшемуся пути, кривая без резкого рывка в начале.
+    final choreographed =
+        _maxPage > 1 && (normalizedTarget > 0 || _p.value > 0);
+    final remaining = (normalizedTarget - _p.value).abs();
     _p
-        .animateTo(normalizedTarget, curve: Curves.easeOutCubic)
+        .animateTo(
+          normalizedTarget,
+          duration: choreographed
+              ? Duration(milliseconds: (260 + 760 * remaining).round())
+              : null,
+          curve: choreographed
+              ? const Cubic(0.3, 0.1, 0.25, 1.0)
+              : Curves.easeOutCubic,
+        )
         .whenCompleteOrCancel(() {
           if (!mounted || serial != _pageAnimationSerial) return;
           if ((_p.value - normalizedTarget).abs() < 0.02) {
@@ -609,15 +623,13 @@ class _HomeScreenState extends State<HomeScreen>
                                         ? const [
                                             'Құбыла',
                                             'Таймер',
-                                            'Намаздар',
-                                            'Істер',
+                                            'Бүгін',
                                             'Тұрақтылық',
                                           ]
                                         : const [
                                             'Кибла',
                                             'Таймер',
-                                            'Намазы',
-                                            'Дела',
+                                            'Сегодня',
                                             'Постоянство',
                                           ],
                                   ),
@@ -677,8 +689,13 @@ class _HeroTimer extends StatelessWidget {
     final value = v >= 3600
         ? '${v ~/ 3600}:${mm.toString().padLeft(2, '0')}:$ss'
         : '$mm:$ss';
+    final choreo =
+        p > 0 && app.dayLayout == 'pages' && !isExpandedLayout(context);
+    final pl = choreo ? p.clamp(0.0, 1.0) : 0.0;
     final fade = p < 0
         ? (1 + p * 2.2).clamp(0.0, 1.0)
+        : choreo
+        ? 1.0
         : (1 - p * 1.6).clamp(0.0, 1.0);
     final expanded = isExpandedLayout(context);
     final timerSize = (v >= 3600 ? 76.0 : 84.0) * (expanded ? 1.12 : 1.0);
@@ -688,27 +705,47 @@ class _HeroTimer extends StatelessWidget {
       // К экрану дня таймер переезжает в компактную верхнюю позицию. К
       // Кибле он движется 1:1 вместе с центральной страницей и не может
       // остаться подписью у нижнего края верхнего экрана.
-      top: p < 0 ? h * 0.35 - h * p : h * 0.35 - h * p * 0.6,
+      top: p < 0 ? h * 0.35 - h * p : h * 0.35 - h * p * (choreo ? 0.2 : 0.6),
       child: IgnorePointer(
         child: Opacity(
           opacity: fade,
           child: Column(
             children: [
-              Text(
-                caption,
-                style: JType.caption(
-                  fg.accent,
-                  size: expanded ? 18 : 15,
-                ).copyWith(shadows: fg.shadows),
+              _Leave(
+                p: pl,
+                start: 0.03,
+                span: 0.26,
+                to: const Offset(0, -36),
+                child: Text(
+                  caption,
+                  style: JType.caption(
+                    fg.accent,
+                    size: expanded ? 18 : 15,
+                  ).copyWith(shadows: fg.shadows),
+                ),
               ),
               const SizedBox(height: 6),
-              _RollingTimerText(
-                value: value,
-                size: timerSize,
-                color: fg.text,
-                shadows: fg.shadows,
+              // Цифры таймера отступают вглубь — уменьшаются и растворяются.
+              _Leave(
+                p: pl,
+                start: 0.1,
+                span: 0.36,
+                to: const Offset(0, -70),
+                scaleTo: 0.78,
+                child: _RollingTimerText(
+                  value: value,
+                  size: timerSize,
+                  color: fg.text,
+                  shadows: fg.shadows,
+                ),
               ),
-              _DoneChips(app: app, s: s, fg: fg),
+              _Leave(
+                p: pl,
+                start: 0.0,
+                span: 0.24,
+                to: const Offset(0, 40),
+                child: _DoneChips(app: app, s: s, fg: fg),
+              ),
             ],
           ),
         ),
@@ -955,6 +992,11 @@ class _HomeLayer extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = currentWindow(t, nowMin, (id) => app.isDone(id.name));
     final fade = (1 - p * 1.4).clamp(0.0, 1.0);
+    // Прототип «Страницы»: вниз экран уходит не одной картинкой, а по
+    // элементам — каждый в свою сторону и в своё время.
+    final choreo = _choreo(context) && p > 0;
+    final layerShift = choreo ? -h * p * 0.15 : -h * p;
+    final layerFade = choreo ? 1.0 : fade;
 
     // Верхний блок окна (над геройским таймером): caption, title, sub.
     Widget topBlock;
@@ -1016,15 +1058,26 @@ class _HomeLayer extends StatelessWidget {
       );
       // Кнопка окна — ниже геройского таймера.
       return Transform.translate(
-        offset: Offset(0, -h * p),
+        offset: Offset(0, layerShift),
         child: Opacity(
-          opacity: fade,
+          opacity: layerFade,
           child: SafeArea(
             bottom: false,
             child: Stack(
               children: [
                 _header(context),
-                Positioned(left: 0, right: 0, top: h * 0.16, child: topBlock),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: h * 0.16,
+                  child: _Leave(
+                    p: _pl(context),
+                    start: 0.02,
+                    to: const Offset(0, -80),
+                    scaleTo: 0.9,
+                    child: topBlock,
+                  ),
+                ),
                 Positioned(
                   left: 0,
                   right: 0,
@@ -1032,51 +1085,57 @@ class _HomeLayer extends StatelessWidget {
                   // поэтому действия держим в свободной зоне сразу под
                   // таймером, а не поверх башни Абрадж аль-Бейт.
                   top: actionTop,
-                  child: Column(
-                    children: [
-                      GestureDetector(
-                        onTap: onBtn,
-                        child: Container(
-                          key: const ValueKey('home-window-action'),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 44,
-                            vertical: 16,
-                          ),
-                          decoration: BoxDecoration(
-                            color: c.btnbg,
-                            borderRadius: BorderRadius.circular(100),
-                          ),
-                          child: Text(
-                            btn,
-                            style: JType.ui(
-                              16,
-                              w: FontWeight.w700,
-                              color: c.btnink,
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (link != null) ...[
-                        const SizedBox(height: 16),
+                  child: _Leave(
+                    p: _pl(context),
+                    start: 0.06,
+                    to: const Offset(0, 90),
+                    scaleTo: 0.92,
+                    child: Column(
+                      children: [
                         GestureDetector(
-                          onTap: onLink,
-                          child: Text(
-                            link,
-                            style: JType.ui(14, color: fg.text).copyWith(
-                              decoration: TextDecoration.underline,
-                              decorationColor: fg.text,
-                              shadows: const [
-                                Shadow(
-                                  color: Colors.black26,
-                                  offset: Offset(0, 0.5),
-                                  blurRadius: 2.0,
-                                ),
-                              ],
+                          onTap: onBtn,
+                          child: Container(
+                            key: const ValueKey('home-window-action'),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 44,
+                              vertical: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: c.btnbg,
+                              borderRadius: BorderRadius.circular(100),
+                            ),
+                            child: Text(
+                              btn,
+                              style: JType.ui(
+                                16,
+                                w: FontWeight.w700,
+                                color: c.btnink,
+                              ),
                             ),
                           ),
                         ),
+                        if (link != null) ...[
+                          const SizedBox(height: 16),
+                          GestureDetector(
+                            onTap: onLink,
+                            child: Text(
+                              link,
+                              style: JType.ui(14, color: fg.text).copyWith(
+                                decoration: TextDecoration.underline,
+                                decorationColor: fg.text,
+                                shadows: const [
+                                  Shadow(
+                                    color: Colors.black26,
+                                    offset: Offset(0, 0.5),
+                                    blurRadius: 2.0,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
                 _swipeHint(context),
@@ -1089,9 +1148,9 @@ class _HomeLayer extends StatelessWidget {
 
     // Нет окна: бейдж «всё выполнено» (если есть) + подпись под таймером.
     return Transform.translate(
-      offset: Offset(0, -h * p),
+      offset: Offset(0, layerShift),
       child: Opacity(
-        opacity: fade,
+        opacity: layerFade,
         child: SafeArea(
           bottom: false,
           child: Stack(children: [_header(context), _swipeHint(context)]),
@@ -1109,95 +1168,116 @@ class _HomeLayer extends StatelessWidget {
       // Город, Кибла и календарная дата — самостоятельные элементы управления.
       // Их вертикальные жесты не должны попадать в распознаватель трёхэкранной
       // ленты: иначе небольшой сдвиг пальца при тапе менял экран вместо даты.
-      child: Listener(
-        onPointerDown: (_) => onHeaderPointerDown(),
-        child: GestureDetector(
-          key: const ValueKey('home-header-gesture-shield'),
-          behavior: HitTestBehavior.opaque,
-          onVerticalDragStart: (_) {},
-          onVerticalDragUpdate: (_) {},
-          onVerticalDragEnd: (_) {},
-          onVerticalDragCancel: () {},
-          child: Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: onCity,
-                  behavior: HitTestBehavior.opaque,
-                  child: Row(
-                    children: [
-                      Icon(Icons.place_outlined, size: 14, color: fg.faint),
-                      const SizedBox(width: 3),
-                      Flexible(
-                        child: Text(
-                          app.city.displayName(app.lang),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: style,
+      child: _Leave(
+        p: _pl(context),
+        start: 0.0,
+        span: 0.22,
+        to: const Offset(0, -24),
+        scaleTo: 1.0,
+        child: Listener(
+          onPointerDown: (_) => onHeaderPointerDown(),
+          child: GestureDetector(
+            key: const ValueKey('home-header-gesture-shield'),
+            behavior: HitTestBehavior.opaque,
+            onVerticalDragStart: (_) {},
+            onVerticalDragUpdate: (_) {},
+            onVerticalDragEnd: (_) {},
+            onVerticalDragCancel: () {},
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onCity,
+                    behavior: HitTestBehavior.opaque,
+                    child: Row(
+                      children: [
+                        Icon(Icons.place_outlined, size: 14, color: fg.faint),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
+                            app.city.displayName(app.lang),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: style,
+                          ),
                         ),
-                      ),
-                      Icon(
-                        Icons.keyboard_arrow_down,
-                        size: 14,
-                        color: fg.faint,
-                      ),
-                    ],
+                        Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 14,
+                          color: fg.faint,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              GestureDetector(
-                onTap: onQibla,
-                behavior: HitTestBehavior.opaque,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.navigation_outlined,
-                        size: 14,
-                        color: fg.faint,
-                      ),
-                      const SizedBox(width: 3),
-                      Text('Кибла ↑', style: style),
-                    ],
-                  ),
-                ),
-              ),
-              Expanded(
-                child: GestureDetector(
-                  key: const ValueKey('home-date-toggle'),
-                  onTap: onToggleDate,
+                GestureDetector(
+                  onTap: onQibla,
                   behavior: HitTestBehavior.opaque,
-                  child: Text(
-                    dateLine(s, schedule.now(), app.dateGregorian),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.right,
-                    style: style,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.navigation_outlined,
+                          size: 14,
+                          color: fg.faint,
+                        ),
+                        const SizedBox(width: 3),
+                        Text('Кибла ↑', style: style),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+                Expanded(
+                  child: GestureDetector(
+                    key: const ValueKey('home-date-toggle'),
+                    onTap: onToggleDate,
+                    behavior: HitTestBehavior.opaque,
+                    child: Text(
+                      dateLine(s, schedule.now(), app.dateGregorian),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: style,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
+  bool _choreo(BuildContext context) =>
+      app.dayLayout == 'pages' && !isExpandedLayout(context);
+
+  /// Прогресс ухода вниз для хореографии; вне режима страниц — 0 (без эффекта).
+  double _pl(BuildContext context) =>
+      _choreo(context) ? p.clamp(0.0, 1.0) : 0.0;
+
   Widget _swipeHint(BuildContext context) => Positioned(
     left: 0,
     right: 0,
     bottom: 8,
-    child: SwipeHint(
-      label: s.swipe,
-      direction: SwipeHintDirection.up,
-      // Подсказка лежит поверх архитектуры, поэтому не наследует дневной
-      // тёмный foreground неба: её прежний светлый вид читается стабильнее.
-      color: const Color(0xFFF2EFE6),
-      shadows: const [
-        Shadow(color: Colors.black54, offset: Offset(0, 1), blurRadius: 2.5),
-      ],
-      onTap: onExpand,
+    child: _Leave(
+      p: _pl(context),
+      start: 0.0,
+      span: 0.15,
+      to: const Offset(0, 24),
+      scaleTo: 1.0,
+      child: SwipeHint(
+        label: s.swipe,
+        direction: SwipeHintDirection.up,
+        // Подсказка лежит поверх архитектуры, поэтому не наследует дневной
+        // тёмный foreground неба: её прежний светлый вид читается стабильнее.
+        color: const Color(0xFFF2EFE6),
+        shadows: const [
+          Shadow(color: Colors.black54, offset: Offset(0, 1), blurRadius: 2.5),
+        ],
+        onTap: onExpand,
+      ),
     ),
   );
 }
