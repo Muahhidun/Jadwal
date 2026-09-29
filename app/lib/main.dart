@@ -26,7 +26,7 @@ Future<void> main() async {
   final schedule = ScheduleService(prefs);
   final notifier = NotificationService(schedule);
   gNotifier = notifier;
-  await notifier.init();
+  await notifier.init(lang: state.lang);
   runApp(JadwalApp(state: state, schedule: schedule));
 }
 

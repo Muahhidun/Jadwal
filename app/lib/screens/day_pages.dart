@@ -159,6 +159,8 @@ class _PagesDayLayerState extends State<_PagesDayLayer> {
     ])
       for (final b in beats)
         page - 1 + _enterStart(page) + b * (1 - _enterStart(page)),
+    // Кибла наверху: щелчок, когда встаёт подсказка и когда «вырос» компас.
+    for (final b in const [0.3, 0.75]) -(0.45 + b * 0.55),
   ];
 
   @override

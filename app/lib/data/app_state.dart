@@ -371,6 +371,13 @@ class AppState extends ChangeNotifier {
     return d.contains('morning') && d.contains('evening');
   }
 
+  /// Перечитать настройки с диска: дело могли отметить кнопкой в
+  /// уведомлении, пока приложение было в фоне (другим движком).
+  Future<void> reloadFromDisk() async {
+    await _prefs.reload();
+    notifyListeners();
+  }
+
   void markDone(String task) => _set(() {
     final list = _prefs.getStringList('done:$_todayKey') ?? <String>[];
     if (!list.contains(task)) {

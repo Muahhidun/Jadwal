@@ -28,6 +28,11 @@ Future<void> _render(
   double ratio = 3,
 }) async {
   await _fonts();
+  // В тестовой среде нет компаса: отдаём пустой поток.
+  tester.binding.defaultBinaryMessenger.setMockStreamHandler(
+    const EventChannel('hemanthraj/flutter_compass'),
+    MockStreamHandler.inline(onListen: (_, _) {}),
+  );
   tester.view.physicalSize = physical;
   tester.view.devicePixelRatio = ratio;
   addTearDown(tester.view.resetPhysicalSize);
@@ -76,6 +81,8 @@ void main() {
       1.0: 'p_04_today',
       1.5: 'p_05_mid',
       2.0: 'p_06_consistency',
+      -0.3: 'p_07a_to_qibla',
+      -0.7: 'p_07b_to_qibla',
       -1.0: 'p_07_qibla',
     });
   });

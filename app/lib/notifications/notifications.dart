@@ -1,4 +1,8 @@
+import 'dart:convert';
+
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -49,6 +53,211 @@ String notificationTargetFor(String reminderId) => switch (reminderId) {
   'morning' || 'evening' || 'kahf' => reminderId,
   _ => '',
 };
+
+// ── Кнопки в уведомлениях ────────────────────────────────────────────────────
+// У напоминаний о делах (зикры, аль-Кахф, час дуа, свои напоминания) внизу две
+// кнопки: «Выполнено» отмечает дело прямо из уведомления, «Через 10 мин»
+// присылает то же напоминание повторно. Уведомления о времени намаза — без
+// кнопок: это справка, а не дело.
+
+const kTaskCategory = 'dauam_task';
+const kActionDone = 'done';
+const kActionSnooze = 'snooze';
+const kSnoozeMinutes = 10;
+const _snoozeKey = 'notif:snoozes';
+const _builtInPrayerIds = {
+  'fajr',
+  'sunrise',
+  'dhuhr',
+  'asr',
+  'maghrib',
+  'isha',
+};
+
+/// Ключ отметки дела для напоминания: как в AppState.markDone.
+String notificationTaskFor(String reminderId) {
+  if (_builtInPrayerIds.contains(reminderId)) return '';
+  if (const {'morning', 'evening', 'kahf', 'dua'}.contains(reminderId)) {
+    return reminderId;
+  }
+  return 'custom:$reminderId';
+}
+
+/// Что лежит в уведомлении: что открыть по тапу, какое дело и за какой день
+/// отметить, и текст — чтобы повторить его при «отложить».
+@immutable
+class NotificationPayload {
+  const NotificationPayload({
+    this.open = '',
+    this.task = '',
+    this.date = '',
+    this.title = '',
+    this.body = '',
+  });
+
+  final String open, task, date, title, body;
+
+  String encode() =>
+      jsonEncode({'o': open, 't': task, 'd': date, 'ti': title, 'b': body});
+
+  /// Старые уведомления (до кнопок) несли только id сборника.
+  static NotificationPayload parse(String? raw) {
+    if (raw == null || raw.isEmpty) return const NotificationPayload();
+    if (!raw.startsWith('{')) return NotificationPayload(open: raw);
+    try {
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      return NotificationPayload(
+        open: m['o'] as String? ?? '',
+        task: m['t'] as String? ?? '',
+        date: m['d'] as String? ?? '',
+        title: m['ti'] as String? ?? '',
+        body: m['b'] as String? ?? '',
+      );
+    } catch (_) {
+      return const NotificationPayload();
+    }
+  }
+}
+
+String _dayKey(DateTime d) => '${d.year}-${d.month}-${d.day}';
+
+/// Кнопка нажата, когда приложение выгружено: система поднимает отдельный
+/// фоновый движок и вызывает эту функцию. Интерфейс при этом не открывается.
+@pragma('vm:entry-point')
+Future<void> notificationActionBackground(NotificationResponse response) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await applyNotificationAction(response, FlutterLocalNotificationsPlugin());
+}
+
+/// Общая обработка кнопок — и в фоне, и при открытом приложении.
+Future<void> applyNotificationAction(
+  NotificationResponse response,
+  FlutterLocalNotificationsPlugin plugin,
+) async {
+  final action = response.actionId;
+  if (action != kActionDone && action != kActionSnooze) return;
+  final payload = NotificationPayload.parse(response.payload);
+  if (payload.task.isEmpty) return;
+  final prefs = await SharedPreferences.getInstance();
+
+  if (action == kActionDone) {
+    final day = payload.date.isNotEmpty
+        ? payload.date
+        : _dayKey(DateTime.now());
+    final key = 'done:$day';
+    final list = prefs.getStringList(key) ?? <String>[];
+    if (!list.contains(payload.task)) {
+      list.add(payload.task);
+      await prefs.setStringList(key, list);
+    }
+    // Дело сделано — повторное «до конца окна 30 минут» за этот день и
+    // отложенные копии больше не нужны.
+    try {
+      for (final pending in await plugin.pendingNotificationRequests()) {
+        final other = NotificationPayload.parse(pending.payload);
+        if (other.task == payload.task && other.date == payload.date) {
+          await plugin.cancel(id: pending.id);
+        }
+      }
+    } catch (_) {}
+    await _dropSnoozes(prefs, (s) => s.payload.task == payload.task);
+    return;
+  }
+
+  // Отложить: то же напоминание через 10 минут. Время ставим в UTC — для
+  // разового уведомления часовой пояс устройства не нужен.
+  tzdata.initializeTimeZones();
+  final at = DateTime.now().add(const Duration(minutes: kSnoozeMinutes));
+  final id = 950000 + (at.millisecondsSinceEpoch ~/ 1000) % 40000;
+  await _scheduleSnooze(plugin, id, at, payload);
+  final snoozes = _readSnoozes(prefs)
+    ..removeWhere((s) => !s.at.isAfter(DateTime.now()))
+    ..add(_Snooze(id, at, payload));
+  await prefs.setString(
+    _snoozeKey,
+    jsonEncode([for (final s in snoozes) s.toJson()]),
+  );
+}
+
+@immutable
+class _Snooze {
+  const _Snooze(this.id, this.at, this.payload);
+  final int id;
+  final DateTime at;
+  final NotificationPayload payload;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'at': at.millisecondsSinceEpoch,
+    'p': payload.encode(),
+  };
+}
+
+List<_Snooze> _readSnoozes(SharedPreferences prefs) {
+  try {
+    final raw = prefs.getString(_snoozeKey);
+    if (raw == null) return [];
+    return [
+      for (final m in (jsonDecode(raw) as List).cast<Map<String, dynamic>>())
+        _Snooze(
+          m['id'] as int,
+          DateTime.fromMillisecondsSinceEpoch(m['at'] as int),
+          NotificationPayload.parse(m['p'] as String?),
+        ),
+    ];
+  } catch (_) {
+    return [];
+  }
+}
+
+Future<void> _dropSnoozes(
+  SharedPreferences prefs,
+  bool Function(_Snooze) where,
+) async {
+  final left = _readSnoozes(prefs)..removeWhere(where);
+  await prefs.setString(
+    _snoozeKey,
+    jsonEncode([for (final s in left) s.toJson()]),
+  );
+}
+
+Future<void> _scheduleSnooze(
+  FlutterLocalNotificationsPlugin plugin,
+  int id,
+  DateTime at,
+  NotificationPayload payload,
+) async {
+  await plugin.zonedSchedule(
+    id: id,
+    scheduledDate: tz.TZDateTime.from(at.toUtc(), tz.UTC),
+    notificationDetails: _taskDetails(),
+    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    title: payload.title,
+    body: payload.body,
+    payload: payload.encode(),
+  );
+}
+
+NotificationDetails _taskDetails({String lang = 'ru'}) => NotificationDetails(
+  android: AndroidNotificationDetails(
+    'jadwal_worship',
+    'Поклонение',
+    channelDescription: 'Напоминания об окнах зикра и намазах',
+    importance: Importance.high,
+    priority: Priority.high,
+    actions: [
+      AndroidNotificationAction(
+        kActionDone,
+        lang == 'kz' ? 'Орындалды' : 'Выполнено',
+      ),
+      AndroidNotificationAction(
+        kActionSnooze,
+        lang == 'kz' ? '10 минуттан кейін' : 'Через 10 мин',
+      ),
+    ],
+  ),
+  iOS: const DarwinNotificationDetails(categoryIdentifier: kTaskCategory),
+);
 
 /// Перепланировать очередь из текущего состояния приложения.
 Future<void> syncNotifications(AppState app, ScheduleService schedule) async {
@@ -134,7 +343,15 @@ class NotificationService {
   /// Куда вести по тапу на уведомление зикров (id сборника) — читает main.
   String? pendingCollection;
 
-  Future<void> init() async {
+  /// Главный экран подписывается, чтобы открыть чтение по тапу, даже когда
+  /// приложение было в фоне (раньше тап в этом случае терялся).
+  void Function(String target)? onOpen;
+
+  /// Кнопка «Выполнено» нажата при запущенном приложении — обновить экран.
+  VoidCallback? onTaskChanged;
+
+  Future<void> init({String lang = 'ru'}) async {
+    final kz = lang == 'kz';
     tzdata.initializeTimeZones();
     try {
       final info = await FlutterTimezone.getLocalTimezone();
@@ -142,26 +359,57 @@ class NotificationService {
     } catch (_) {
       tz.setLocalLocation(tz.getLocation('Asia/Almaty'));
     }
-    const settings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    final settings = InitializationSettings(
+      android: const AndroidInitializationSettings('@mipmap/ic_launcher'),
       iOS: DarwinInitializationSettings(
         requestAlertPermission: false,
         requestBadgePermission: false,
         requestSoundPermission: false,
+        notificationCategories: [
+          DarwinNotificationCategory(
+            kTaskCategory,
+            actions: [
+              DarwinNotificationAction.plain(
+                kActionDone,
+                kz ? 'Орындалды' : 'Выполнено',
+              ),
+              DarwinNotificationAction.plain(
+                kActionSnooze,
+                kz ? '10 минуттан кейін' : 'Через 10 мин',
+              ),
+            ],
+          ),
+        ],
       ),
     );
     await _plugin.initialize(
       settings: settings,
-      onDidReceiveNotificationResponse: _onTap,
+      onDidReceiveNotificationResponse: _onResponse,
+      onDidReceiveBackgroundNotificationResponse: notificationActionBackground,
     );
     // Уведомление, из которого приложение было запущено (холодный старт).
     final launch = await _plugin.getNotificationAppLaunchDetails();
-    final payload = launch?.notificationResponse?.payload;
-    if (payload != null && payload.isNotEmpty) pendingCollection = payload;
+    final response = launch?.notificationResponse;
+    if (launch?.didNotificationLaunchApp ?? false) {
+      final open = NotificationPayload.parse(response?.payload).open;
+      if (open.isNotEmpty) pendingCollection = open;
+    }
   }
 
-  void _onTap(NotificationResponse r) {
-    if ((r.payload ?? '').isNotEmpty) pendingCollection = r.payload;
+  Future<void> _onResponse(NotificationResponse r) async {
+    if (r.actionId == kActionDone || r.actionId == kActionSnooze) {
+      await applyNotificationAction(r, _plugin);
+      onTaskChanged?.call();
+      return;
+    }
+    final open = NotificationPayload.parse(r.payload).open;
+    if (open.isEmpty) return;
+    final handler = onOpen;
+    if (handler != null) {
+      handler(open);
+    } else {
+      pendingCollection = open;
+    }
   }
 
   /// Запросить разрешение на уведомления (iOS/Android 13+).
@@ -211,6 +459,22 @@ class NotificationService {
     final now = _schedule.now();
     int count = 0;
     final details = _details();
+    final taskDetails = _taskDetails(lang: lang);
+
+    // Отложенные «через 10 минут» переживают перепланирование очереди.
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final snoozes = _readSnoozes(prefs)
+        ..removeWhere((s) => !s.at.isAfter(DateTime.now()));
+      for (final snooze in snoozes) {
+        await _scheduleSnooze(_plugin, snooze.id, snooze.at, snooze.payload);
+        count++;
+      }
+      await prefs.setString(
+        _snoozeKey,
+        jsonEncode([for (final s in snoozes) s.toJson()]),
+      );
+    } catch (_) {}
 
     // Редкие расписания не должны зависеть от 14-дневного окна ежедневной
     // очереди. Для одноразового, ежемесячного и ежегодного напоминания заранее
@@ -228,12 +492,13 @@ class NotificationService {
         final scheduledTime = reminderScheduledTime(rc, date, t);
         if (!scheduledTime.isAfter(now)) continue;
         final txt = _getNotificationText(lang, rc);
+        final task = notificationTaskFor(rc.id);
         await _schedule0(
           900000 + _slotFor(rc.id, configs),
           scheduledTime,
           txt,
-          notificationTargetFor(rc.id),
-          details,
+          _payload(rc.id, task, date, txt),
+          task.isEmpty ? details : taskDetails,
         );
         count++;
         break;
@@ -269,12 +534,19 @@ class NotificationService {
         if (rc.isPrayerLinked && t == null) continue;
         final scheduledTime = reminderScheduledTime(rc, date, t);
         final slot = _slotFor(rc.id, configs);
-        final payload = notificationTargetFor(rc.id);
+        final task = notificationTaskFor(rc.id);
+        final rcDetails = task.isEmpty ? details : taskDetails;
 
         // Первичное напоминание (в момент наступления события)
         if (scheduledTime.isAfter(now) && count < _cap) {
           final txt = _getNotificationText(lang, rc);
-          await _schedule0(_id(d, slot), scheduledTime, txt, payload, details);
+          await _schedule0(
+            _id(d, slot),
+            scheduledTime,
+            txt,
+            _payload(rc.id, task, date, txt),
+            rcDetails,
+          );
           count++;
         }
 
@@ -296,8 +568,8 @@ class NotificationService {
                 _id(d, slot + 20),
                 remindAt,
                 rTxt,
-                payload,
-                details,
+                _payload(rc.id, task, date, rTxt),
+                rcDetails,
               );
               count++;
             }
@@ -422,6 +694,15 @@ class NotificationService {
       payload: payload,
     );
   }
+
+  String _payload(String id, String task, DateTime date, _NotifText txt) =>
+      NotificationPayload(
+        open: notificationTargetFor(id),
+        task: task,
+        date: _dayKey(date),
+        title: txt.title,
+        body: txt.body,
+      ).encode();
 
   DateTime _at(DateTime date, int minutes) =>
       DateTime(date.year, date.month, date.day).add(Duration(minutes: minutes));
