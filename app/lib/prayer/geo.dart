@@ -15,9 +15,20 @@ class Geo {
         perm == LocationPermission.deniedForever) {
       return null;
     }
-    final pos = await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
-    );
+    Position? pos;
+    try {
+      pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 15),
+        ),
+      );
+    } catch (_) {
+      // Indoors and on budget Android devices a fresh GPS fix can take too
+      // long. A cached fix is still better than failing the city step.
+      pos = await Geolocator.getLastKnownPosition();
+    }
+    if (pos == null) return null;
     return CityRepository.nearest(pos.latitude, pos.longitude);
   }
 }

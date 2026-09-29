@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,9 +9,13 @@ import 'package:latlong2/latlong.dart';
 import 'package:adhan/adhan.dart' as adhan;
 import '../prayer/city.dart';
 import '../theme/tokens.dart';
+import '../theme/adaptive_layout.dart';
 import '../data/app_state.dart';
 import '../i18n/strings.dart';
+import '../services/compass_capability_service.dart';
 import 'swipe_hint.dart';
+
+enum _CompassAvailability { checking, available, unavailable, noData, unknown }
 
 /// Виджет Киблы: Режим 1 (Живой Компас с градуированной вибрацией) и Режим 2 (Интерактивная Карта).
 class QiblaView extends StatefulWidget {
@@ -22,6 +27,7 @@ class QiblaView extends StatefulWidget {
   final GestureDragUpdateCallback? onVerticalDragUpdate;
   final GestureDragEndCallback? onVerticalDragEnd;
   final GestureDragCancelCallback? onVerticalDragCancel;
+  final Future<bool?> Function()? compassAvailabilityProbe;
 
   const QiblaView({
     super.key,
@@ -33,6 +39,7 @@ class QiblaView extends StatefulWidget {
     this.onVerticalDragUpdate,
     this.onVerticalDragEnd,
     this.onVerticalDragCancel,
+    this.compassAvailabilityProbe,
   });
 
   @override
@@ -47,6 +54,9 @@ class _QiblaViewState extends State<QiblaView>
   double _distanceToKaabaKm = 0.0;
   double? _filteredHeading;
   int _mapReloadGeneration = 0;
+  _CompassAvailability _compassAvailability = _CompassAvailability.checking;
+  Timer? _compassDataTimer;
+  bool _receivedCompassSample = false;
 
   // Состояние вибрации (0: далеко, 1: близко (light), 2: точно (medium))
   int _hapticStage = 0;
@@ -74,6 +84,104 @@ class _QiblaViewState extends State<QiblaView>
     // Так карта не ждёт долгий bestForNavigation-запрос пустым экраном.
     _applyPosition(null, notify: false);
     _determineLocation();
+    _checkCompassCapability();
+  }
+
+  @override
+  void dispose() {
+    _compassDataTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkCompassCapability() async {
+    bool? available;
+    try {
+      available =
+          await (widget.compassAvailabilityProbe ??
+              CompassCapabilityService.isAvailable)();
+    } catch (_) {
+      available = null;
+    }
+    if (!mounted) return;
+
+    if (available == false) {
+      _compassDataTimer?.cancel();
+      _hapticStage = 0;
+      setState(() {
+        _compassAvailability = _CompassAvailability.unavailable;
+        _selectedTab = 1;
+      });
+      return;
+    }
+
+    setState(() {
+      _compassAvailability = available == true
+          ? _CompassAvailability.available
+          : _CompassAvailability.unknown;
+    });
+    if (available == true) _armCompassDataWatchdog();
+  }
+
+  void _armCompassDataWatchdog() {
+    _compassDataTimer?.cancel();
+    if (_compassAvailability != _CompassAvailability.available ||
+        _selectedTab != 0) {
+      return;
+    }
+    _receivedCompassSample = false;
+    _compassDataTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted ||
+          _receivedCompassSample ||
+          _compassAvailability != _CompassAvailability.available ||
+          _selectedTab != 0) {
+        return;
+      }
+      _hapticStage = 0;
+      setState(() {
+        _compassAvailability = _CompassAvailability.noData;
+        _selectedTab = 1;
+      });
+    });
+  }
+
+  void _markCompassSampleReceived() {
+    _receivedCompassSample = true;
+    _compassDataTimer?.cancel();
+  }
+
+  void _selectLocator() {
+    if (_compassAvailability == _CompassAvailability.unavailable) {
+      _showCompassUnavailableMessage();
+      return;
+    }
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedTab = 0;
+      if (_compassAvailability == _CompassAvailability.noData) {
+        _compassAvailability = _CompassAvailability.available;
+      }
+    });
+    _armCompassDataWatchdog();
+  }
+
+  void _selectMap() {
+    HapticFeedback.selectionClick();
+    _compassDataTimer?.cancel();
+    _hapticStage = 0;
+    setState(() => _selectedTab = 1);
+  }
+
+  void _showCompassUnavailableMessage() {
+    final kz = AppScope.of(context).lang == 'kz';
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(
+          kz
+              ? 'Бұл құрылғыда компас датчигі жоқ. Құбыла бағытын картадан қараңыз.'
+              : 'На этом устройстве нет датчика компаса. Используйте карту.',
+        ),
+      ),
+    );
   }
 
   Future<void> _determineLocation() async {
@@ -86,17 +194,26 @@ class _QiblaViewState extends State<QiblaView>
         }
         if (perm == LocationPermission.whileInUse ||
             perm == LocationPermission.always) {
-          pos = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.bestForNavigation,
-            ),
-          );
+          try {
+            pos = await Geolocator.getCurrentPosition(
+              locationSettings: const LocationSettings(
+                accuracy: LocationAccuracy.high,
+                timeLimit: Duration(seconds: 12),
+              ),
+            );
+          } catch (_) {
+            // Keep the Qibla screen responsive when a fresh GPS fix is slow
+            // (common indoors and on entry-level Android devices).
+            pos = await Geolocator.getLastKnownPosition();
+          }
         }
       }
       if (pos != null && mounted && _isUsablePosition(pos)) {
         _applyPosition(pos);
       }
-    } catch (_) {}
+    } catch (_) {
+      // The selected city remains a safe fallback for the Qibla direction.
+    }
   }
 
   bool _isUsablePosition(Position position) {
@@ -152,160 +269,173 @@ class _QiblaViewState extends State<QiblaView>
 
   @override
   Widget build(BuildContext context) {
+    final expanded = isExpandedLayout(context);
     final userLatLng = _currentPosition != null
         ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
         : const LatLng(43.238949, 76.889709);
 
-    final content = Column(
-      children: [
-        if (widget.showAppBar) ...[
-          AppBar(
-            backgroundColor: Colors.transparent,
-            surfaceTintColor: Colors.transparent,
-            elevation: 0,
-            automaticallyImplyLeading: false,
-            centerTitle: true,
-            title: Text(
-              'Направление Киблы',
-              style: JType.ui(18, color: Colors.white, w: FontWeight.w700),
+    final content = AdaptiveContentPane(
+      expandedMaxWidth: 980,
+      child: Column(
+        children: [
+          if (widget.showAppBar) ...[
+            AppBar(
+              backgroundColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              automaticallyImplyLeading: false,
+              centerTitle: true,
+              title: Text(
+                'Направление Киблы',
+                style: JType.ui(
+                  expanded ? 23 : 18,
+                  color: Colors.white,
+                  w: FontWeight.w700,
+                ),
+              ),
             ),
-          ),
-        ] else
-          const SizedBox(height: 12),
-        // Вкладки переключения: Локатор | Карта
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Container(
-            height: 44,
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.13)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      setState(() => _selectedTab = 0);
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      decoration: BoxDecoration(
-                        color: _selectedTab == 0
-                            ? const Color(0xFFC88D51).withValues(alpha: 0.90)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.explore,
-                            size: 18,
-                            color: _selectedTab == 0
-                                ? Colors.white
-                                : Colors.white60,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Локатор',
-                            style: JType.ui(
-                              14,
-                              w: FontWeight.w600,
-                              color: _selectedTab == 0
-                                  ? Colors.white
-                                  : Colors.white60,
+          ] else
+            const SizedBox(height: 12),
+          // Вкладки переключения: Локатор | Карта
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Container(
+              height: expanded ? 56 : 44,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.13)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _selectLocator,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        decoration: BoxDecoration(
+                          color: _selectedTab == 0
+                              ? const Color(0xFFC88D51).withValues(alpha: 0.90)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        alignment: Alignment.center,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.explore,
+                              size: expanded ? 22 : 18,
+                              color:
+                                  _compassAvailability ==
+                                      _CompassAvailability.unavailable
+                                  ? Colors.white30
+                                  : (_selectedTab == 0
+                                        ? Colors.white
+                                        : Colors.white60),
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 6),
+                            Text(
+                              'Локатор',
+                              style: JType.ui(
+                                expanded ? 17 : 14,
+                                w: FontWeight.w600,
+                                color:
+                                    _compassAvailability ==
+                                        _CompassAvailability.unavailable
+                                    ? Colors.white30
+                                    : (_selectedTab == 0
+                                          ? Colors.white
+                                          : Colors.white60),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-                Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      setState(() => _selectedTab = 1);
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      decoration: BoxDecoration(
-                        color: _selectedTab == 1
-                            ? const Color(0xFFC88D51).withValues(alpha: 0.90)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.map,
-                            size: 18,
-                            color: _selectedTab == 1
-                                ? Colors.white
-                                : Colors.white60,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Карта',
-                            style: JType.ui(
-                              14,
-                              w: FontWeight.w600,
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _selectMap,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        decoration: BoxDecoration(
+                          color: _selectedTab == 1
+                              ? const Color(0xFFC88D51).withValues(alpha: 0.90)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        alignment: Alignment.center,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.map,
+                              size: expanded ? 22 : 18,
                               color: _selectedTab == 1
                                   ? Colors.white
                                   : Colors.white60,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 6),
+                            Text(
+                              'Карта',
+                              style: JType.ui(
+                                expanded ? 17 : 14,
+                                w: FontWeight.w600,
+                                color: _selectedTab == 1
+                                    ? Colors.white
+                                    : Colors.white60,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: _selectedTab == 0
-              ? _buildReturnSwipeRegion(
-                  key: const ValueKey('qibla-locator-return-zone'),
-                  child: _buildCompassView(),
-                )
-              // Карта создаётся уже в видимом размере. Скрытая инициализация
-              // внутри IndexedStack могла оставить загруженным один тайл.
-              : _buildMapView(userLatLng),
-        ),
-        if (widget.embedded &&
-            _selectedTab == 0 &&
-            widget.onVerticalDragStart != null)
-          IgnorePointer(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 4, bottom: 8),
-              child: SwipeHint(
-                key: const ValueKey('qibla-return-swipe-hint'),
-                label: S.of(AppScope.of(context).lang).swipeBack,
-                direction: SwipeHintDirection.down,
-                color: Colors.white.withValues(alpha: 0.88),
-                shadows: const [
-                  Shadow(
-                    color: Colors.black54,
-                    offset: Offset(0, 1),
-                    blurRadius: 2.5,
                   ),
                 ],
               ),
             ),
           ),
-      ],
+          if (_compassAvailability == _CompassAvailability.unavailable ||
+              _compassAvailability == _CompassAvailability.noData)
+            _buildCompassNotice(),
+          const SizedBox(height: 12),
+          Expanded(
+            child: _selectedTab == 0
+                ? _buildReturnSwipeRegion(
+                    key: const ValueKey('qibla-locator-return-zone'),
+                    child: _buildCompassView(),
+                  )
+                // Карта создаётся уже в видимом размере. Скрытая инициализация
+                // внутри IndexedStack могла оставить загруженным один тайл.
+                : _buildMapView(userLatLng),
+          ),
+          if (widget.embedded &&
+              _selectedTab == 0 &&
+              widget.onVerticalDragStart != null)
+            IgnorePointer(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                child: SwipeHint(
+                  key: const ValueKey('qibla-return-swipe-hint'),
+                  label: S.of(AppScope.of(context).lang).swipeBack,
+                  direction: SwipeHintDirection.down,
+                  color: Colors.white.withValues(alpha: 0.88),
+                  shadows: const [
+                    Shadow(
+                      color: Colors.black54,
+                      offset: Offset(0, 1),
+                      blurRadius: 2.5,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
 
     if (widget.embedded) {
@@ -336,17 +466,75 @@ class _QiblaViewState extends State<QiblaView>
     );
   }
 
-  Widget _buildCompassFallback() {
-    return const Center(
+  Widget _buildCompassNotice() {
+    final kz = AppScope.of(context).lang == 'kz';
+    final noSensor = _compassAvailability == _CompassAvailability.unavailable;
+    final message = noSensor
+        ? (kz
+              ? 'Бұл құрылғыда компас датчигі жоқ. Құбыла бағыты картада көрсетілді.'
+              : 'На этом устройстве нет датчика компаса. Направление Киблы показано на карте.')
+        : (kz
+              ? 'Компас деректері алынбады. Құбыла бағытын картадан қараңыз.'
+              : 'Не удалось получить данные компаса. Используйте карту.');
+
+    return Padding(
+      key: const ValueKey('qibla-compass-notice'),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: const Color(0xFFC88D51).withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: const Color(0xFFE5A96A).withValues(alpha: 0.55),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              noSensor ? Icons.sensors_off_rounded : Icons.info_outline_rounded,
+              color: const Color(0xFFE7B76A),
+              size: 21,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: JType.ui(
+                  isExpandedLayout(context) ? 15 : 12,
+                  color: Colors.white.withValues(alpha: 0.9),
+                  w: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompassFallback([String? message]) {
+    final kz = AppScope.of(context).lang == 'kz';
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.compass_calibration, size: 48, color: Color(0xFFC88D51)),
-          SizedBox(height: 12),
+          const Icon(
+            Icons.compass_calibration,
+            size: 48,
+            color: Color(0xFFC88D51),
+          ),
+          const SizedBox(height: 12),
           Text(
-            'Датчик компаса недоступен\nили требует калибровки',
+            message ??
+                (kz
+                    ? 'Компас деректерін алып жатырмыз…'
+                    : 'Получаем данные компаса…'),
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white70, fontFamily: 'Manrope'),
+            style: const TextStyle(
+              color: Colors.white70,
+              fontFamily: 'Manrope',
+            ),
           ),
         ],
       ),
@@ -363,6 +551,9 @@ class _QiblaViewState extends State<QiblaView>
 
   /// Режим 1: Интерактивный Компас Киблы с 2-ступенчатой градацией вибрации
   Widget _buildCompassView() {
+    if (_compassAvailability == _CompassAvailability.checking) {
+      return _buildCompassFallback();
+    }
     final stream = _safeCompassStream?.handleError((e, s) {});
     if (stream == null) {
       return _buildCompassFallback();
@@ -376,11 +567,17 @@ class _QiblaViewState extends State<QiblaView>
 
         final rawHeading = snapshot.data?.heading;
 
-        if (rawHeading == null || !rawHeading.isFinite) {
+        // Core Location uses exactly -1 when true north is temporarily
+        // unavailable. It must not be normalized to 359° and shown as a real
+        // Qibla direction; the watchdog will move the user to the map instead.
+        if (rawHeading == null || !rawHeading.isFinite || rawHeading == -1.0) {
           return _buildCompassFallback();
         }
 
+        _markCompassSampleReceived();
         final heading = _smoothHeading(rawHeading);
+        final accuracy = snapshot.data?.accuracy;
+        final needsCalibration = accuracy != null && accuracy > 30;
         final qiblaAngle = _qiblaBearing ?? 244.0;
         final diff = (qiblaAngle - heading + 360) % 360;
         final absDiff = diff > 180 ? 360 - diff : diff;
@@ -394,7 +591,8 @@ class _QiblaViewState extends State<QiblaView>
             widget.hapticsEnabled &&
             _selectedTab == 0 &&
             routeIsCurrent &&
-            TickerMode.valuesOf(context).enabled;
+            TickerMode.valuesOf(context).enabled &&
+            !needsCalibration;
 
         if (!canUseHaptics) {
           _hapticStage = 0;
@@ -412,18 +610,36 @@ class _QiblaViewState extends State<QiblaView>
           _hapticStage = 0;
         }
 
-        final isExact = absDiff < 4.0;
-        final isNear = absDiff <= 12.0 && !isExact;
+        final isExact = absDiff < 4.0 && !needsCalibration;
+        final isNear = absDiff <= 12.0 && !isExact && !needsCalibration;
 
-        final statusColor = isExact
-            ? const Color(0xFF4CAF50)
-            : (isNear ? const Color(0xFFE5A96A) : Colors.white24);
+        final statusColor = needsCalibration
+            ? const Color(0xFFE5A96A)
+            : (isExact
+                  ? const Color(0xFF4CAF50)
+                  : (isNear ? const Color(0xFFE5A96A) : Colors.white24));
 
-        final statusText = isExact
-            ? 'Вы смотрите точно на Киблу'
-            : (isNear
-                  ? 'Приближаетесь к Кибле (${qiblaAngle.toStringAsFixed(0)}°)'
-                  : 'Поверните устройство (${qiblaAngle.toStringAsFixed(0)}°)');
+        final kz = AppScope.of(context).lang == 'kz';
+        final statusText = needsCalibration
+            ? (kz
+                  ? 'Компасты калибрлеңіз: телефонды сегіз түрінде қозғаңыз'
+                  : 'Откалибруйте компас: двигайте телефон восьмёркой')
+            : (isExact
+                  ? (kz
+                        ? 'Сіз Құбылаға дәл қарап тұрсыз'
+                        : 'Вы смотрите точно на Киблу')
+                  : (isNear
+                        ? (kz
+                              ? 'Құбылаға жақындадыңыз (${qiblaAngle.toStringAsFixed(0)}°)'
+                              : 'Приближаетесь к Кибле (${qiblaAngle.toStringAsFixed(0)}°)')
+                        : (kz
+                              ? 'Құрылғыны бұрыңыз (${qiblaAngle.toStringAsFixed(0)}°)'
+                              : 'Поверните устройство (${qiblaAngle.toStringAsFixed(0)}°)')));
+
+        final expanded = isExpandedLayout(context);
+        final compassSize = expanded ? 340.0 : 270.0;
+        final dialSize = expanded ? 316.0 : 250.0;
+        final arrowSize = expanded ? 304.0 : 240.0;
 
         return Column(
           children: [
@@ -431,9 +647,14 @@ class _QiblaViewState extends State<QiblaView>
             // Индикатор статуса ориентации
             AnimatedContainer(
               duration: const Duration(milliseconds: 250),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              padding: EdgeInsets.symmetric(
+                horizontal: expanded ? 26 : 20,
+                vertical: expanded ? 13 : 10,
+              ),
               decoration: BoxDecoration(
-                color: isExact
+                color: needsCalibration
+                    ? const Color(0xFFC88D51).withValues(alpha: 0.2)
+                    : isExact
                     ? const Color(0xFF2E7D32).withValues(alpha: 0.3)
                     : (isNear
                           ? const Color(0xFFC88D51).withValues(alpha: 0.2)
@@ -445,13 +666,15 @@ class _QiblaViewState extends State<QiblaView>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    isExact
+                    needsCalibration
+                        ? Icons.compass_calibration
+                        : isExact
                         ? Icons.check_circle
                         : (isNear ? Icons.near_me : Icons.navigation),
                     color: isExact
                         ? const Color(0xFF81C784)
                         : const Color(0xFFC88D51),
-                    size: 20,
+                    size: expanded ? 24 : 20,
                   ),
                   const SizedBox(width: 8),
                   Text(
@@ -459,7 +682,7 @@ class _QiblaViewState extends State<QiblaView>
                     style: TextStyle(
                       color: isExact ? const Color(0xFF81C784) : Colors.white,
                       fontFamily: 'Manrope',
-                      fontSize: 14,
+                      fontSize: expanded ? 17 : 14,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -475,8 +698,8 @@ class _QiblaViewState extends State<QiblaView>
                   // Внешнее кольцо с динамической подсветкой
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
-                    width: 270,
-                    height: 270,
+                    width: compassSize,
+                    height: compassSize,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       boxShadow: [
@@ -509,8 +732,8 @@ class _QiblaViewState extends State<QiblaView>
                   Transform.rotate(
                     angle: -heading * (math.pi / 180),
                     child: SizedBox(
-                      width: 250,
-                      height: 250,
+                      width: dialSize,
+                      height: dialSize,
                       child: CustomPaint(
                         painter: _CompassDialPainter(qiblaBearing: qiblaAngle),
                       ),
@@ -520,8 +743,8 @@ class _QiblaViewState extends State<QiblaView>
                   Transform.rotate(
                     angle: (qiblaAngle - heading) * (math.pi / 180),
                     child: SizedBox(
-                      width: 240,
-                      height: 240,
+                      width: arrowSize,
+                      height: arrowSize,
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.start,
                         children: [
@@ -542,15 +765,15 @@ class _QiblaViewState extends State<QiblaView>
                                 ),
                               ],
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.mosque,
-                              size: 20,
+                              size: expanded ? 25 : 20,
                               color: Colors.white,
                             ),
                           ),
                           Icon(
                             Icons.arrow_drop_down,
-                            size: 26,
+                            size: expanded ? 32 : 26,
                             color: isExact
                                 ? const Color(0xFF4CAF50)
                                 : const Color(0xFFC88D51),
@@ -561,8 +784,8 @@ class _QiblaViewState extends State<QiblaView>
                   ),
                   // Центральная тумба
                   Container(
-                    width: 18,
-                    height: 18,
+                    width: expanded ? 23 : 18,
+                    height: expanded ? 23 : 18,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: isExact
@@ -599,21 +822,21 @@ class _QiblaViewState extends State<QiblaView>
                   children: [
                     Column(
                       children: [
-                        const Text(
+                        Text(
                           'Азимут Киблы',
                           style: TextStyle(
                             color: Colors.white54,
                             fontFamily: 'Manrope',
-                            fontSize: 12,
+                            fontSize: expanded ? 15 : 12,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           '${qiblaAngle.toStringAsFixed(1)}°',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Colors.white,
                             fontFamily: 'Manrope',
-                            fontSize: 17,
+                            fontSize: expanded ? 21 : 17,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -622,21 +845,21 @@ class _QiblaViewState extends State<QiblaView>
                     Container(width: 1, height: 28, color: Colors.white12),
                     Column(
                       children: [
-                        const Text(
+                        Text(
                           'До Мекки',
                           style: TextStyle(
                             color: Colors.white54,
                             fontFamily: 'Manrope',
-                            fontSize: 12,
+                            fontSize: expanded ? 15 : 12,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           '${_distanceToKaabaKm.toStringAsFixed(0)} км',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Colors.white,
                             fontFamily: 'Manrope',
-                            fontSize: 17,
+                            fontSize: expanded ? 21 : 17,
                             fontWeight: FontWeight.w700,
                           ),
                         ),

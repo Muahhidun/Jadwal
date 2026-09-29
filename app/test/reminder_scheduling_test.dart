@@ -1,12 +1,19 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jadwal/data/app_state.dart';
 import 'package:jadwal/notifications/notifications.dart';
+import 'package:jadwal/prayer/city.dart';
 import 'package:jadwal/prayer/schedule.dart';
+import 'package:jadwal/prayer/schedule_service.dart';
+import 'package:jadwal/services/alarm_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('восход не называется намазом в уведомлении', () {
     final copy = prayerNotificationCopy('ru', Prayer.sunrise);
 
@@ -153,5 +160,67 @@ void main() {
 
     expect(reminder.occursOn(DateTime(2026, 9, 5)), isTrue);
     expect(reminder.occursOn(DateTime(2027, 9, 5)), isFalse);
+  });
+
+  test(
+    'режим крепкого сна хранится локально и использует три повтора',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final app = await AppState.load();
+
+      expect(app.heavySleeperEnabled, isFalse);
+      expect(app.heavySleeperGuideSeen, isFalse);
+      expect(AlarmService.heavySleeperBackupMinutes, [3, 6, 9]);
+
+      app.setHeavySleeperEnabled(true);
+      app.markHeavySleeperGuideSeen();
+      final restored = await AppState.load();
+
+      expect(restored.heavySleeperEnabled, isTrue);
+      expect(restored.heavySleeperGuideSeen, isTrue);
+    },
+  );
+
+  test('Android получает точное расписание Фаджра на 14 дней', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final app = await AppState.load();
+    app.setCity(kDefaultCity);
+    app.setAlarmEnabled('fajr', true);
+    app.setHeavySleeperEnabled(true);
+    final schedule = ScheduleService(
+      prefs,
+      now: () => DateTime(2026, 9, 12, 0, 1),
+    );
+    const channel = MethodChannel('kz.dauam/alarm');
+    Map<Object?, Object?>? payload;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          expect(call.method, 'syncPrayerAlarms');
+          payload = call.arguments as Map<Object?, Object?>;
+          return <String, Object?>{'success': true, 'mode': 'alarmManager'};
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+
+    expect(await AlarmService.sync(app, schedule), isTrue);
+    final alarms = (payload!['alarms'] as List).cast<Map<Object?, Object?>>();
+    expect(alarms, hasLength(AlarmService.androidLookaheadDays));
+    expect(alarms.every((alarm) => alarm['id'] == 'fajr'), isTrue);
+    expect(alarms.map((alarm) => alarm['family']).toSet(), hasLength(14));
+    expect(alarms.every((alarm) => alarm['heavySleeper'] == true), isTrue);
+    expect(
+      alarms.every(
+        (alarm) =>
+            (alarm['backupMinutes'] as List).join(',') == '3,6,9' &&
+            alarm['language'] == 'ru' &&
+            alarm['requestCode'] is int,
+      ),
+      isTrue,
+    );
   });
 }

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="DauamWidgetPrayerName">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:gravity">center</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:text">Аср</item>
+        <item name="android:textColor">#AEB7C6</item>
+        <item name="android:textSize">10sp</item>
+    </style>
+
+    <style name="DauamWidgetPrayerTime">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:gravity">center</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:text">16:24</item>
+        <item name="android:textColor">#F7F4EE</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <style name="DauamWidgetTaskText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:text">○  Утренние зикры</item>
+        <item name="android:textColor">#F7F4EE</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+</resources>

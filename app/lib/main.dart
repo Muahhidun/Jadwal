@@ -15,7 +15,7 @@ Future<void> main() async {
   // При новой сборке (новом билде) сбрасываем онбординг один раз для проверки.
   // После успешного прохождения онбординга выбор сохраняется, и обычные
   // выгрузки/перезапуски приложения из памяти больше НЕ запрашивают онбординг.
-  const currentBuildId = 'build_v1.0.6';
+  const currentBuildId = 'build_v1.0.7_android_permissions';
   final lastBuildId = prefs.getString('last_installed_build_id');
   if (lastBuildId != currentBuildId) {
     await prefs.setBool('onboardingDone', false);

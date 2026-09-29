@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show BoxDecoration, Icons, MaterialApp;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +16,7 @@ import 'package:jadwal/prayer/schedule_service.dart';
 import 'package:jadwal/screens/home.dart';
 import 'package:jadwal/screens/qibla_screen.dart';
 import 'package:jadwal/screens/reader.dart';
+import 'package:jadwal/screens/reminders.dart';
 import 'package:jadwal/services/widget_data_service.dart';
 
 /// Фиксированный день из дизайн-прототипа: пятница 03.07.2026, 20:11, Алматы.
@@ -190,6 +192,103 @@ void main() {
     await swipe(240);
     expect(homeState().swipeProgress, closeTo(0.0, 0.01));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'без магнитометра Кибла сразу открывает карту и не показывает стрелку',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'onboardingDone': true,
+        'lang': 'ru',
+      });
+      final state = await AppState.load();
+
+      await tester.pumpWidget(
+        AppScope(
+          state: state,
+          child: MaterialApp(
+            home: QiblaView(
+              selectedCity: kDefaultCity,
+              compassAvailabilityProbe: () async => false,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final qibla = find.byType(QiblaView);
+      expect((tester.state(qibla) as dynamic).selectedTab, 1);
+      expect(find.byKey(const ValueKey('qibla-map')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('qibla-compass-notice')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('нет датчика компаса'), findsOneWidget);
+      expect(find.byIcon(Icons.mosque), findsNothing);
+
+      await tester.tap(find.text('Локатор'));
+      await tester.pump();
+      expect((tester.state(qibla) as dynamic).selectedTab, 1);
+      expect(find.byKey(const ValueKey('qibla-map')), findsOneWidget);
+    },
+  );
+
+  testWidgets('Fold увеличивает элементы экрана Киблы', (tester) async {
+    tester.view.physicalSize = const Size(673, 841);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({
+      'onboardingDone': true,
+      'lang': 'ru',
+    });
+    final state = await AppState.load();
+    await tester.pumpWidget(
+      AppScope(
+        state: state,
+        child: MaterialApp(
+          home: QiblaView(
+            selectedCity: kDefaultCity,
+            compassAvailabilityProbe: () async => false,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final title = find.text('Направление Киблы');
+    expect(tester.widget<Text>(title).style?.fontSize, 23);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('компас без данных через пять секунд переходит на карту', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'onboardingDone': true,
+      'lang': 'ru',
+    });
+    final state = await AppState.load();
+
+    await tester.pumpWidget(
+      AppScope(
+        state: state,
+        child: MaterialApp(
+          home: QiblaView(
+            selectedCity: kDefaultCity,
+            compassAvailabilityProbe: () async => true,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 5));
+
+    final qibla = find.byType(QiblaView);
+    expect((tester.state(qibla) as dynamic).selectedTab, 1);
+    expect(find.byKey(const ValueKey('qibla-map')), findsOneWidget);
+    expect(find.textContaining('Не удалось получить'), findsOneWidget);
   });
 
   testWidgets('календарная дата не запускает родительский свайп после Киблы', (
@@ -446,6 +545,71 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Fold использует двухколоночный экран дня', (tester) async {
+    // Approximate logical viewport of an unfolded Galaxy Fold in portrait.
+    tester.view.physicalSize = const Size(673, 841);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({
+      'onboardingDone': true,
+      'lang': 'ru',
+    });
+    final state = await AppState.load();
+    await tester.pumpWidget(
+      JadwalApp(state: state, schedule: await demoSchedule()),
+    );
+    await tester.pump();
+
+    final home = find.byType(HomeScreen);
+    (tester.state(home) as dynamic).swipeProgress = 1.0;
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('expanded-day-layout')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Fold показывает крупный арабский текст в читалке', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(673, 841);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({
+      'onboardingDone': true,
+      'lang': 'ru',
+    });
+    final state = await AppState.load();
+    final schedule = await demoSchedule();
+    await tester.runAsync(AdhkarRepository.load);
+    await tester.pumpWidget(
+      AppScope(
+        state: state,
+        child: ScheduleScope(
+          service: schedule,
+          child: const MaterialApp(home: ReaderScreen(collectionId: 'morning')),
+        ),
+      ),
+    );
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 30));
+    }
+
+    final arabic = find.byWidgetPredicate(
+      (widget) =>
+          widget is Text &&
+          widget.textDirection == TextDirection.rtl &&
+          (widget.data?.isNotEmpty ?? false),
+    );
+    expect(arabic, findsOneWidget);
+    expect(tester.widget<Text>(arabic).style?.fontSize, 34);
+    expect(find.textContaining('LiveActivity status'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('центр напоминаний знакомит один раз и оставляет справку', (
     tester,
   ) async {
@@ -557,6 +721,99 @@ void main() {
     expect(find.textContaining('Восход доступен'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'первый вход в будильник показывает крепкий сон и оставляет справку',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      tester.view.physicalSize = const Size(393, 852);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final fonts = FontLoader('Manrope')
+        ..addFont(rootBundle.load('assets/fonts/Manrope.ttf'));
+      await fonts.load();
+      final cupertinoIcons =
+          FontLoader('packages/cupertino_icons/CupertinoIcons')..addFont(
+            rootBundle.load(
+              'packages/cupertino_icons/assets/CupertinoIcons.ttf',
+            ),
+          );
+      await cupertinoIcons.load();
+      SharedPreferences.setMockInitialValues({
+        'lang': 'ru',
+        'prayer_alarm:fajr:enabled': true,
+      });
+      final state = await AppState.load();
+      final schedule = await demoSchedule();
+      const alarmChannel = MethodChannel('kz.dauam/alarm');
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        alarmChannel,
+        (call) async => <String, dynamic>{
+          'success': true,
+          'mode': 'alarmKit',
+          'scheduled': 4,
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          alarmChannel,
+          null,
+        ),
+      );
+
+      await tester.pumpWidget(
+        AppScope(
+          state: state,
+          child: ScheduleScope(
+            service: schedule,
+            child: const MaterialApp(
+              home: ReminderDetailScreen(configId: 'fajr', root: true),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      for (var i = 0; i < 16; i++) {
+        await tester.pump(const Duration(milliseconds: 30));
+      }
+
+      expect(find.text('Режим «Крепкий сон»'), findsWidgets);
+      expect(state.heavySleeperGuideSeen, isFalse);
+      expect(find.byKey(const ValueKey('heavy-sleeper-guide')), findsOneWidget);
+      expect(find.textContaining('ещё три раза'), findsOneWidget);
+      expect(find.text('«Я проснулся»'), findsOneWidget);
+      expect(state.heavySleeperEnabled, isFalse);
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/heavy_sleeper_guide_393x852.png'),
+      );
+
+      await tester.tap(find.text('Понятно'));
+      for (var i = 0; i < 16; i++) {
+        await tester.pump(const Duration(milliseconds: 30));
+      }
+      expect(state.heavySleeperGuideSeen, isTrue);
+      expect(find.byKey(const ValueKey('heavy-sleeper-guide')), findsNothing);
+
+      await tester.tap(find.byType(CupertinoSwitch).last);
+      for (var i = 0; i < 16; i++) {
+        await tester.pump(const Duration(milliseconds: 30));
+      }
+      expect(state.heavySleeperEnabled, isTrue);
+      expect(find.byKey(const ValueKey('heavy-sleeper-guide')), findsNothing);
+
+      await tester.tap(find.byIcon(CupertinoIcons.question_circle));
+      for (var i = 0; i < 16; i++) {
+        await tester.pump(const Duration(milliseconds: 30));
+      }
+      expect(find.byKey(const ValueKey('heavy-sleeper-guide')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
 
   testWidgets('нижний экран 393x852 помещается целиком и не прокручивается', (
     tester,

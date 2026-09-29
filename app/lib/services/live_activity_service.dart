@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 ({String collectionId, int index})? zikrTargetFromDeepLink(String? raw) {
@@ -21,6 +22,12 @@ class LiveActivityService {
   static String? activeCollection;
   static String? _lastDeliveredDeepLink;
 
+  /// Live Activity / Dynamic Island exists only on iOS. Keeping this check in
+  /// the service prevents every Android call site from reaching a channel
+  /// that intentionally has no native implementation.
+  static bool get _isAvailablePlatform =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
   static void init({
     void Function()? nextZikrHandler,
     void Function()? prevZikrHandler,
@@ -31,6 +38,8 @@ class LiveActivityService {
     onPrevZikr = prevZikrHandler;
     onTickZikr = tickZikrHandler;
     if (openZikrHandler != null) onOpenZikr = openZikrHandler;
+
+    if (!_isAvailablePlatform) return;
 
     _channel.setMethodCallHandler((call) async {
       switch (call.method) {
@@ -63,6 +72,7 @@ class LiveActivityService {
   /// Забирает ссылку, с которой приложение было запущено после полного
   /// закрытия. При обычном возврате из фона ссылка приходит через канал.
   static Future<void> claimPendingDeepLink() async {
+    if (!_isAvailablePlatform) return;
     try {
       final raw = await _channel.invokeMethod<String>('getPendingDeepLink');
       _deliverDeepLink(raw);
@@ -70,6 +80,7 @@ class LiveActivityService {
   }
 
   static Future<bool> isSupported() async {
+    if (!_isAvailablePlatform) return false;
     try {
       final res = await _channel.invokeMethod<bool>('isSupported');
       return res ?? false;
@@ -84,6 +95,7 @@ class LiveActivityService {
     required String cityName,
     required DateTime targetTime,
   }) async {
+    if (!_isAvailablePlatform) return;
     try {
       await _channel.invokeMethod('startActivity', {
         'mode': 'prayer',
@@ -97,6 +109,7 @@ class LiveActivityService {
   /// Удаляет только автоматический отсчёт до намаза, не прерывая открытую
   /// пользователем сессию чтения зикров.
   static Future<void> stopPrayerProximity() async {
+    if (!_isAvailablePlatform) return;
     try {
       await _channel.invokeMethod('stopPrayerActivity');
     } catch (_) {}
@@ -112,6 +125,7 @@ class LiveActivityService {
     required String zikrArabic,
     required String zikrTranslation,
   }) async {
+    if (!_isAvailablePlatform) return 'UNSUPPORTED';
     try {
       final res = await _channel.invokeMethod('startActivity', {
         'mode': 'zikr',
@@ -125,8 +139,9 @@ class LiveActivityService {
         'zikrTranslation': zikrTranslation,
       });
       return 'OK: $res';
-    } catch (e) {
-      return 'ERR: $e';
+    } catch (error) {
+      debugPrint('Live Activity could not start: $error');
+      return 'UNAVAILABLE';
     }
   }
 
@@ -140,6 +155,7 @@ class LiveActivityService {
     required String zikrArabic,
     required String zikrTranslation,
   }) async {
+    if (!_isAvailablePlatform) return;
     try {
       await _channel.invokeMethod('updateActivity', {
         'mode': 'zikr',
@@ -157,6 +173,7 @@ class LiveActivityService {
 
   /// Завершение сессии Live Activity и очистка острова
   static Future<void> stopActivity() async {
+    if (!_isAvailablePlatform) return;
     try {
       await _channel.invokeMethod('stopActivity');
     } catch (_) {}

@@ -12,6 +12,7 @@ import '../prayer/schedule.dart';
 import '../prayer/schedule_service.dart';
 import '../prayer/windows.dart';
 import '../theme/tokens.dart';
+import '../theme/adaptive_layout.dart';
 import '../theme/system_bars.dart';
 import 'city_picker.dart';
 import 'language_picker.dart';
@@ -23,6 +24,7 @@ import 'scene_background.dart';
 import 'swipe_hint.dart';
 
 import '../services/live_activity_service.dart';
+import '../services/alarm_service.dart';
 import '../services/location_checker_service.dart';
 import '../services/widget_data_service.dart';
 
@@ -167,6 +169,7 @@ class _HomeScreenState extends State<HomeScreen>
       } else {
         _checkSiriTarget();
       }
+      _checkAlarmTarget();
       LiveActivityService.claimPendingDeepLink();
     });
   }
@@ -175,10 +178,9 @@ class _HomeScreenState extends State<HomeScreen>
     const channel = MethodChannel('kz.dauam/widgets');
     channel.setMethodCallHandler((call) async {
       if (call.method == 'onSiriTargetReceived') {
-        final target = call.arguments as String?;
-        if (target != null && target.isNotEmpty && mounted) {
-          _openReader(target, autoStartSpeech: true);
-        }
+        // Забираем значение через нативный getter: он одновременно очищает
+        // сохранённую команду и не даёт выполнить её повторно при resume.
+        _checkSiriTarget();
       }
     });
   }
@@ -187,8 +189,12 @@ class _HomeScreenState extends State<HomeScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkSiriTarget();
+      _checkAlarmTarget();
       _checkLocationChange();
       LiveActivityService.claimPendingDeepLink();
+      if (mounted) {
+        AlarmService.sync(AppScope.of(context), ScheduleScope.of(context));
+      }
     }
   }
 
@@ -212,9 +218,42 @@ class _HomeScreenState extends State<HomeScreen>
         'getPendingIntentTarget',
       );
       if (siriTarget != null && siriTarget.isNotEmpty && mounted) {
-        _openReader(siriTarget, autoStartSpeech: true);
+        _handleExternalIntentTarget(siriTarget);
       }
     } catch (_) {}
+  }
+
+  void _checkAlarmTarget() async {
+    final target = await AlarmService.claimPendingAction();
+    if (target != null && target.isNotEmpty && mounted) {
+      _handleExternalIntentTarget(target);
+    }
+  }
+
+  void _handleExternalIntentTarget(String target) {
+    if (target == 'alarm_awake') {
+      // App Intent уже остановил текущий сигнал и снял резервные. После
+      // открытия ставим следующую серию на завтрашний Фаджр.
+      syncNotifications(AppScope.of(context), ScheduleScope.of(context));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final kz = AppScope.of(context).lang == 'kz';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              kz
+                  ? 'Оянғаныңыз расталды. Қалған дабылдар өшірілді.'
+                  : 'Пробуждение подтверждено. Остальные сигналы отменены.',
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      });
+      return;
+    }
+    if (target == 'morning' || target == 'evening') {
+      _openReader(target, autoStartSpeech: true);
+    }
   }
 
   /// Умное приближение намаза (Сценарий A): Dynamic Island за 15 минут
@@ -413,6 +452,7 @@ class _HomeScreenState extends State<HomeScreen>
                             times: t,
                             nowSec: nowSec,
                             city: app.city,
+                            variant: app.homeScene,
                           ),
                         // Слой всегда остаётся в дереве и только уезжает за
                         // экран. Раньше его условная вставка перед главным
@@ -571,6 +611,8 @@ class _HeroTimer extends StatelessWidget {
     final fade = p < 0
         ? (1 + p * 2.2).clamp(0.0, 1.0)
         : (1 - p * 1.6).clamp(0.0, 1.0);
+    final expanded = isExpandedLayout(context);
+    final timerSize = (v >= 3600 ? 76.0 : 84.0) * (expanded ? 1.12 : 1.0);
     return Positioned(
       left: 0,
       right: 0,
@@ -587,13 +629,13 @@ class _HeroTimer extends StatelessWidget {
                 caption,
                 style: JType.caption(
                   fg.accent,
-                  size: 15,
+                  size: expanded ? 18 : 15,
                 ).copyWith(shadows: fg.shadows),
               ),
               const SizedBox(height: 6),
               _RollingTimerText(
                 value: value,
-                size: v >= 3600 ? 76 : 84,
+                size: timerSize,
                 color: fg.text,
                 shadows: fg.shadows,
               ),
@@ -1389,6 +1431,14 @@ class _DayLayer extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(
                           child: _SmallOutlineButton(
+                            label: s.themeBtn,
+                            c: c,
+                            onTap: () => AppearancePicker.open(context),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _SmallOutlineButton(
                             label: s.langBtn,
                             c: c,
                             onTap: () => LanguagePicker.open(context),
@@ -1522,6 +1572,206 @@ class _ModernDayLayer extends StatelessWidget {
     final eveningOpen = windowsFor(
       t,
     ).any((w) => w.id == TaskId.evening && w.contains(nowMin));
+
+    if (isExpandedLayout(context)) {
+      return Transform.translate(
+        offset: Offset(0, h * (1 - p)),
+        child: Opacity(
+          opacity: fade,
+          child: SafeArea(
+            child: AdaptiveContentPane(
+              expandedMaxWidth: 1080,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(28, 10, 28, 12),
+                child: Column(
+                  children: [
+                    _StagedReveal(
+                      progress: p,
+                      start: 0.14,
+                      child: Center(
+                        child: GestureDetector(
+                          onTap: onCollapse,
+                          behavior: HitTestBehavior.opaque,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 28,
+                              vertical: 6,
+                            ),
+                            child: Container(
+                              width: 48,
+                              height: 5,
+                              decoration: BoxDecoration(
+                                color: c.sub.withValues(alpha: 0.55),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _StagedReveal(
+                      progress: p,
+                      start: 0.17,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              app.city.displayName(app.lang),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: JType.ui(16, color: c.sub),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          GestureDetector(
+                            onTap: onToggleDate,
+                            behavior: HitTestBehavior.opaque,
+                            child: Text(
+                              dateLine(s, schedule.now(), app.dateGregorian),
+                              maxLines: 1,
+                              style: JType.ui(16, color: c.sub),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: Row(
+                        key: const ValueKey('expanded-day-layout'),
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            flex: 10,
+                            child: Column(
+                              children: [
+                                _StagedReveal(
+                                  progress: p,
+                                  start: 0.20,
+                                  child: _SurfaceCard(
+                                    palette: palette,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 10,
+                                    ),
+                                    child: _DayTimesList(
+                                      s: s,
+                                      c: c,
+                                      t: t,
+                                      nowMin: nowMin,
+                                      nowSec: nowSec,
+                                      compact: true,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                _StagedReveal(
+                                  progress: p,
+                                  start: 0.28,
+                                  child: _ModernTasksCard(
+                                    s: s,
+                                    palette: palette,
+                                    app: app,
+                                    t: t,
+                                    nowMin: nowMin,
+                                    eveningOpen: eveningOpen,
+                                    onReader: onReader,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            flex: 11,
+                            child: _StagedReveal(
+                              progress: p,
+                              start: 0.36,
+                              child: _SurfaceCard(
+                                palette: palette,
+                                padding: const EdgeInsets.fromLTRB(
+                                  18,
+                                  16,
+                                  18,
+                                  12,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            _sentenceCase(s.notebookTitle),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: JType.ui(
+                                              19,
+                                              w: FontWeight.w700,
+                                              color: c.ink,
+                                            ),
+                                          ),
+                                        ),
+                                        Text(
+                                          _monthYearLabel(s, schedule.now()),
+                                          style: JType.ui(14, color: c.sub),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Expanded(
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.topCenter,
+                                        child: SizedBox(
+                                          width: 470,
+                                          child: _Notebook(
+                                            c: c,
+                                            app: app,
+                                            now: schedule.now(),
+                                            compact: true,
+                                            onDayTap: (date) =>
+                                                _showDayDetailsSheet(
+                                                  context,
+                                                  date: date,
+                                                  s: s,
+                                                  app: app,
+                                                  palette: palette,
+                                                ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _StagedReveal(
+                      progress: p,
+                      start: 0.48,
+                      child: _UtilityDock(
+                        s: s,
+                        palette: palette,
+                        onReminders: () => RemindersScreen.open(context),
+                        onAppearance: () => AppearancePicker.open(context),
+                        onLanguage: () => LanguagePicker.open(context),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Transform.translate(
       offset: Offset(0, h * (1 - p)),
@@ -1684,6 +1934,7 @@ class _ModernDayLayer extends StatelessWidget {
                     s: s,
                     palette: palette,
                     onReminders: () => RemindersScreen.open(context),
+                    onAppearance: () => AppearancePicker.open(context),
                     onLanguage: () => LanguagePicker.open(context),
                   ),
                 ),
@@ -1718,6 +1969,7 @@ class _ModernTasksCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = palette.colors;
+    final expanded = isExpandedLayout(context);
     final windows = {
       for (final window in windowsFor(t)) window.id.name: window,
     };
@@ -1808,7 +2060,11 @@ class _ModernTasksCard extends StatelessWidget {
                   hasCustomTasks
                       ? (s == S.kz ? 'Бүгінгі істер' : 'Дела сегодня')
                       : (s == S.kz ? 'Бүгінгі зікірлер' : 'Зикры сегодня'),
-                  style: JType.ui(16, w: FontWeight.w700, color: c.ink),
+                  style: JType.ui(
+                    expanded ? 19 : 16,
+                    w: FontWeight.w700,
+                    color: c.ink,
+                  ),
                 ),
               ),
               Container(
@@ -1819,7 +2075,11 @@ class _ModernTasksCard extends StatelessWidget {
                 ),
                 child: Text(
                   '$doneCount / ${tasks.length}',
-                  style: JType.ui(10.5, w: FontWeight.w700, color: c.sub),
+                  style: JType.ui(
+                    expanded ? 13 : 10.5,
+                    w: FontWeight.w700,
+                    color: c.sub,
+                  ),
                 ),
               ),
             ],
@@ -1947,9 +2207,10 @@ class _HorizontalTaskRailState extends State<_HorizontalTaskRail> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final expanded = isExpandedLayout(context);
         final overflow = widget.tasks.length > 2;
         final tileWidth = overflow
-            ? math.min(158.0, constraints.maxWidth * .47)
+            ? math.min(expanded ? 210.0 : 158.0, constraints.maxWidth * .47)
             : (constraints.maxWidth - 8) / 2;
         final itemExtent = tileWidth + 8;
         // Дополнительный хвост позволяет и последней карточке встать ровно
@@ -1960,7 +2221,7 @@ class _HorizontalTaskRailState extends State<_HorizontalTaskRail> {
             : 0.0;
         _positionOnRelevantTask(tileWidth);
         return SizedBox(
-          height: 52,
+          height: expanded ? 64 : 52,
           child: Stack(
             children: [
               NotificationListener<ScrollEndNotification>(
@@ -2052,6 +2313,7 @@ class _CompactTaskTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final expanded = isExpandedLayout(context);
     return Semantics(
       button: true,
       checked: done,
@@ -2066,23 +2328,26 @@ class _CompactTaskTile extends StatelessWidget {
               },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
-          constraints: const BoxConstraints(minHeight: 42),
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+          constraints: BoxConstraints(minHeight: expanded ? 54 : 42),
+          padding: EdgeInsets.symmetric(
+            horizontal: expanded ? 8 : 4,
+            vertical: expanded ? 7 : 5,
+          ),
           child: Row(
             children: [
               AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
-                width: 22,
-                height: 22,
+                width: expanded ? 27 : 22,
+                height: expanded ? 27 : 22,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: done ? c.green : Colors.transparent,
                   border: done ? null : Border.all(color: c.hair, width: 1.2),
                 ),
                 child: done
-                    ? const Icon(
+                    ? Icon(
                         CupertinoIcons.check_mark,
-                        size: 13,
+                        size: expanded ? 16 : 13,
                         color: Colors.white,
                       )
                     : null,
@@ -2094,7 +2359,7 @@ class _CompactTaskTile extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: JType.ui(
-                    11.5,
+                    expanded ? 14.5 : 11.5,
                     w: active ? FontWeight.w700 : FontWeight.w600,
                     color: done ? c.sub : (active ? c.gold : c.ink),
                     h: 1.1,
@@ -2114,16 +2379,18 @@ class _UtilityDock extends StatelessWidget {
     required this.s,
     required this.palette,
     required this.onReminders,
+    required this.onAppearance,
     required this.onLanguage,
   });
 
   final S s;
   final DaySurfacePalette palette;
-  final VoidCallback onReminders, onLanguage;
+  final VoidCallback onReminders, onAppearance, onLanguage;
 
   @override
   Widget build(BuildContext context) {
     final c = palette.colors;
+    final expanded = isExpandedLayout(context);
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(30),
@@ -2140,7 +2407,7 @@ class _UtilityDock extends StatelessWidget {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
           child: Container(
-            height: 58,
+            height: expanded ? 68 : 58,
             decoration: BoxDecoration(
               color: palette.dock,
               borderRadius: BorderRadius.circular(30),
@@ -2154,6 +2421,19 @@ class _UtilityDock extends StatelessWidget {
                     label: s.remindersBtn,
                     color: c.ink,
                     onTap: onReminders,
+                  ),
+                ),
+                Container(
+                  width: 0.8,
+                  height: 24,
+                  color: c.hair.withValues(alpha: 0.65),
+                ),
+                Expanded(
+                  child: _DockAction(
+                    icon: CupertinoIcons.paintbrush,
+                    label: s.themeBtn,
+                    color: c.ink,
+                    onTap: onAppearance,
                   ),
                 ),
                 Container(
@@ -2193,6 +2473,7 @@ class _DockAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final expanded = isExpandedLayout(context);
     return Semantics(
       button: true,
       label: label,
@@ -2205,14 +2486,18 @@ class _DockAction extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 18, color: color),
-            const SizedBox(width: 8),
+            Icon(icon, size: expanded ? 22 : 18, color: color),
+            SizedBox(width: expanded ? 10 : 8),
             Flexible(
               child: Text(
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: JType.ui(12.5, w: FontWeight.w700, color: color),
+                style: JType.ui(
+                  expanded ? 15.5 : 12.5,
+                  w: FontWeight.w700,
+                  color: color,
+                ),
               ),
             ),
           ],
@@ -2338,6 +2623,7 @@ class _DayTimesList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentSec = nowSec ?? nowMin * 60;
+    final expanded = isExpandedLayout(context);
     var hl = Prayer.fajr;
     var targetSec = t.times[Prayer.fajr]! * 60 + 86400;
     for (final prayer in Prayer.values) {
@@ -2363,7 +2649,9 @@ class _DayTimesList extends StatelessWidget {
                   _showQuickSettings(context, prayer.name, name, c);
                 },
                 child: Container(
-                  constraints: BoxConstraints(minHeight: compact ? 40 : 48),
+                  constraints: BoxConstraints(
+                    minHeight: expanded ? 52 : (compact ? 40 : 48),
+                  ),
                   margin: EdgeInsets.symmetric(vertical: compact ? 0 : 1),
                   padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 12),
                   decoration: BoxDecoration(
@@ -2381,14 +2669,14 @@ class _DayTimesList extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: JType.ui(
-                            compact ? 13.5 : 15,
+                            expanded ? 17 : (compact ? 13.5 : 15),
                             w: isCurrent ? FontWeight.w700 : FontWeight.w500,
                             color: isCurrent ? c.gold : c.ink,
                           ),
                         ),
                       ),
                       SizedBox(
-                        width: compact ? 82 : 92,
+                        width: expanded ? 108 : (compact ? 82 : 92),
                         child: AnimatedSwitcher(
                           duration: const Duration(milliseconds: 220),
                           switchInCurve: Curves.easeOutCubic,
@@ -2399,7 +2687,7 @@ class _DayTimesList extends StatelessWidget {
                                   key: ValueKey(countdown),
                                   textAlign: TextAlign.center,
                                   style: JType.ui(
-                                    compact ? 11.5 : 12.5,
+                                    expanded ? 14.5 : (compact ? 11.5 : 12.5),
                                     w: FontWeight.w600,
                                     color: c.gold.withValues(alpha: .92),
                                     ls: -.2,
@@ -2409,12 +2697,12 @@ class _DayTimesList extends StatelessWidget {
                         ),
                       ),
                       SizedBox(
-                        width: compact ? 67 : 74,
+                        width: expanded ? 82 : (compact ? 67 : 74),
                         child: Text(
                           t.fmt(prayer),
                           textAlign: TextAlign.right,
                           style: JType.ui(
-                            compact ? 13.5 : 15,
+                            expanded ? 17 : (compact ? 13.5 : 15),
                             w: isCurrent ? FontWeight.w700 : FontWeight.w500,
                             color: isCurrent ? c.gold : c.ink,
                           ),
@@ -2423,7 +2711,7 @@ class _DayTimesList extends StatelessWidget {
                       const SizedBox(width: 7),
                       Icon(
                         CupertinoIcons.chevron_right,
-                        size: 12,
+                        size: expanded ? 15 : 12,
                         color: isCurrent
                             ? c.gold.withValues(alpha: 0.72)
                             : c.faint.withValues(alpha: 0.6),
@@ -2533,6 +2821,7 @@ class _Notebook extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final expanded = isExpandedLayout(context);
     final first = DateTime(now.year, now.month, 1);
     final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
     final lead = first.weekday - 1; // сколько пустых ячеек до 1-го числа
@@ -2558,7 +2847,7 @@ class _Notebook extends StatelessWidget {
                     },
               child: Padding(
                 padding: const EdgeInsets.all(3),
-                child: _cell(date),
+                child: _cell(date, expanded: expanded),
               ),
             ),
           ),
@@ -2586,15 +2875,20 @@ class _Notebook extends StatelessWidget {
             for (final w in _weekdays)
               Expanded(
                 child: Center(
-                  child: Text(w, style: JType.ui(10, color: c.faint)),
+                  child: Text(
+                    w,
+                    style: JType.ui(expanded ? 13 : 10, color: c.faint),
+                  ),
                 ),
               ),
           ],
         ),
-        SizedBox(height: compact ? 4 : 8),
+        SizedBox(height: expanded ? 8 : (compact ? 4 : 8)),
         for (final row in rows)
           Padding(
-            padding: EdgeInsets.symmetric(vertical: compact ? 2.5 : 5.5),
+            padding: EdgeInsets.symmetric(
+              vertical: expanded ? 5 : (compact ? 2.5 : 5.5),
+            ),
             child: Row(children: row),
           ),
       ],
@@ -2606,7 +2900,7 @@ class _Notebook extends StatelessWidget {
     return app.taskProgressOn(date);
   }
 
-  Widget _cell(DateTime date) {
+  Widget _cell(DateTime date, {required bool expanded}) {
     final today = DateTime(now.year, now.month, now.day);
     final isToday =
         date.year == today.year &&
@@ -2616,13 +2910,13 @@ class _Notebook extends StatelessWidget {
 
     if (isFuture) {
       return SizedBox(
-        width: 28,
-        height: 28,
+        width: expanded ? 36 : 28,
+        height: expanded ? 36 : 28,
         child: Center(
           child: Text(
             '${date.day}',
             style: JType.ui(
-              11,
+              expanded ? 14 : 11,
               w: FontWeight.w400,
               // Будущие даты отличаются отсутствием кольца; дополнительно
               // снижать opacity нельзя — на закате это делало число почти
@@ -2642,6 +2936,7 @@ class _Notebook extends StatelessWidget {
       isToday: isToday,
       gold: c.gold,
       faint: c.faint,
+      expanded: expanded,
     );
   }
 }
@@ -2656,25 +2951,27 @@ class _RingCell extends StatelessWidget {
     required this.isToday,
     required this.gold,
     required this.faint,
+    this.expanded = false,
   });
   final int day;
   final double frac;
   final bool isToday;
   final Color gold, faint;
+  final bool expanded;
 
   @override
   Widget build(BuildContext context) {
     final full = frac >= 1.0;
     return SizedBox(
-      width: 28,
-      height: 28,
+      width: expanded ? 36 : 28,
+      height: expanded ? 36 : 28,
       child: CustomPaint(
         painter: _RingPainter(frac: frac, gold: gold, faint: faint, full: full),
         child: Center(
           child: Text(
             '$day',
             style: JType.ui(
-              10,
+              expanded ? 13 : 10,
               w: isToday || full ? FontWeight.w800 : FontWeight.w500,
               color: isToday || full
                   ? gold

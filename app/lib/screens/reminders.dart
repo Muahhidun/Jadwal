@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -1246,19 +1247,38 @@ class ReminderDetailScreen extends StatefulWidget {
   State<ReminderDetailScreen> createState() => _ReminderDetailScreenState();
 }
 
-class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
+class _ReminderDetailScreenState extends State<ReminderDetailScreen>
+    with WidgetsBindingObserver {
   ReminderConfig? _config;
   TextEditingController? _title;
   String? _activeConfigId;
+  bool _heavySleeperGuideScheduled = false;
+  AlarmCapabilities? _alarmCapabilities;
 
   bool get _isPrayerPreset =>
       !widget.isCustom && _prayerIds.contains(_activeConfigId);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_config != null) return;
     _loadConfig(widget.configId);
+    _refreshAlarmCapabilities();
+    _scheduleHeavySleeperGuideIfNeeded();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    _refreshAlarmCapabilities();
+    AlarmService.sync(AppScope.of(context), ScheduleScope.of(context));
+    _scheduleHeavySleeperGuideIfNeeded();
   }
 
   void _loadConfig(String id) {
@@ -1296,6 +1316,7 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _title?.dispose();
     super.dispose();
   }
@@ -1313,6 +1334,99 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
       app.saveReminderConfig(updated);
     }
     syncNotifications(app, schedule);
+  }
+
+  bool get _canShowHeavySleeperMode =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android);
+
+  bool get _isAndroidAlarmPlatform => AlarmService.isAndroid;
+
+  Future<void> _refreshAlarmCapabilities() async {
+    final capabilities = await AlarmService.getCapabilities();
+    if (mounted) setState(() => _alarmCapabilities = capabilities);
+  }
+
+  Future<void> _requestAndroidAlarmAccess() async {
+    if (!_isAndroidAlarmPlatform) return;
+    final current = await AlarmService.getCapabilities();
+    if (current?.canScheduleExact != true ||
+        current?.canUseFullScreen != true) {
+      await AlarmService.requestPermissions();
+    } else if (current?.notificationsGranted != true) {
+      await gNotifier?.requestPermission();
+    }
+    await _refreshAlarmCapabilities();
+  }
+
+  String _androidAlarmAccessSubtitle(bool kz) {
+    final value = _alarmCapabilities;
+    if (value == null) return kz ? 'Тексерілуде…' : 'Проверяем…';
+    if (!value.canScheduleExact) {
+      return kz
+          ? '«Будильниктер мен еске салғыштарға» рұқсат беріңіз'
+          : 'Разрешите «Будильники и напоминания»';
+    }
+    if (!value.canUseFullScreen) {
+      return kz
+          ? 'Толық экранда көрсетуге рұқсат беріңіз'
+          : 'Разрешите показ на весь экран';
+    }
+    if (!value.notificationsGranted) {
+      return kz ? 'Хабарландыруларға рұқсат беріңіз' : 'Разрешите уведомления';
+    }
+    return kz ? 'Барлық рұқсаттар берілді' : 'Все разрешения выданы';
+  }
+
+  void _scheduleHeavySleeperGuideIfNeeded() {
+    final app = AppScope.of(context);
+    if (_heavySleeperGuideScheduled ||
+        _activeConfigId != 'fajr' ||
+        !_canShowHeavySleeperMode ||
+        !app.alarmEnabled('fajr') ||
+        app.heavySleeperGuideSeen) {
+      return;
+    }
+    _heavySleeperGuideScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (mounted) await _showHeavySleeperGuide(context, replay: false);
+    });
+  }
+
+  Future<void> _setHeavySleeper(bool enabled) async {
+    final app = AppScope.of(context);
+    final schedule = ScheduleScope.of(context);
+    app.setHeavySleeperEnabled(enabled);
+    final scheduled = await AlarmService.sync(app, schedule);
+    if (!mounted) return;
+
+    if (enabled && _isAndroidAlarmPlatform) {
+      await _refreshAlarmCapabilities();
+      if (!mounted) return;
+      if (!scheduled || _alarmCapabilities?.ready != true) {
+        await _requestAndroidAlarmAccess();
+      }
+      if (!mounted) return;
+    }
+
+    if (enabled && !app.heavySleeperGuideSeen) {
+      await _showHeavySleeperGuide(context, replay: false);
+    }
+
+    if (!scheduled && mounted) {
+      final kz = app.lang == 'kz';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            kz
+                ? 'Жүйелік будильниктерді жоспарлау мүмкін болмады. 10 секундтық тексеруді іске қосыңыз.'
+                : 'Не удалось запланировать системные будильники. Запустите проверку на 10 секунд.',
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
   }
 
   @override
@@ -1387,9 +1501,13 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
           if (alarmPrayerId != null)
             DauamSection(
               label: kz ? 'ЖҮЙЕЛІК БУДИЛЬНИК' : 'СИСТЕМНЫЙ БУДИЛЬНИК',
-              footer: kz
-                  ? 'Жүйелік будильник iOS «Мазаламау» режимінде де соғылады. Күн шығуы намаз емес, жеке уақыт белгісі ретінде қолжетімді.'
-                  : 'Системный будильник iOS сработает даже в режиме «Не беспокоить». Восход доступен как отдельная временная точка, но не является молитвой.',
+              footer: _isAndroidAlarmPlatform
+                  ? (kz
+                        ? 'Android дәл будильнигі құрылғы ұйқы режимінде болса да соғылады. Алғашқы рет «Будильниктер мен еске салғыштарға» және бұғаттау экранының үстінен көрсетуге рұқсат беріңіз. Күн шығуы намаз емес, жеке уақыт белгісі ретінде қолжетімді.'
+                        : 'Точный будильник Android сработает, даже когда устройство спит. При первом включении разрешите «Будильники и напоминания» и показ поверх экрана блокировки. Восход доступен как отдельная временная точка, но не является молитвой.')
+                  : (kz
+                        ? 'Жүйелік будильник iOS «Мазаламау» режимінде де соғылады. Күн шығуы намаз емес, жеке уақыт белгісі ретінде қолжетімді.'
+                        : 'Системный будильник iOS сработает даже в режиме «Не беспокоить». Восход доступен как отдельная временная точка, но не является молитвой.'),
               children: [
                 DauamSwitchRow(
                   icon: CupertinoIcons.alarm,
@@ -1398,13 +1516,34 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                       ? (kz ? 'Қосулы' : 'Включен')
                       : (kz ? 'Өшірулі' : 'Выключен'),
                   value: alarmEnabled,
-                  onChanged: (val) {
+                  onChanged: (val) async {
                     app.setAlarmEnabled(alarmPrayerId, val);
-                    AlarmService.sync(app, ScheduleScope.of(context));
+                    final scheduled = await AlarmService.sync(
+                      app,
+                      ScheduleScope.of(context),
+                    );
                     HapticFeedback.selectionClick();
+                    if (!mounted) return;
+                    await _refreshAlarmCapabilities();
+                    if (val &&
+                        _isAndroidAlarmPlatform &&
+                        (!scheduled || _alarmCapabilities?.ready != true)) {
+                      await _requestAndroidAlarmAccess();
+                    } else if (val && alarmPrayerId == 'fajr') {
+                      _scheduleHeavySleeperGuideIfNeeded();
+                    }
                   },
                 ),
                 if (alarmEnabled) ...[
+                  if (_isAndroidAlarmPlatform)
+                    DauamSettingsRow(
+                      icon: _alarmCapabilities?.ready == true
+                          ? CupertinoIcons.checkmark_shield_fill
+                          : CupertinoIcons.exclamationmark_shield_fill,
+                      title: kz ? 'Android рұқсаттары' : 'Разрешения Android',
+                      subtitle: _androidAlarmAccessSubtitle(kz),
+                      onTap: _requestAndroidAlarmAccess,
+                    ),
                   _InlineOffsetStepper(
                     offset: alarmOffset,
                     kz: kz,
@@ -1435,6 +1574,14 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                             HapticFeedback.selectionClick();
                           },
                   ),
+                  if (alarmPrayerId == 'fajr' && _canShowHeavySleeperMode)
+                    _HeavySleeperRow(
+                      enabled: app.heavySleeperEnabled,
+                      kz: kz,
+                      onChanged: _setHeavySleeper,
+                      onHelp: () =>
+                          _showHeavySleeperGuide(context, replay: true),
+                    ),
                   DauamSettingsRow(
                     icon: CupertinoIcons.play_circle_fill,
                     title: kz
@@ -1445,9 +1592,31 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
                         : 'Будильник сработает через 10 секунд. Заблокируйте экран для проверки.',
                     onTap: () async {
                       HapticFeedback.mediumImpact();
+                      if (_isAndroidAlarmPlatform) {
+                        await _refreshAlarmCapabilities();
+                        if (!context.mounted) return;
+                        if (_alarmCapabilities?.ready != true) {
+                          await _requestAndroidAlarmAccess();
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                kz
+                                    ? 'Алдымен Android рұқсаттарын беріңіз, содан кейін тексеруді қайта іске қосыңыз.'
+                                    : 'Сначала выдайте разрешения Android, затем запустите проверку ещё раз.',
+                              ),
+                              duration: const Duration(seconds: 6),
+                            ),
+                          );
+                          return;
+                        }
+                      }
                       final test = await AlarmService.testAlarm(
                         seconds: 10,
                         title: '${config.title} (${kz ? 'Сынақ' : 'Тест'})',
+                        language: app.lang,
+                        heavySleeper:
+                            alarmPrayerId == 'fajr' && app.heavySleeperEnabled,
                       );
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -1662,16 +1831,266 @@ class _ReminderDetailScreenState extends State<ReminderDetailScreen> {
   }
 }
 
+class _HeavySleeperRow extends StatelessWidget {
+  const _HeavySleeperRow({
+    required this.enabled,
+    required this.kz,
+    required this.onChanged,
+    required this.onHelp,
+  });
+
+  final bool enabled;
+  final bool kz;
+  final ValueChanged<bool> onChanged;
+  final VoidCallback onHelp;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = dauamSettingsPalette(context).colors;
+    final accent = dauamSettingsAccent(context);
+    return DauamSettingsRow(
+      icon: CupertinoIcons.bed_double_fill,
+      title: kz ? 'Қатты ұйқы режимі' : 'Режим «Крепкий сон»',
+      subtitle: enabled
+          ? (kz
+                ? 'Негізгі дабыл және +3, +6, +9 минут'
+                : 'Основной сигнал и резервные через 3, 6 и 9 минут')
+          : (kz
+                ? 'Оянғаныңызды растағанша резервтік дабылдар'
+                : 'Резервные сигналы, пока вы не подтвердите пробуждение'),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Semantics(
+            button: true,
+            label: kz ? 'Режим туралы' : 'Как работает режим',
+            child: CupertinoButton(
+              padding: const EdgeInsets.all(8),
+              minimumSize: const Size.square(36),
+              onPressed: onHelp,
+              child: Icon(
+                CupertinoIcons.question_circle,
+                size: 21,
+                color: c.sub,
+              ),
+            ),
+          ),
+          CupertinoSwitch(
+            value: enabled,
+            activeTrackColor: accent,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _showHeavySleeperGuide(
+  BuildContext context, {
+  required bool replay,
+}) async {
+  final app = AppScope.of(context);
+  final kz = app.lang == 'kz';
+  final p = dauamSettingsPalette(context);
+  final c = p.colors;
+  final accent = dauamSettingsAccent(context);
+  final surface = Color.alphaBlend(p.surface, p.middle).withValues(alpha: 1);
+
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    isDismissible: replay,
+    enableDrag: replay,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: .38),
+    builder: (sheetContext) => PopScope(
+      canPop: replay,
+      child: SafeArea(
+        top: false,
+        child: Container(
+          key: const ValueKey('heavy-sleeper-guide'),
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: p.border.withValues(alpha: .45)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: .18),
+                blurRadius: 32,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 66,
+                height: 66,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: .13),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(CupertinoIcons.bell_fill, color: accent, size: 30),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                kz ? 'Қатты ұйқы режимі' : 'Режим «Крепкий сон»',
+                textAlign: TextAlign.center,
+                style: JType.ui(23, w: FontWeight.w700, color: c.ink),
+              ),
+              const SizedBox(height: 9),
+              Text(
+                kz
+                    ? 'Бір дабылды байқамай өшіріп қойсаңыз, Дауам тағы үш рет оятады.'
+                    : 'Если вы машинально остановите один сигнал, Dauam попробует разбудить ещё три раза.',
+                textAlign: TextAlign.center,
+                style: JType.ui(15, color: c.sub, h: 1.45),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  for (final minute in const [0, 3, 6, 9]) ...[
+                    Expanded(
+                      child: Container(
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: minute == 0
+                              ? accent.withValues(alpha: .16)
+                              : c.faint.withValues(alpha: .09),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: minute == 0
+                                ? accent.withValues(alpha: .38)
+                                : p.border.withValues(alpha: .32),
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          minute == 0 ? (kz ? 'Бастау' : 'Старт') : '+$minute',
+                          style: JType.ui(
+                            13,
+                            w: FontWeight.w700,
+                            color: minute == 0 ? accent : c.ink,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (minute != 9)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Icon(
+                          CupertinoIcons.chevron_forward,
+                          size: 12,
+                          color: c.faint,
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 18),
+              _HeavySleeperGuidePoint(
+                icon: CupertinoIcons.stop_circle,
+                title: kz ? '«Тоқтату»' : '«Остановить»',
+                body: kz
+                    ? 'Ағымдағы дыбысты ғана тоқтатады. Келесі резервтік дабыл қалады.'
+                    : 'Останавливает только текущий звук. Следующий резервный будильник останется.',
+              ),
+              const SizedBox(height: 10),
+              _HeavySleeperGuidePoint(
+                icon: CupertinoIcons.check_mark_circled_solid,
+                title: kz ? '«Ояндым»' : '«Я проснулся»',
+                body: kz
+                    ? 'Дауамды ашып, осы таңға қалған барлық дабылды өшіреді.'
+                    : 'Откроет Dauam и отменит все оставшиеся сигналы на это утро.',
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: DauamPrimaryButton(
+                  label: kz ? 'Түсінікті' : 'Понятно',
+                  onTap: () => Navigator.of(sheetContext).pop(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
+  if (!replay && !app.heavySleeperGuideSeen) {
+    app.markHeavySleeperGuideSeen();
+  }
+}
+
+class _HeavySleeperGuidePoint extends StatelessWidget {
+  const _HeavySleeperGuidePoint({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = dauamSettingsPalette(context).colors;
+    final accent = dauamSettingsAccent(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: .11),
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Icon(icon, size: 18, color: accent),
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: JType.ui(14.5, w: FontWeight.w700, color: c.ink),
+              ),
+              const SizedBox(height: 2),
+              Text(body, style: JType.ui(13, color: c.sub, h: 1.35)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 String _alarmErrorText(bool kz, AlarmOperationResult result) {
   switch (result.errorCode) {
     case 'ALARM_PERMISSION_DENIED':
       return kz
           ? 'Dauam үшін жүйелік будильниктерге рұқсат беріңіз.'
           : 'Разрешите системные будильники для Dauam в настройках iPhone.';
+    case 'ALARM_PERMISSION_REQUIRED':
+      return kz
+          ? 'Android баптауларында Dauam үшін «Будильниктер мен еске салғыштарға» рұқсат беріңіз.'
+          : 'Разрешите для Dauam «Будильники и напоминания» в настройках Android.';
     case 'ALARMKIT_UNAVAILABLE':
       return kz
           ? 'Жүйелік будильник үшін iOS 26 немесе жаңарақ нұсқа қажет.'
           : 'Для системного будильника требуется iOS 26 или новее.';
+    case 'ALARM_SCHEDULE_FAILED':
+      return kz
+          ? 'Android будильнигін жоспарлау мүмкін болмады: ${result.message ?? 'белгісіз қате'}'
+          : 'Не удалось запланировать будильник Android: ${result.message ?? 'неизвестная ошибка'}';
     default:
       return kz
           ? 'Будильникті орнату мүмкін болмады: ${result.message ?? 'белгісіз қате'}'

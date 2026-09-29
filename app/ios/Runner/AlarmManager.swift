@@ -1,5 +1,7 @@
 #if canImport(AlarmKit)
+import ActivityKit
 import AlarmKit
+import AppIntents
 import SwiftUI
 
 @available(iOS 26.0, *)
@@ -24,6 +26,11 @@ public final class AlarmManager: NSObject, FlutterPlugin {
   private static let testAlarmID = UUID(
     uuidString: "DA0A0000-0000-4000-8000-000000000002"
   )!
+  private static let testHeavySleeperBackupIDs: [UUID] = [
+    UUID(uuidString: "DA0A0000-0000-4000-8000-000000000011")!,
+    UUID(uuidString: "DA0A0000-0000-4000-8000-000000000012")!,
+    UUID(uuidString: "DA0A0000-0000-4000-8000-000000000013")!,
+  ]
   private static let prayerAlarmIDs: [String: UUID] = [
     "fajr": fajrAlarmID,
     "sunrise": UUID(uuidString: "DA0A0000-0000-4000-8000-000000000007")!,
@@ -31,6 +38,11 @@ public final class AlarmManager: NSObject, FlutterPlugin {
     "asr": UUID(uuidString: "DA0A0000-0000-4000-8000-000000000004")!,
     "maghrib": UUID(uuidString: "DA0A0000-0000-4000-8000-000000000005")!,
     "isha": UUID(uuidString: "DA0A0000-0000-4000-8000-000000000006")!,
+  ]
+  private static let heavySleeperBackupIDs: [UUID] = [
+    UUID(uuidString: "DA0A0000-0000-4000-8000-000000000008")!,
+    UUID(uuidString: "DA0A0000-0000-4000-8000-000000000009")!,
+    UUID(uuidString: "DA0A0000-0000-4000-8000-000000000010")!,
   ]
 
   private enum BridgeError: LocalizedError {
@@ -97,11 +109,17 @@ public final class AlarmManager: NSObject, FlutterPlugin {
       let args = call.arguments as? [String: Any]
       let seconds = max(args?["seconds"] as? Double ?? 10, 1)
       let title = args?["title"] as? String ?? "Фаджр (Тест)"
-      schedule(
+      let heavySleeper = args?["heavySleeper"] as? Bool ?? false
+      let repeatButtonTitle = args?["repeatButtonTitle"] as? String
+        ?? "Повторить через 3 минуты"
+      let requestedMinutes = (args?["backupMinutes"] as? [NSNumber])?
+        .map(\.intValue) ?? [3, 6, 9]
+      scheduleTestAlarm(
         at: Date().addingTimeInterval(seconds),
         title: title,
-        kind: "test",
-        id: Self.testAlarmID,
+        heavySleeper: heavySleeper,
+        repeatButtonTitle: repeatButtonTitle,
+        backupMinutes: requestedMinutes,
         result: result
       )
 
@@ -181,6 +199,9 @@ public final class AlarmManager: NSObject, FlutterPlugin {
         }
 
         removeLegacyAlarmKitAlarms(using: manager)
+        for id in Self.heavySleeperBackupIDs {
+          try? manager.cancel(id: id)
+        }
         var scheduled: [[String: Any]] = []
 
         for (kind, id) in Self.prayerAlarmIDs {
@@ -192,11 +213,17 @@ public final class AlarmManager: NSObject, FlutterPlugin {
           let timestamp = entry["timestamp"] as? Double ?? 0
           let title = entry["title"] as? String ?? kind
           let date = Date(timeIntervalSince1970: timestamp)
+          let heavySleeper = kind == "fajr"
+            && (entry["heavySleeper"] as? Bool ?? false)
+          let repeatButtonTitle = entry["repeatButtonTitle"] as? String
+            ?? "Повторить через 3 минуты"
           let alarm = try await scheduleAlarm(
             at: date,
             title: title,
             kind: kind,
             id: id,
+            heavySleeper: heavySleeper,
+            repeatButtonTitle: repeatButtonTitle,
             using: manager
           )
           scheduled.append([
@@ -205,6 +232,39 @@ public final class AlarmManager: NSObject, FlutterPlugin {
             "nextTrigger": date.timeIntervalSince1970,
             "state": stateName(alarm.state),
           ])
+
+          if heavySleeper {
+            let requestedMinutes = (entry["backupMinutes"] as? [NSNumber])?
+              .map(\.intValue) ?? [3, 6, 9]
+            let backupMinutes = Array(requestedMinutes.prefix(
+              Self.heavySleeperBackupIDs.count
+            ))
+            for (index, pair) in zip(
+              Self.heavySleeperBackupIDs,
+              backupMinutes
+            ).enumerated() {
+              let (backupID, minutes) = pair
+              let backupDate = date.addingTimeInterval(
+                TimeInterval(minutes * 60)
+              )
+              let backupTitle = "\(title) · \(index + 2)/\(backupMinutes.count + 1)"
+              let backup = try await scheduleAlarm(
+                at: backupDate,
+                title: backupTitle,
+                kind: "fajr_backup_\(index + 1)",
+                id: backupID,
+                heavySleeper: true,
+                repeatButtonTitle: repeatButtonTitle,
+                using: manager
+              )
+              scheduled.append([
+                "kind": "fajr_backup_\(index + 1)",
+                "id": backup.id.uuidString,
+                "nextTrigger": backupDate.timeIntervalSince1970,
+                "state": stateName(backup.state),
+              ])
+            }
+          }
         }
 
         finish(
@@ -229,6 +289,100 @@ public final class AlarmManager: NSObject, FlutterPlugin {
     } else {
       finish(result, with: BridgeError.alarmKitUnavailable)
     }
+    #endif
+  }
+
+  private func scheduleTestAlarm(
+    at date: Date,
+    title: String,
+    heavySleeper: Bool,
+    repeatButtonTitle: String,
+    backupMinutes requestedMinutes: [Int],
+    result: @escaping FlutterResult
+  ) {
+    guard date.timeIntervalSinceNow > 0 else {
+      finish(result, with: BridgeError.invalidDate)
+      return
+    }
+
+    removeLegacyNotificationFallbacks()
+
+    #if canImport(AlarmKit)
+    guard #available(iOS 26.0, *) else {
+      finish(result, with: BridgeError.alarmKitUnavailable)
+      return
+    }
+
+    Task {
+      do {
+        let manager = AlarmKit.AlarmManager.shared
+        try await ensureAuthorization(using: manager)
+        let testIDs = [Self.testAlarmID] + Self.testHeavySleeperBackupIDs
+        for id in testIDs {
+          try? manager.cancel(id: id)
+        }
+        removeLegacyAlarmKitAlarms(using: manager)
+
+        var scheduled: [[String: Any]] = []
+        let primary = try await scheduleAlarm(
+          at: date,
+          title: title,
+          kind: "test",
+          id: Self.testAlarmID,
+          heavySleeper: heavySleeper,
+          repeatButtonTitle: repeatButtonTitle,
+          using: manager
+        )
+        scheduled.append([
+          "kind": "test",
+          "id": primary.id.uuidString,
+          "nextTrigger": date.timeIntervalSince1970,
+          "state": stateName(primary.state),
+        ])
+
+        if heavySleeper {
+          let backupMinutes = Array(requestedMinutes.prefix(
+            Self.testHeavySleeperBackupIDs.count
+          ))
+          for (index, pair) in zip(
+            Self.testHeavySleeperBackupIDs,
+            backupMinutes
+          ).enumerated() {
+            let (backupID, minutes) = pair
+            let backupDate = date.addingTimeInterval(TimeInterval(minutes * 60))
+            let backup = try await scheduleAlarm(
+              at: backupDate,
+              title: "\(title) · \(index + 2)/\(backupMinutes.count + 1)",
+              kind: "test_backup_\(index + 1)",
+              id: backupID,
+              heavySleeper: true,
+              repeatButtonTitle: repeatButtonTitle,
+              using: manager
+            )
+            scheduled.append([
+              "kind": "test_backup_\(index + 1)",
+              "id": backup.id.uuidString,
+              "nextTrigger": backupDate.timeIntervalSince1970,
+              "state": stateName(backup.state),
+            ])
+          }
+        }
+
+        finish(
+          result,
+          value: [
+            "success": true,
+            "mode": "alarmKit",
+            "scheduled": scheduled.count,
+            "alarms": scheduled,
+          ]
+        )
+      } catch {
+        finish(result, with: error)
+      }
+    }
+    #else
+    finish(result, with: BridgeError.alarmKitUnavailable)
     #endif
   }
 
@@ -383,12 +537,25 @@ public final class AlarmManager: NSObject, FlutterPlugin {
     title: String,
     kind: String,
     id: UUID,
+    heavySleeper: Bool = false,
+    repeatButtonTitle: String = "Повторить через 3 минуты",
     using manager: AlarmKit.AlarmManager
   ) async throws -> Alarm {
     let titleResource = LocalizedStringResource(stringLiteral: title)
     let alert: AlarmPresentation.Alert
+    let repeatButton = heavySleeper
+      ? AlarmButton(
+          text: LocalizedStringResource(stringLiteral: repeatButtonTitle),
+          textColor: .white,
+          systemImageName: "repeat"
+        )
+      : nil
     if #available(iOS 26.1, *) {
-      alert = AlarmPresentation.Alert(title: titleResource)
+      alert = AlarmPresentation.Alert(
+        title: titleResource,
+        secondaryButton: repeatButton,
+        secondaryButtonBehavior: heavySleeper ? .custom : nil
+      )
     } else {
       let stopButton = AlarmButton(
         text: "Остановить",
@@ -397,7 +564,9 @@ public final class AlarmManager: NSObject, FlutterPlugin {
       )
       alert = AlarmPresentation.Alert(
         title: titleResource,
-        stopButton: stopButton
+        stopButton: stopButton,
+        secondaryButton: repeatButton,
+        secondaryButtonBehavior: heavySleeper ? .custom : nil
       )
     }
 
@@ -409,9 +578,43 @@ public final class AlarmManager: NSObject, FlutterPlugin {
     )
     let configuration = AlarmKit.AlarmManager.AlarmConfiguration.alarm(
       schedule: .fixed(date),
-      attributes: attributes
+      attributes: attributes,
+      stopIntent: heavySleeper
+        ? DauamWakeUpConfirmedIntent(alarmID: id.uuidString)
+        : nil,
+      secondaryIntent: heavySleeper
+        ? DauamRepeatAlarmIntent(alarmID: id.uuidString)
+        : nil,
+      sound: heavySleeper ? .named("DauamWake.caf") : .default
     )
     return try await manager.schedule(id: id, configuration: configuration)
+  }
+
+  /// Вызывается системным контролом остановки AlarmKit. Останавливает текущий
+  /// сигнал и снимает все оставшиеся сигналы соответствующего теста/цикла.
+  /// Следующий запуск приложения поставит уже завтрашнюю серию.
+  @available(iOS 26.0, *)
+  static func confirmWakeUp(alarmID: String) {
+    let manager = AlarmKit.AlarmManager.shared
+    guard let id = UUID(uuidString: alarmID) else { return }
+    try? manager.stop(id: id)
+    let testIDs = Set(testHeavySleeperBackupIDs).union([testAlarmID])
+    let ids = testIDs.contains(id)
+      ? testIDs
+      : Set(heavySleeperBackupIDs).union([fajrAlarmID])
+    for id in ids {
+      try? manager.cancel(id: id)
+    }
+  }
+
+  /// Останавливает только текущий сигнал. Следующий заранее поставленный
+  /// резервный сигнал остаётся и повторит будильник через три минуты.
+  @available(iOS 26.0, *)
+  static func repeatAlarm(alarmID: String) {
+    let manager = AlarmKit.AlarmManager.shared
+    if let id = UUID(uuidString: alarmID) {
+      try? manager.stop(id: id)
+    }
   }
 
   @available(iOS 26.0, *)
@@ -419,7 +622,10 @@ public final class AlarmManager: NSObject, FlutterPlugin {
     using manager: AlarmKit.AlarmManager
   ) {
     guard let alarms = try? manager.alarms else { return }
-    let currentIDs = Set(Self.prayerAlarmIDs.values).union([Self.testAlarmID])
+    let currentIDs = Set(Self.prayerAlarmIDs.values)
+      .union(Self.heavySleeperBackupIDs)
+      .union(Self.testHeavySleeperBackupIDs)
+      .union([Self.testAlarmID])
     for alarm in alarms where !currentIDs.contains(alarm.id) {
       try? manager.cancel(id: alarm.id)
     }
@@ -470,3 +676,61 @@ public final class AlarmManager: NSObject, FlutterPlugin {
     }
   }
 }
+
+#if canImport(AlarmKit)
+/// Системная остановка означает, что пользователь окончательно проснулся:
+/// текущий и все оставшиеся резервные сигналы этого теста/цикла снимаются.
+@available(iOS 26.0, *)
+public struct DauamWakeUpConfirmedIntent: LiveActivityIntent {
+  public static var title: LocalizedStringResource = "Остановить серию"
+  public static var description = IntentDescription(
+    "Отменяет оставшиеся резервные будильники Фаджра."
+  )
+  public static var openAppWhenRun: Bool = false
+
+  @Parameter(title: "Alarm ID")
+  public var alarmID: String
+
+  public init(alarmID: String) {
+    self.alarmID = alarmID
+  }
+
+  public init() {
+    self.alarmID = ""
+  }
+
+  public func perform() async throws -> some IntentResult {
+    AlarmManager.confirmWakeUp(alarmID: alarmID)
+    return .result()
+  }
+}
+
+/// Акцентная дополнительная кнопка не завершает усиленный цикл: она глушит
+/// текущий сигнал, а следующий заранее поставленный резерв сработает через
+/// три минуты. Это максимально близкая к snooze семантика, разрешённая
+/// системным интерфейсом AlarmKit.
+@available(iOS 26.0, *)
+public struct DauamRepeatAlarmIntent: LiveActivityIntent {
+  public static var title: LocalizedStringResource = "Повторить через 3 минуты"
+  public static var description = IntentDescription(
+    "Останавливает текущий сигнал и оставляет следующий резервный будильник."
+  )
+  public static var openAppWhenRun: Bool = false
+
+  @Parameter(title: "Alarm ID")
+  public var alarmID: String
+
+  public init(alarmID: String) {
+    self.alarmID = alarmID
+  }
+
+  public init() {
+    self.alarmID = ""
+  }
+
+  public func perform() async throws -> some IntentResult {
+    AlarmManager.repeatAlarm(alarmID: alarmID)
+    return .result()
+  }
+}
+#endif

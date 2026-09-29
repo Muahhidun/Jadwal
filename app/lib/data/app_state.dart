@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../prayer/city.dart';
+import '../theme/home_scene.dart';
 
 /// Глобальное состояние: язык, тема, город, онбординг, дневные отметки.
 /// Хранится локально (shared_preferences) — без сервера и аккаунтов.
@@ -40,6 +41,11 @@ class AppState extends ChangeNotifier {
 
   String get lang => _prefs.getString('lang') ?? 'ru';
   String get theme => _prefs.getString('theme') ?? 'dark';
+
+  /// Художественное оформление главного экрана. Оно не связано с городом,
+  /// по которому рассчитываются времена молитв.
+  HomeScene get homeScene =>
+      HomeScene.fromStorage(_prefs.getString('homeScene'));
   bool get onboardingDone => _prefs.getBool('onboardingDone') ?? false;
 
   /// Контекстное знакомство с центром напоминаний показывается отдельно от
@@ -99,6 +105,22 @@ class AppState extends ChangeNotifier {
     _prefs.setInt('prayer_alarm:$prayerId:offset', value);
     if (prayerId == 'fajr') _prefs.setInt('fajr_alarm_offset', value);
   });
+
+  /// Усиленный сценарий пробуждения для Фаджра: основной системный
+  /// будильник и три независимых резервных сигнала.
+  bool get heavySleeperEnabled =>
+      _prefs.getBool('fajr_alarm:heavy_sleeper_enabled') ?? false;
+
+  void setHeavySleeperEnabled(bool value) =>
+      _set(() => _prefs.setBool('fajr_alarm:heavy_sleeper_enabled', value));
+
+  /// Подсказка открывается автоматически при первом входе в настройки Фаджра.
+  bool get heavySleeperGuideSeen =>
+      _prefs.getBool('fajr_alarm:heavy_sleeper_guide_seen_v1') ?? false;
+
+  void markHeavySleeperGuideSeen() => _set(
+    () => _prefs.setBool('fajr_alarm:heavy_sleeper_guide_seen_v1', true),
+  );
 
   // Совместимость с кодом предыдущих сборок.
   bool get fajrAlarmEnabled => alarmEnabled('fajr');
@@ -254,6 +276,8 @@ class AppState extends ChangeNotifier {
 
   set lang(String v) => _set(() => _prefs.setString('lang', v));
   set theme(String v) => _set(() => _prefs.setString('theme', v));
+  set homeScene(HomeScene v) =>
+      _set(() => _prefs.setString('homeScene', v.storageValue));
   set onboardingDone(bool v) => _set(() => _prefs.setBool('onboardingDone', v));
   set remindersGuideSeen(bool v) => _set(() {
     _prefs.setBool('remindersGuideSeen', v);

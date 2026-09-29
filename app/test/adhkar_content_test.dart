@@ -91,4 +91,33 @@ void main() {
     expect(morning, endsWith('ва анна Мухаммадан ‘абду-ка ва расулю-ка.'));
     expect(evening, endsWith('ва анна Мухаммадан ‘абду-ка ва расулю-ка.'));
   });
+
+  test('варианты зикра на 10 и 100 раз не смешивают достоинства', () async {
+    final collections = await AdhkarRepository.load();
+    final morning = collections['morning']!;
+    final evening = collections['evening']!;
+
+    final morningTen = morning.items.firstWhere(
+      (item) => item.source.contains('№ 92'),
+    );
+    final eveningTen = evening.items.firstWhere(
+      (item) => item.source.contains('№ 92'),
+    );
+    final dailyHundred = morning.items.firstWhere(
+      (item) => item.source.contains('№ 93'),
+    );
+
+    for (final ten in [morningTen, eveningTen]) {
+      expect(ten.repeat, 10);
+      expect(ten.fazRu, contains('десять раз'));
+      expect(ten.fazRu, isNot(contains('100 раз')));
+      expect(ten.source, contains('ан-Насаи'));
+      expect(ten.source, isNot(contains('аль-Бухари')));
+    }
+
+    expect(dailyHundred.repeat, 100);
+    expect(dailyHundred.fazRu, contains('100 раз'));
+    expect(dailyHundred.source, contains('аль-Бухари, 3293'));
+    expect(dailyHundred.source, contains('Муслим, 2691'));
+  });
 }

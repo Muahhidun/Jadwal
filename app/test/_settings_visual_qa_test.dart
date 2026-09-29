@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -59,5 +60,31 @@ void main() {
       find.byType(JadwalApp),
       matchesGoldenFile('goldens/lower_screen_393x852.png'),
     );
+
+    expect(find.text('Напоминания'), findsOneWidget);
+    expect(find.text('Вид'), findsOneWidget);
+    expect(find.text('Язык'), findsOneWidget);
+    await tester.tap(find.text('Вид'));
+    // Let the raster scene preview finish decoding outside the fake clock.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 120)),
+    );
+    await _pumpFrames(tester, 10);
+    expect(find.text('Мекка'), findsOneWidget);
+    expect(find.text('Природа'), findsOneWidget);
+    expect(find.text('Минимализм'), findsOneWidget);
+    expect(find.text('Русский'), findsNothing);
+    await expectLater(
+      find.byType(JadwalApp),
+      matchesGoldenFile('goldens/appearance_picker_393x852.png'),
+    );
+
+    await tester.tap(find.byIcon(CupertinoIcons.xmark));
+    await _pumpFrames(tester, 8);
+    await tester.tap(find.text('Язык'));
+    await _pumpFrames(tester, 8);
+    expect(find.text('Русский'), findsOneWidget);
+    expect(find.text('Қазақша'), findsOneWidget);
+    expect(find.text('Мекка'), findsNothing);
   });
 }

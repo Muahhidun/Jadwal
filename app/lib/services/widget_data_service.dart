@@ -7,11 +7,12 @@ import '../i18n/strings.dart';
 import '../prayer/schedule.dart';
 import '../prayer/schedule_service.dart';
 
-/// Передаёт WidgetKit компактный снимок локальных данных Dauam.
+/// Передаёт нативным iOS/Android-виджетам компактный снимок данных Dauam.
 ///
 /// Виджет живёт в отдельном процессе и не может читать Flutter
-/// `SharedPreferences`. На iOS снимок сохраняется в общей App Group, после
-/// чего WidgetKit получает команду перестроить timelines.
+/// `SharedPreferences`. На iOS снимок сохраняется в общей App Group, а на
+/// Android — в хранилище нативного AppWidgetProvider. После записи платформа
+/// получает команду немедленно обновить виджеты.
 class WidgetDataService {
   static const MethodChannel _channel = MethodChannel('kz.dauam/widgets');
   static const int scheduleLookaheadDays = 14;
@@ -114,7 +115,7 @@ class WidgetDataService {
       await _channel.invokeMethod<void>('saveSnapshot', jsonEncode(payload));
       return true;
     } on MissingPluginException {
-      // Android и widget-тесты не имеют iOS-плагина.
+      // Widget-тесты и неподдерживаемые платформы не имеют нативного моста.
       return false;
     } on PlatformException {
       // Виджеты не должны влиять на основной экран, даже если App Group

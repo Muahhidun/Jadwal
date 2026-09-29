@@ -6,6 +6,7 @@ import '../i18n/strings.dart';
 import '../prayer/schedule.dart';
 import '../prayer/schedule_service.dart';
 import '../theme/tokens.dart';
+import '../theme/adaptive_layout.dart';
 import '../theme/system_bars.dart';
 import 'celebration.dart';
 import '../services/live_activity_service.dart';
@@ -164,7 +165,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final title = widget.collectionId == 'morning'
         ? 'Утренние зикры'
         : 'Вечерние зикры';
-    final res = await LiveActivityService.startZikrSession(
+    await LiveActivityService.startZikrSession(
       collectionId: widget.collectionId,
       currentIndex: idx,
       title: title,
@@ -173,16 +174,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
       zikrArabic: item.ar,
       zikrTranslation: item.ru ?? '',
     );
-    if (mounted && res.startsWith('ERR:')) {
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('LiveActivity status: $res'),
-          backgroundColor: Colors.redAccent,
-          duration: const Duration(seconds: 6),
-        ),
-      );
-    }
   }
 
   @override
@@ -233,6 +224,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final app = AppScope.of(context);
     final s = S.of(app.lang);
     final palette = ReaderPalette.fromId(app.readerPalette);
+    final expanded = isExpandedLayout(context);
     final col = collection;
     if (col == null) {
       return JSystemBars(
@@ -266,239 +258,253 @@ class _ReaderScreenState extends State<ReaderScreen> {
       child: Scaffold(
         backgroundColor: palette.bg,
         body: SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: SizedBox(
-                  height: remainingMin > 0 ? 48 : 34,
-                  child: Stack(
-                    alignment: Alignment.topCenter,
-                    children: [
-                      Align(
-                        alignment: Alignment.topLeft,
-                        child: GestureDetector(
-                          onTap: () {
-                            ZikrSpeechService.stop();
-                            LiveActivityService.stopActivity();
-                            Navigator.of(context).pop();
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.all(6),
-                            child: Icon(
-                              Icons.close,
-                              size: 22,
-                              color: palette.source,
-                            ),
-                          ),
-                        ),
-                      ),
-                      Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              title,
-                              key: const ValueKey('reader-title'),
-                              textAlign: TextAlign.center,
-                              style: JType.caption(palette.accent),
-                            ),
-                            const SizedBox(height: 2),
-                            if (remainingMin > 0)
-                              Text(
-                                '$timerCaption · $remaining',
-                                style: JType.ui(11, color: palette.source),
-                              ),
-                          ],
-                        ),
-                      ),
-                      Align(
-                        alignment: Alignment.topRight,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            GestureDetector(
-                              key: const ValueKey('reader-palette-button'),
-                              onTap: () => _showPalettePicker(app, palette),
-                              behavior: HitTestBehavior.opaque,
-                              child: Padding(
-                                padding: const EdgeInsets.all(6),
-                                child: Icon(
-                                  Icons.palette_outlined,
-                                  size: 22,
-                                  color: palette.source,
-                                ),
-                              ),
-                            ),
-                            GestureDetector(
-                              key: const ValueKey('reader-speech-toggle'),
-                              onTap: _toggleSpeech,
-                              child: Padding(
-                                padding: const EdgeInsets.all(6),
-                                child: Icon(
-                                  isSpeaking
-                                      ? Icons.volume_up_rounded
-                                      : Icons.volume_off_rounded,
-                                  size: 22,
-                                  color: isSpeaking
-                                      ? palette.accent
-                                      : palette.source,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    for (var i = 0; i < col.items.length; i++) ...[
-                      Expanded(
-                        child: Container(
-                          height: 3,
-                          decoration: BoxDecoration(
-                            color: i <= idx ? palette.accent : palette.divider,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                      if (i < col.items.length - 1) const SizedBox(width: 4),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '${idx + 1} ${s.of_} ${col.items.length}',
-                style: JType.ui(11, color: palette.source),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 28,
-                    vertical: 20,
-                  ),
-                  child: _ZikrBody(
-                    z: z,
-                    s: s,
-                    lang: app.lang,
-                    palette: palette,
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                child: Column(
-                  children: [
-                    Row(
+          child: AdaptiveContentPane(
+            expandedMaxWidth: 880,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  child: SizedBox(
+                    height: remainingMin > 0 ? 48 : 34,
+                    child: Stack(
+                      alignment: Alignment.topCenter,
                       children: [
-                        // Ровно та же левая зона, что занята кнопкой «назад»
-                        // и промежутком под ней в строке ниже.
-                        const SizedBox(width: 64),
-                        Expanded(
-                          child: Center(
-                            child: GestureDetector(
-                              key: const ValueKey('reader-skip-action'),
-                              onTap: () {
-                                HapticFeedback.selectionClick();
-                                session!.skipCurrent();
-                                if (last) {
-                                  _finish();
-                                } else {
-                                  _goToIndex(idx + 1);
-                                }
-                              },
-                              behavior: HitTestBehavior.opaque,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
+                        Align(
+                          alignment: Alignment.topLeft,
+                          child: GestureDetector(
+                            onTap: () {
+                              ZikrSpeechService.stop();
+                              LiveActivityService.stopActivity();
+                              Navigator.of(context).pop();
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(6),
+                              child: Icon(
+                                Icons.close,
+                                size: expanded ? 27 : 22,
+                                color: palette.source,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                title,
+                                key: const ValueKey('reader-title'),
+                                textAlign: TextAlign.center,
+                                style: JType.caption(
+                                  palette.accent,
+                                  size: expanded ? 14 : 11,
                                 ),
-                                child: Text(
-                                  app.lang == 'kz'
-                                      ? 'Бұл зікірді өткізу'
-                                      : 'Пропустить этот зикр',
-                                  textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 2),
+                              if (remainingMin > 0)
+                                Text(
+                                  '$timerCaption · $remaining',
                                   style: JType.ui(
-                                    12,
-                                    w: FontWeight.w600,
+                                    expanded ? 14 : 11,
+                                    color: palette.source,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.topRight,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              GestureDetector(
+                                key: const ValueKey('reader-palette-button'),
+                                onTap: () => _showPalettePicker(app, palette),
+                                behavior: HitTestBehavior.opaque,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(6),
+                                  child: Icon(
+                                    Icons.palette_outlined,
+                                    size: expanded ? 27 : 22,
                                     color: palette.source,
                                   ),
                                 ),
                               ),
-                            ),
+                              GestureDetector(
+                                key: const ValueKey('reader-speech-toggle'),
+                                onTap: _toggleSpeech,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(6),
+                                  child: Icon(
+                                    isSpeaking
+                                        ? Icons.volume_up_rounded
+                                        : Icons.volume_off_rounded,
+                                    size: expanded ? 27 : 22,
+                                    color: isSpeaking
+                                        ? palette.accent
+                                        : palette.source,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        GestureDetector(
-                          onTap: idx > 0 ? () => _goToIndex(idx - 1) : null,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      for (var i = 0; i < col.items.length; i++) ...[
+                        Expanded(
                           child: Container(
-                            width: 52,
-                            height: 52,
+                            height: 3,
                             decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: idx > 0
-                                    ? palette.button
-                                    : palette.disabled,
+                              color: i <= idx
+                                  ? palette.accent
+                                  : palette.divider,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                        if (i < col.items.length - 1) const SizedBox(width: 4),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${idx + 1} ${s.of_} ${col.items.length}',
+                  style: JType.ui(expanded ? 14 : 11, color: palette.source),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 28,
+                      vertical: 20,
+                    ),
+                    child: _ZikrBody(
+                      z: z,
+                      s: s,
+                      lang: app.lang,
+                      palette: palette,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                  child: AdaptiveContentPane(
+                    expandedMaxWidth: 760,
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            // Ровно та же левая зона, что занята кнопкой «назад»
+                            // и промежутком под ней в строке ниже.
+                            const SizedBox(width: 64),
+                            Expanded(
+                              child: Center(
+                                child: GestureDetector(
+                                  key: const ValueKey('reader-skip-action'),
+                                  onTap: () {
+                                    HapticFeedback.selectionClick();
+                                    session!.skipCurrent();
+                                    if (last) {
+                                      _finish();
+                                    } else {
+                                      _goToIndex(idx + 1);
+                                    }
+                                  },
+                                  behavior: HitTestBehavior.opaque,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    child: Text(
+                                      app.lang == 'kz'
+                                          ? 'Бұл зікірді өткізу'
+                                          : 'Пропустить этот зикр',
+                                      textAlign: TextAlign.center,
+                                      style: JType.ui(
+                                        expanded ? 15 : 12,
+                                        w: FontWeight.w600,
+                                        color: palette.source,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
-                            child: Icon(
-                              Icons.arrow_back,
-                              size: 20,
-                              color: idx > 0
-                                  ? palette.button
-                                  : palette.disabled,
-                            ),
-                          ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _ActionButton(
-                            key: const ValueKey('reader-next-action'),
-                            isConfirmed: repeatConfirmed,
-                            palette: palette,
-                            topText: repeatConfirmed
-                                ? s.repeatConfirmTitle.replaceAll(
-                                    '{n}',
-                                    '${z.repeat}',
-                                  )
-                                : countLabel(z.repeat, app.lang),
-                            bottomText: repeatConfirmed
-                                ? s.repeatConfirmBtn
-                                : (last ? s.finishBtn : s.nextBtn),
-                            onTap: () {
-                              if (z.repeat > 1 && !repeatConfirmed) {
-                                HapticFeedback.selectionClick();
-                                setState(session!.confirmRepeat);
-                                return;
-                              }
-                              session!.markCurrentRead();
-                              HapticFeedback.mediumImpact();
-                              if (last) {
-                                _finish();
-                              } else {
-                                _goToIndex(idx + 1);
-                              }
-                            },
-                          ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            GestureDetector(
+                              onTap: idx > 0 ? () => _goToIndex(idx - 1) : null,
+                              child: Container(
+                                width: expanded ? 62 : 52,
+                                height: expanded ? 62 : 52,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: idx > 0
+                                        ? palette.button
+                                        : palette.disabled,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.arrow_back,
+                                  size: expanded ? 24 : 20,
+                                  color: idx > 0
+                                      ? palette.button
+                                      : palette.disabled,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _ActionButton(
+                                key: const ValueKey('reader-next-action'),
+                                isConfirmed: repeatConfirmed,
+                                palette: palette,
+                                topText: repeatConfirmed
+                                    ? s.repeatConfirmTitle.replaceAll(
+                                        '{n}',
+                                        '${z.repeat}',
+                                      )
+                                    : countLabel(z.repeat, app.lang),
+                                bottomText: repeatConfirmed
+                                    ? s.repeatConfirmBtn
+                                    : (last ? s.finishBtn : s.nextBtn),
+                                onTap: () {
+                                  if (z.repeat > 1 && !repeatConfirmed) {
+                                    HapticFeedback.selectionClick();
+                                    setState(session!.confirmRepeat);
+                                    return;
+                                  }
+                                  session!.markCurrentRead();
+                                  HapticFeedback.mediumImpact();
+                                  if (last) {
+                                    _finish();
+                                  } else {
+                                    _goToIndex(idx + 1);
+                                  }
+                                },
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -659,6 +665,7 @@ class _ZikrBody extends StatelessWidget {
     final app = AppScope.of(context);
     final translation = z.translation(lang);
     final faz = z.faz(lang);
+    final expanded = isExpandedLayout(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -666,7 +673,7 @@ class _ZikrBody extends StatelessWidget {
           z.ar,
           textAlign: TextAlign.center,
           textDirection: TextDirection.rtl,
-          style: JType.arabic(26, color: palette.arabic),
+          style: JType.arabic(expanded ? 34 : 26, color: palette.arabic),
         ),
         const SizedBox(height: 14),
         // Сворачиваемые блоки: транскрипция / перевод / достоинство.
@@ -681,7 +688,7 @@ class _ZikrBody extends StatelessWidget {
               z.translit!,
               textAlign: TextAlign.center,
               style: JType.reading(
-                readerTransliterationFontSize,
+                expanded ? 20 : readerTransliterationFontSize,
                 color: palette.translit,
                 style: FontStyle.italic,
                 h: 1.65,
@@ -697,7 +704,7 @@ class _ZikrBody extends StatelessWidget {
             child: Text(
               translation,
               textAlign: TextAlign.center,
-              style: JType.reading(14.5, color: palette.ink),
+              style: JType.reading(expanded ? 19 : 14.5, color: palette.ink),
             ),
           ),
         if (faz != null)
@@ -712,10 +719,20 @@ class _ZikrBody extends StatelessWidget {
               children: [
                 Text(
                   faz,
-                  style: JType.reading(13.5, color: palette.ink, h: 1.6),
+                  style: JType.reading(
+                    expanded ? 18 : 13.5,
+                    color: palette.ink,
+                    h: 1.6,
+                  ),
                 ),
                 const SizedBox(height: 8),
-                Text(z.source, style: JType.ui(11.5, color: palette.source)),
+                Text(
+                  z.source,
+                  style: JType.ui(
+                    expanded ? 14.5 : 11.5,
+                    color: palette.source,
+                  ),
+                ),
               ],
             ),
           )
@@ -725,7 +742,7 @@ class _ZikrBody extends StatelessWidget {
             child: Center(
               child: Text(
                 z.source,
-                style: JType.ui(11.5, color: palette.source),
+                style: JType.ui(expanded ? 14.5 : 11.5, color: palette.source),
               ),
             ),
           ),
@@ -754,6 +771,7 @@ class _Section extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final expanded = isExpandedLayout(context);
     final header = GestureDetector(
       onTap: onToggle,
       behavior: HitTestBehavior.opaque,
@@ -762,11 +780,14 @@ class _Section extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(title, style: JType.caption(palette.accent, size: 10)),
+            Text(
+              title,
+              style: JType.caption(palette.accent, size: expanded ? 13 : 10),
+            ),
             const SizedBox(width: 4),
             Icon(
               open ? Icons.expand_less : Icons.expand_more,
-              size: 16,
+              size: expanded ? 20 : 16,
               color: palette.accent,
             ),
           ],
@@ -876,6 +897,7 @@ class _ActionButtonState extends State<_ActionButton>
 
   @override
   Widget build(BuildContext context) {
+    final expanded = isExpandedLayout(context);
     return GestureDetector(
       onTap: widget.onTap,
       child: AnimatedBuilder(
@@ -888,7 +910,7 @@ class _ActionButtonState extends State<_ActionButton>
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
-          height: 52,
+          height: expanded ? 62 : 52,
           decoration: BoxDecoration(
             color: widget.isConfirmed
                 ? widget.palette.accent
@@ -901,7 +923,7 @@ class _ActionButtonState extends State<_ActionButton>
               AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 200),
                 style: JType.ui(
-                  10.5,
+                  expanded ? 13 : 10.5,
                   w: FontWeight.w400,
                   color: widget.palette.buttonInk.withValues(alpha: .65),
                 ),
@@ -911,7 +933,7 @@ class _ActionButtonState extends State<_ActionButton>
               AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 200),
                 style: JType.ui(
-                  15,
+                  expanded ? 18 : 15,
                   w: FontWeight.w700,
                   color: widget.palette.buttonInk,
                 ),

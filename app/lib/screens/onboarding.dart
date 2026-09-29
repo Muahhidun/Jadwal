@@ -195,7 +195,14 @@ class _CityStepState extends State<_CityStep> {
       HapticFeedback.mediumImpact();
       widget.onPick(city);
     } catch (_) {
-      if (mounted) setState(() => _detecting = false);
+      if (mounted) {
+        setState(() {
+          _detecting = false;
+          _error = kz
+              ? 'Анықтау мүмкін болмады. Тізімнен таңдаңыз.'
+              : 'Не удалось определить. Выберите из списка.';
+        });
+      }
     }
   }
 
