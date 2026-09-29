@@ -29,14 +29,20 @@ void main() {
     final state = await AppState.load();
 
     expect(state.homeScene, HomeScene.mecca);
-    state.homeScene = HomeScene.nature;
+    state.homeScene = HomeScene.medina;
 
     final restored = await AppState.load();
-    expect(restored.homeScene, HomeScene.nature);
+    expect(restored.homeScene, HomeScene.medina);
     expect(restored.city.name, 'Екібастұз қаласы');
   });
 
-  testWidgets('все три оформления главного экрана рисуются', (tester) async {
+  test('убранная «Природа» превращается в «Степь», «Орнамент» — в Мекку', () {
+    expect(HomeScene.fromStorage('nature'), HomeScene.steppe);
+    expect(HomeScene.fromStorage('ornament'), HomeScene.mecca);
+    expect(HomeScene.fromStorage('astana'), HomeScene.astana);
+  });
+
+  testWidgets('все оформления главного экрана рисуются', (tester) async {
     tester.view.physicalSize = const Size(393, 852);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -65,13 +71,13 @@ void main() {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 120)),
       );
-      if (scene == HomeScene.nature) {
+      if (scene == HomeScene.steppe) {
         // В начале появления солнце проходит через середину неба. Этот кадр
         // защищает от возврата прямоугольного шва вокруг его свечения.
         await tester.pump(const Duration(milliseconds: 350));
         await expectLater(
           find.byType(SceneBackground),
-          matchesGoldenFile('goldens/home_scene_nature_intro_393x852.png'),
+          matchesGoldenFile('goldens/home_scene_steppe_intro_393x852.png'),
         );
         await tester.pump(const Duration(milliseconds: 1250));
       } else {

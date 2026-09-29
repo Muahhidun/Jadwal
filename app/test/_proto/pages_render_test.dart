@@ -120,11 +120,11 @@ void main() {
       ratio: 2,
     );
   });
-  testWidgets('природа — край пейзажа при свайпе', (tester) async {
+  testWidgets('степь — край пейзажа при свайпе', (tester) async {
     await _render(tester, DateTime(2026, 7, 23, 23, 10), {
-      0.0: 'p_12_nature_main',
-      0.2: 'p_11_nature_swipe',
-      0.45: 'p_11b_nature_swipe',
+      0.0: 'p_12_steppe_main',
+      0.2: 'p_11_steppe_swipe',
+      0.45: 'p_11b_steppe_swipe',
     }, scene: 'nature');
   });
   testWidgets('настройки и «О приложении»', (tester) async {

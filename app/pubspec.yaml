@@ -76,21 +76,12 @@ flutter:
     - assets/data/cities.json
     - assets/quran/kahf_reader.html
     - assets/quran/kahf/
-    - assets/images/scene_bg.png
-    - assets/images/mecca_silhouette.png
-    - assets/images/mecca_master_v1.png
-    - assets/images/mecca_architecture_day.png
-    - assets/images/mecca_architecture_twilight.png
-    - assets/images/mecca_architecture_night.png
-    - assets/images/mecca_master_v2.png
-    - assets/images/mecca_architecture_day_v2.png
-    - assets/images/mecca_architecture_twilight_v2.png
-    - assets/images/mecca_architecture_night_v2.png
-    - assets/images/mecca_master_v3.png
     - assets/images/mecca_architecture_day_v3.png
     - assets/images/mecca_architecture_twilight_v3.png
     - assets/images/mecca_architecture_night_v3.png
-    - assets/images/nature_landscape_v2.png
+    # Темы Медина, Астана, Степь: восход / день / закат / ночь (WebP, нижняя
+    # часть кадров владельца, 1440 px). У Астаны пока только день и ночь.
+    - assets/images/themes/
 
   # Вшитые шрифты — без рантайм-загрузки (иначе мелькание при старте).
   fonts:

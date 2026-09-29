@@ -71,7 +71,7 @@ void main() {
     );
     await _pumpFrames(tester, 10);
     expect(find.text('Мекка'), findsOneWidget);
-    expect(find.text('Природа'), findsOneWidget);
+    expect(find.text('Степь'), findsOneWidget);
     expect(find.text('Минимализм'), findsOneWidget);
     expect(find.text('Русский'), findsNothing);
     await expectLater(

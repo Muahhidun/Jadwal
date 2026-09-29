@@ -139,14 +139,18 @@ String homeSceneTitle(HomeScene scene, bool kz) => _sceneTitle(scene, kz);
 
 String _sceneTitle(HomeScene scene, bool kz) => switch (scene) {
   HomeScene.mecca => kz ? 'Мекке' : 'Мекка',
-  HomeScene.nature => kz ? 'Табиғат' : 'Природа',
+  HomeScene.medina => kz ? 'Мәдина' : 'Медина',
+  HomeScene.astana => kz ? 'Астана' : 'Астана',
+  HomeScene.steppe => kz ? 'Дала' : 'Степь',
   HomeScene.minimal => kz ? 'Минимализм' : 'Минимализм',
 };
 
 String _sceneSubtitle(HomeScene scene, bool kz) => switch (scene) {
   HomeScene.mecca =>
     kz ? 'Қағба және Харам мешіті' : 'Кааба и Заповедная мечеть',
-  HomeScene.nature => kz ? 'Таулар мен дала' : 'Горы и степь',
+  HomeScene.medina => kz ? 'Пайғамбар мешіті' : 'Мечеть Пророка ﷺ',
+  HomeScene.astana => kz ? 'Әзірет Сұлтан мешіті' : 'Мечеть Хазрет Султан',
+  HomeScene.steppe => kz ? 'Төбелер арасындағы киіз үй' : 'Юрта среди холмов',
   HomeScene.minimal => kz ? 'Тек аспан мен жарық' : 'Только небо и свет',
 };
 
@@ -256,9 +260,10 @@ class _ScenePreview extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           CustomPaint(painter: _ScenePreviewPainter(scene)),
-          if (scene == HomeScene.nature)
+          // Фото-тема: дневной кадр поверх нарисованного неба превью.
+          if (scene.isPhoto)
             Image.asset(
-              'assets/images/nature_landscape_v2.png',
+              scene.photoAsset('day'),
               fit: BoxFit.cover,
               alignment: Alignment.bottomCenter,
               filterQuality: FilterQuality.medium,
@@ -316,8 +321,6 @@ class _ScenePreviewPainter extends CustomPainter {
           Rect.fromLTWH(-8, size.height * .76, size.width + 16, 20),
           Paint()..color = const Color(0xFF182328),
         );
-      case HomeScene.nature:
-      // Реальный пейзаж накладывается виджетом Image поверх этого неба.
       case HomeScene.minimal:
         canvas.drawRect(
           Rect.fromLTWH(0, size.height * .82, size.width, size.height * .18),
@@ -328,6 +331,10 @@ class _ScenePreviewPainter extends CustomPainter {
               colors: [Colors.transparent, Color(0x33131F27)],
             ).createShader(rect),
         );
+      // Фото-темы: кадр накладывается виджетом Image поверх этого неба.
+      // Пустой блок, а не пустой case: иначе вариант провалился бы в соседний.
+      case HomeScene.medina || HomeScene.astana || HomeScene.steppe:
+        {}
     }
   }
 
