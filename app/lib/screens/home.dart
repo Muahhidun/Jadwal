@@ -21,12 +21,15 @@ import 'reader.dart';
 import 'kahf_reader.dart';
 import 'reminders.dart';
 import 'scene_background.dart';
+import 'settings_shell.dart';
 import 'swipe_hint.dart';
 
 import '../services/live_activity_service.dart';
 import '../services/alarm_service.dart';
 import '../services/location_checker_service.dart';
 import '../services/widget_data_service.dart';
+
+part 'day_timeline.dart';
 
 /// Экспериментальный современный нижний экран. Классический слой оставлен в
 /// этом файле на время проверки владельцем; полный исходник также сохранён в
@@ -511,7 +514,23 @@ class _HomeScreenState extends State<HomeScreen>
                               ),
                             ),
                           Positioned.fill(
-                            child: _modernLowerScreen
+                            child: _modernLowerScreen &&
+                                    app.dayLayout == 'timeline' &&
+                                    !isExpandedLayout(context)
+                                ? _TimelineDayLayer(
+                                    p: p,
+                                    s: s,
+                                    palette: dayPalette!,
+                                    app: app,
+                                    t: t,
+                                    nowMin: nowMin,
+                                    nowSec: nowSec,
+                                    h: h,
+                                    schedule: schedule,
+                                    onReader: _openContent,
+                                    onCollapse: () => _animateToPage(0),
+                                  )
+                                : _modernLowerScreen
                                 ? _ModernDayLayer(
                                     p: p,
                                     s: s,
@@ -2810,12 +2829,16 @@ class _Notebook extends StatelessWidget {
     required this.now,
     this.onDayTap,
     this.compact = false,
+    this.since,
   });
   final JColors c;
   final AppState app;
   final DateTime now;
   final ValueChanged<DateTime>? onDayTap;
   final bool compact;
+
+  /// Если задано — дни раньше этой даты рисуются без кольца, как будущие.
+  final DateTime? since;
 
   static const _weekdays = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 
@@ -2839,7 +2862,10 @@ class _Notebook extends StatelessWidget {
             label: '$day',
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: date.isAfter(today) || onDayTap == null
+              onTap:
+                  date.isAfter(today) ||
+                      onDayTap == null ||
+                      (since != null && date.isBefore(since!))
                   ? null
                   : () {
                       HapticFeedback.selectionClick();
@@ -2906,7 +2932,8 @@ class _Notebook extends StatelessWidget {
         date.year == today.year &&
         date.month == today.month &&
         date.day == today.day;
-    final isFuture = date.isAfter(today);
+    final isFuture =
+        date.isAfter(today) || (since != null && date.isBefore(since!));
 
     if (isFuture) {
       return SizedBox(

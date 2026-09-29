@@ -12,10 +12,30 @@ class AppState extends ChangeNotifier {
   static Future<AppState> load() async {
     final state = AppState._(await SharedPreferences.getInstance());
     state._migrateZikrReminderDelay();
+    state._rememberFirstUse();
     return state;
   }
 
   final SharedPreferences _prefs;
+
+  /// Запоминаем первый день один раз. У тех, кто уже пользовался
+  /// приложением, берём самую раннюю дату с отметками.
+  void _rememberFirstUse() {
+    if (_prefs.containsKey('firstUseDate')) return;
+    final now = DateTime.now();
+    var first = DateTime(now.year, now.month, now.day);
+    for (final key in _prefs.getKeys()) {
+      if (!key.startsWith('done:')) continue;
+      final parts = key.substring(5).split('-').map(int.tryParse).toList();
+      if (parts.length != 3 || parts.contains(null)) continue;
+      final date = DateTime(parts[0]!, parts[1]!, parts[2]!);
+      if (date.isBefore(first)) first = date;
+    }
+    _prefs.setString(
+      'firstUseDate',
+      '${first.year}-${first.month}-${first.day}',
+    );
+  }
 
   /// Старые сборки создавали уведомления зикров одновременно с намазом.
   /// Один раз переносим только прежнее нулевое значение на новый мягкий
@@ -47,6 +67,22 @@ class AppState extends ChangeNotifier {
   HomeScene get homeScene =>
       HomeScene.fromStorage(_prefs.getString('homeScene'));
   bool get onboardingDone => _prefs.getBool('onboardingDone') ?? false;
+
+  /// Вид нижнего экрана: 'classic' — карточки, 'timeline' — лента дня
+  /// (прототип, ветка prototype/day-timeline).
+  String get dayLayout => _prefs.getString('dayLayout') ?? 'classic';
+
+  /// Первый день пользования. Дни до него тетрадь не рисует пустыми
+  /// кольцами: новичок не должен видеть «пропуски» до установки.
+  DateTime get firstUseDate {
+    final raw = _prefs.getString('firstUseDate');
+    final parts = raw?.split('-').map(int.tryParse).toList();
+    if (parts == null || parts.length != 3 || parts.contains(null)) {
+      final now = DateTime.now();
+      return DateTime(now.year, now.month, now.day);
+    }
+    return DateTime(parts[0]!, parts[1]!, parts[2]!);
+  }
 
   /// Контекстное знакомство с центром напоминаний показывается отдельно от
   /// короткого первого запуска приложения и только при первом входе в раздел.
@@ -284,6 +320,7 @@ class AppState extends ChangeNotifier {
     _prefs.setBool('remindersGuideSeenV2', v);
   });
   set dateGregorian(bool v) => _set(() => _prefs.setBool('dateGregorian', v));
+  set dayLayout(String v) => _set(() => _prefs.setString('dayLayout', v));
   set readerPalette(String v) =>
       _set(() => _prefs.setString('readerPalette', v));
   set kahfTajweed(bool v) => _set(() => _prefs.setBool('kahfTajweed', v));

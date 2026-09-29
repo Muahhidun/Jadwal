@@ -68,7 +68,7 @@ class AppearancePicker extends StatelessWidget {
   static Future<void> open(BuildContext context) =>
       DauamSettingsSheet.open<void>(
         context,
-        heightFactor: .66,
+        heightFactor: .88,
         builder: (_) => const AppearancePicker(),
       );
 
@@ -101,6 +101,31 @@ class AppearancePicker extends StatelessWidget {
                       HapticFeedback.mediumImpact();
                     },
                   ),
+              ],
+            ),
+            DauamSection(
+              label: kz ? 'Төменгі экран' : 'Нижний экран',
+              footer: kz
+                  ? '«Күн таспасы» — сынақ нұсқасы: намаздар мен істер бір тізімде.'
+                  : '«Лента дня» — пробный вариант: намазы и дела одним списком.',
+              children: [
+                DauamChoiceRow(
+                  title: kz ? 'Классикалық' : 'Классический',
+                  selected: app.dayLayout != 'timeline',
+                  onTap: () {
+                    app.dayLayout = 'classic';
+                    HapticFeedback.mediumImpact();
+                  },
+                ),
+                DauamChoiceRow(
+                  title: kz ? 'Күн таспасы' : 'Лента дня',
+                  subtitle: kz ? 'Прототип' : 'Прототип',
+                  selected: app.dayLayout == 'timeline',
+                  onTap: () {
+                    app.dayLayout = 'timeline';
+                    HapticFeedback.mediumImpact();
+                  },
+                ),
               ],
             ),
           ],
