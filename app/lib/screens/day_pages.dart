@@ -48,7 +48,8 @@ double _enterStart(int page) => page == 1 ? 0.5 : 0.35;
 /// Моменты (в долях входа страницы), когда элементы «встают на место».
 /// По ним же звучит Taptic Engine — вибрация совпадает с движением.
 const _todayBeats = [0.40, 0.46, 0.52, 0.58, 0.64, 0.70, 0.80, 0.86, 0.92];
-const _consistencyBeats = [0.40, 0.62, 0.80];
+// Хадис, затем три щелчка, пока месяц собирается, и кнопки.
+const _consistencyBeats = [0.36, 0.55, 0.72, 0.88, 0.94];
 
 /// Один элемент страницы в хореографии перехода.
 ///
@@ -281,70 +282,24 @@ class _PagesAmbience extends StatelessWidget {
   Widget build(BuildContext context) {
     return Opacity(
       opacity: _seg(p, 0.3, 1.0),
-      child: CustomPaint(
-        painter: _AmbiencePainter(
-          p: p,
-          line: c.ink.withValues(alpha: isLight ? 0.045 : 0.05),
-          glow: c.gold.withValues(alpha: isLight ? 0.10 : 0.13),
+      child: LayoutBuilder(
+        builder: (context, box) => CustomPaint(
+          size: box.biggest,
+          painter: OrnamentPainter(
+            // Узор движется медленнее контента — параллакс 0.35.
+            shift: -p * box.maxHeight * 0.35,
+            line: c.ink.withValues(alpha: isLight ? 0.045 : 0.05),
+            glow: c.gold.withValues(alpha: isLight ? 0.10 : 0.13),
+            // Свечение плывёт между главными местами страниц.
+            glowCenter: Offset(
+              0.5 + 0.18 * math.sin(p * 1.9),
+              0.28 - 0.04 * (p - 1).clamp(0.0, 1.0),
+            ),
+          ),
         ),
       ),
     );
   }
-}
-
-class _AmbiencePainter extends CustomPainter {
-  _AmbiencePainter({required this.p, required this.line, required this.glow});
-
-  final double p;
-  final Color line, glow;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Свечение плывёт между главными местами страниц: над следующим
-    // намазом и над хадисом.
-    final k = (p - 1).clamp(0.0, 1.0);
-    final y = size.height * (0.28 + (0.24 - 0.28) * k);
-    final x = size.width * (0.5 + 0.18 * math.sin(p * 1.9));
-    final r = size.width * 0.78;
-    canvas.drawCircle(
-      Offset(x, y),
-      r,
-      Paint()
-        ..shader = RadialGradient(
-          colors: [glow, glow.withValues(alpha: 0)],
-        ).createShader(Rect.fromCircle(center: Offset(x, y), radius: r)),
-    );
-
-    // Узор: сетка восьмиконечных звёзд, параллакс 0.35 от контента.
-    final step = size.width / 4;
-    final radius = step * 0.28;
-    final rowStep = step * 0.9;
-    final shift = -(p * size.height * 0.35) % rowStep;
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.8
-      ..color = line;
-    for (var row = -1; row * rowStep < size.height + step; row++) {
-      final cy = row * rowStep + shift;
-      final offset = row.isOdd ? step / 2 : 0.0;
-      for (var i = -1; i <= 4; i++) {
-        final center = Offset(i * step + offset, cy);
-        for (final turn in const [0.0, math.pi / 4]) {
-          final path = Path();
-          for (var v = 0; v < 4; v++) {
-            final a = turn + v * math.pi / 2;
-            final pt = center + Offset(math.cos(a), math.sin(a)) * radius;
-            v == 0 ? path.moveTo(pt.dx, pt.dy) : path.lineTo(pt.dx, pt.dy);
-          }
-          canvas.drawPath(path..close(), paint);
-        }
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_AmbiencePainter o) =>
-      o.p != p || o.line != line || o.glow != glow;
 }
 
 /// Индикатор страниц у правого края — на всех экранах ленты, от Киблы до
@@ -734,45 +689,26 @@ class _TodayPage extends StatelessWidget {
                   ),
                 ),
               ),
-            // На маленьком экране ссылка уступает место: кнопка «Напоминания»
-            // есть и на странице постоянства.
-            if (!dense)
-              _Beat(
-                enter: enter,
-                leave: leave,
-                at: 0.66,
-                leaveAt: 0.1,
-                child: Semantics(
-                  button: true,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      RemindersScreen.open(context);
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(CupertinoIcons.bell, size: 14, color: c.sub),
-                          const SizedBox(width: 6),
-                          Text(
-                            kz
-                                ? 'Еске салуларды баптау'
-                                : 'Настроить напоминания',
-                            style: JType.ui(
-                              13,
-                              w: FontWeight.w600,
-                              color: c.sub,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+            // Своё напоминание — прямо отсюда. Центр напоминаний открывается
+            // кнопкой «Напоминания» на странице постоянства: не дублируем.
+            _Beat(
+              enter: enter,
+              leave: leave,
+              at: 0.66,
+              leaveAt: 0.1,
+              child: Padding(
+                padding: EdgeInsets.only(top: dense ? 10 : 14),
+                child: Center(
+                  child: _PagesButton(
+                    icon: CupertinoIcons.plus,
+                    label: kz ? 'Еске салу қосу' : 'Добавить напоминание',
+                    c: c,
+                    compact: true,
+                    onTap: () => ReminderEditorScreen.open(context),
                   ),
                 ),
               ),
+            ),
           ],
         );
         // Содержимое по центру; если не помещается (маленький экран, много
@@ -1150,42 +1086,48 @@ class _ConsistencyPage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Spacer(),
-        // Хадис о постоянстве — тот же утверждённый текст, что в онбординге.
+        const SizedBox(height: 18),
+        // Хадис о постоянстве — наверху, по центру; тот же утверждённый
+        // текст, что в онбординге.
         _Beat(
           enter: enter,
           leave: leave,
-          at: _consistencyBeats[0] - 0.34,
+          at: 0.0,
           span: 0.4,
-          from: const Offset(0, 18),
+          from: const Offset(0, -20),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   s.posterQuote,
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     fontFamily: 'Literata',
                     fontStyle: FontStyle.italic,
                     fontSize: 17,
-                    height: 1.4,
+                    height: 1.45,
                     color: c.ink,
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(s.posterSrc, style: JType.ui(11.5, color: c.sub)),
+                const SizedBox(height: 8),
+                Text(
+                  s.posterSrc,
+                  textAlign: TextAlign.center,
+                  style: JType.ui(11.5, color: c.sub),
+                ),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 22),
+        const Spacer(),
+        // Сначала появляется пустая карточка, затем в неё со всех сторон
+        // слетаются числа месяца и встают на места к концу свайпа.
         _Beat(
           enter: enter,
           leave: leave,
-          at: _consistencyBeats[1] - 0.3,
-          span: 0.36,
-          from: const Offset(0, 36),
+          at: 0.04,
+          from: const Offset(0, 28),
           leaveAt: 0.05,
           child: _SurfaceCard(
             palette: palette,
@@ -1211,6 +1153,7 @@ class _ConsistencyPage extends StatelessWidget {
                   compact: true,
                   since: app.firstUseDate,
                   softEmpty: true,
+                  assemble: _seg(enter, 0.12, 1.0),
                   onDayTap: (date) => _showDayDetailsSheet(
                     context,
                     date: date,
@@ -1227,7 +1170,7 @@ class _ConsistencyPage extends StatelessWidget {
         _Beat(
           enter: enter,
           leave: leave,
-          at: _consistencyBeats[2] - 0.24,
+          at: 0.62,
           from: const Offset(0, 16),
           child: Row(
             children: [
@@ -1263,12 +1206,16 @@ class _PagesButton extends StatelessWidget {
     required this.label,
     required this.c,
     required this.onTap,
+    this.compact = false,
   });
 
   final IconData icon;
   final String label;
   final JColors c;
   final VoidCallback onTap;
+
+  /// По ширине содержимого, а не на всю ячейку.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -1283,12 +1230,14 @@ class _PagesButton extends StatelessWidget {
         },
         child: Container(
           height: 46,
+          padding: EdgeInsets.symmetric(horizontal: compact ? 20 : 0),
           decoration: BoxDecoration(
             color: c.ink.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(100),
             border: Border.all(color: c.hair, width: 0.8),
           ),
           child: Row(
+            mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(icon, size: 16, color: c.ink),

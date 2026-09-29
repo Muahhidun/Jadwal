@@ -1010,7 +1010,18 @@ class CustomRemindersScreen extends StatelessWidget {
 /// Создание напоминания — самостоятельная страница внутри текущей панели,
 /// а не ещё один bottom sheet.
 class ReminderEditorScreen extends StatefulWidget {
-  const ReminderEditorScreen({super.key});
+  const ReminderEditorScreen({super.key, this.root = false});
+
+  /// Открыт сразу отдельным листом (кнопка «Добавить напоминание» на
+  /// странице «Сегодня»), а не из центра напоминаний.
+  final bool root;
+
+  /// Лист «Новое напоминание» напрямую, без центра напоминаний.
+  static Future<void> open(BuildContext context) =>
+      DauamSettingsSheet.open<void>(
+        context,
+        builder: (_) => const ReminderEditorScreen(root: true),
+      );
 
   @override
   State<ReminderEditorScreen> createState() => _ReminderEditorScreenState();
@@ -1114,7 +1125,7 @@ class _ReminderEditorScreenState extends State<ReminderEditorScreen> {
     );
     syncNotifications(app, schedule);
     HapticFeedback.mediumImpact();
-    Navigator.of(context).pop();
+    Navigator.of(context, rootNavigator: widget.root).pop();
   }
 
   @override
@@ -1125,6 +1136,7 @@ class _ReminderEditorScreenState extends State<ReminderEditorScreen> {
     final accent = dauamSettingsAccent(context);
     final prayers = _prayers(kz);
     return DauamSettingsPage(
+      root: widget.root,
       title: kz ? 'Жаңа еске салу' : 'Новое напоминание',
       trailing: DauamRoundButton(
         icon: CupertinoIcons.question,

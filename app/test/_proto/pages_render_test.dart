@@ -80,6 +80,8 @@ void main() {
       0.75: 'p_03_today_entering',
       1.0: 'p_04_today',
       1.5: 'p_05_mid',
+      1.65: 'p_05b_assemble',
+      1.8: 'p_05c_assemble',
       2.0: 'p_06_consistency',
       -0.3: 'p_07a_to_qibla',
       -0.7: 'p_07b_to_qibla',

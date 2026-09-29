@@ -14,6 +14,7 @@ import '../prayer/windows.dart';
 import '../theme/tokens.dart';
 import '../theme/adaptive_layout.dart';
 import '../theme/system_bars.dart';
+import '../theme/ornament.dart';
 import 'city_picker.dart';
 import 'language_picker.dart';
 import 'qibla_screen.dart';
@@ -3012,6 +3013,7 @@ class _Notebook extends StatelessWidget {
     this.compact = false,
     this.since,
     this.softEmpty = false,
+    this.assemble = 1.0,
   });
   final JColors c;
   final AppState app;
@@ -3025,6 +3027,29 @@ class _Notebook extends StatelessWidget {
   /// Пустой прошедший день — едва заметная точка, а не серое кольцо:
   /// месяц из пустых колец читается как упрёк.
   final bool softEmpty;
+
+  /// Сборка месяца при свайпе (0…1): числа прилетают со всех сторон и
+  /// встают на места к концу свайпа. 1 — календарь в покое.
+  final double assemble;
+
+  /// Одно число в полёте: направление, дальность и задержка постоянны для
+  /// каждого дня, поэтому при «перемотке» пальцем движение не дёргается.
+  Widget _fly(int day, Widget cell) {
+    if (assemble >= 1) return cell;
+    final angle = day * 2.39996; // золотой угол — направления не повторяются
+    final dist = 150.0 + (day * 37) % 110;
+    final start = ((day * 53) % 31) / 31 * 0.35;
+    final t = Curves.easeOutCubic.transform(
+      ((assemble - start) / 0.6).clamp(0.0, 1.0),
+    );
+    return Opacity(
+      opacity: t,
+      child: Transform.translate(
+        offset: Offset(math.cos(angle), math.sin(angle)) * dist * (1 - t),
+        child: Transform.scale(scale: 0.5 + 0.5 * t, child: cell),
+      ),
+    );
+  }
 
   static const _weekdays = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 
@@ -3042,24 +3067,27 @@ class _Notebook extends StatelessWidget {
       final date = DateTime(now.year, now.month, day);
       final today = DateTime(now.year, now.month, now.day);
       cells.add(
-        Center(
-          child: Semantics(
-            button: !date.isAfter(today) && onDayTap != null,
-            label: '$day',
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap:
-                  date.isAfter(today) ||
-                      onDayTap == null ||
-                      (since != null && date.isBefore(since!))
-                  ? null
-                  : () {
-                      HapticFeedback.selectionClick();
-                      onDayTap!(date);
-                    },
-              child: Padding(
-                padding: const EdgeInsets.all(3),
-                child: _cell(date, expanded: expanded),
+        _fly(
+          day,
+          Center(
+            child: Semantics(
+              button: !date.isAfter(today) && onDayTap != null,
+              label: '$day',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap:
+                    date.isAfter(today) ||
+                        onDayTap == null ||
+                        (since != null && date.isBefore(since!))
+                    ? null
+                    : () {
+                        HapticFeedback.selectionClick();
+                        onDayTap!(date);
+                      },
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: _cell(date, expanded: expanded),
+                ),
               ),
             ),
           ),
@@ -3082,18 +3110,21 @@ class _Notebook extends StatelessWidget {
 
     return Column(
       children: [
-        Row(
-          children: [
-            for (final w in _weekdays)
-              Expanded(
-                child: Center(
-                  child: Text(
-                    w,
-                    style: JType.ui(expanded ? 13 : 10, color: c.faint),
+        Opacity(
+          opacity: ((assemble - 0.45) / 0.45).clamp(0.0, 1.0),
+          child: Row(
+            children: [
+              for (final w in _weekdays)
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      w,
+                      style: JType.ui(expanded ? 13 : 10, color: c.faint),
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
         SizedBox(height: expanded ? 8 : (compact ? 4 : 8)),
         for (final row in rows)

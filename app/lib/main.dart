@@ -12,16 +12,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
 
-  // При новой сборке (новом билде) сбрасываем онбординг один раз для проверки.
-  // После успешного прохождения онбординга выбор сохраняется, и обычные
-  // выгрузки/перезапуски приложения из памяти больше НЕ запрашивают онбординг.
-  const currentBuildId = 'build_v1.0.7_android_permissions';
-  final lastBuildId = prefs.getString('last_installed_build_id');
-  if (lastBuildId != currentBuildId) {
-    await prefs.setBool('onboardingDone', false);
-    await prefs.setString('last_installed_build_id', currentBuildId);
-  }
-
+  // Онбординг показывается только при первой установке. Раньше здесь был
+  // ручной сброс по метке сборки для проверки — перед релизом убран, чтобы
+  // обновление из магазина не показывало онбординг заново.
   final state = await AppState.load();
   final schedule = ScheduleService(prefs);
   final notifier = NotificationService(schedule);

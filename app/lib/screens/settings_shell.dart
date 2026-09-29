@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../data/app_state.dart';
 import '../prayer/schedule_service.dart';
+import '../theme/ornament.dart';
 import '../theme/tokens.dart';
 import 'scene_background.dart';
 
@@ -23,10 +25,10 @@ DaySurfacePalette dauamSettingsPalette(BuildContext context) {
   );
 }
 
-Color dauamSettingsAccent(BuildContext context) {
-  final palette = dauamSettingsPalette(context);
-  return palette.isLight ? const Color(0xFF315E70) : const Color(0xFF9BC2CF);
-}
+/// Акцент листов — то же золото, что у страниц: галочки, переключатели,
+/// главная кнопка.
+Color dauamSettingsAccent(BuildContext context) =>
+    dauamSettingsPalette(context).colors.gold;
 
 class _DauamSettingsPaletteScope extends InheritedWidget {
   const _DauamSettingsPaletteScope({
@@ -65,16 +67,12 @@ class _DauamSettingsBackdrop extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: const Alignment(.7, -1),
-                radius: 1.18,
-                colors: [
-                  palette.glow.withValues(alpha: palette.isLight ? .14 : .09),
-                  palette.glow.withValues(alpha: 0),
-                ],
-              ),
+          // Фирменный фон — как у страниц ленты: узор и золотое свечение.
+          CustomPaint(
+            painter: OrnamentPainter(
+              line: c.ink.withValues(alpha: palette.isLight ? .04 : .045),
+              glow: c.gold.withValues(alpha: palette.isLight ? .09 : .11),
+              glowCenter: const Offset(.5, .02),
             ),
           ),
           child,
@@ -254,7 +252,9 @@ class DauamSettingsPage extends StatelessWidget {
                   ),
                 ),
               ),
-              Expanded(child: child),
+              Expanded(
+                child: _StaggerScope(counter: _StaggerCounter(), child: child),
+              ),
               if (bottom != null)
                 Padding(
                   padding: EdgeInsets.fromLTRB(
@@ -367,31 +367,31 @@ class DauamSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = dauamSettingsPalette(context);
     final c = p.colors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 6, 18, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (label != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-              child: Text(
-                label!.toUpperCase(),
-                style: JType.caption(c.faint, size: 10.5),
+    final order = _StaggerScope.next(context);
+    return _StaggerIn(
+      order: order,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 6, 18, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Подпись раздела — золотая, в разрядку, как на страницах ленты.
+            if (label != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(6, 0, 8, 9),
+                child: Text(
+                  label!.toUpperCase(),
+                  style: JType.caption(c.gold, size: 11),
+                ),
               ),
-            ),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            // Карточка — та же поверхность, что у страниц, без тяжёлого blur.
+            ClipRRect(
+              borderRadius: BorderRadius.circular(24),
               child: Container(
                 decoration: BoxDecoration(
-                  color: p.surface.withValues(alpha: p.isLight ? .75 : .62),
+                  color: p.surface,
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: p.border.withValues(alpha: p.isLight ? .28 : .24),
-                    width: .6,
-                  ),
+                  border: Border.all(color: p.border, width: .8),
                 ),
                 child: Column(
                   children: [
@@ -411,13 +411,63 @@ class DauamSection extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-          if (footer != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-              child: Text(footer!, style: JType.ui(12, color: c.faint, h: 1.4)),
-            ),
-        ],
+            if (footer != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                child: Text(footer!, style: JType.ui(12, color: c.sub, h: 1.4)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Счётчик порядка разделов на листе: каждый следующий раздел появляется
+/// чуть позже предыдущего.
+class _StaggerCounter {
+  int value = 0;
+}
+
+class _StaggerScope extends InheritedWidget {
+  const _StaggerScope({required this.counter, required super.child});
+
+  final _StaggerCounter counter;
+
+  static int next(BuildContext context) {
+    final scope = context.getInheritedWidgetOfExactType<_StaggerScope>();
+    if (scope == null) return 0;
+    return scope.counter.value++;
+  }
+
+  @override
+  bool updateShouldNotify(_StaggerScope oldWidget) => false;
+}
+
+/// Мягкое появление раздела при открытии листа: всплывает и проявляется,
+/// каждый следующий — с небольшой задержкой. Проигрывается один раз.
+class _StaggerIn extends StatelessWidget {
+  const _StaggerIn({required this.order, required this.child});
+
+  final int order;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    // Разделы ниже экрана при прокрутке не должны ждать долго.
+    final delay = 70 * math.min(order, 5).toInt();
+    final total = 420 + delay;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: total),
+      curve: Interval(delay / total, 1, curve: Curves.easeOutCubic),
+      child: child,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(
+          offset: Offset(0, 22 * (1 - t)),
+          child: child,
+        ),
       ),
     );
   }
@@ -618,8 +668,11 @@ class DauamPrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = dauamSettingsPalette(context).colors;
+    final palette = dauamSettingsPalette(context);
+    final c = palette.colors;
     final accent = dauamSettingsAccent(context);
+    // Текст на золоте — как у кнопки «Читать» на странице «Сегодня».
+    final onAccent = palette.isLight ? Colors.white : c.bg;
     return SizedBox(
       width: double.infinity,
       height: 54,
@@ -633,9 +686,9 @@ class DauamPrimaryButton extends StatelessWidget {
         style: FilledButton.styleFrom(
           backgroundColor: accent,
           disabledBackgroundColor: c.hair,
-          foregroundColor: Colors.white,
+          foregroundColor: onAccent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(100),
           ),
         ),
         child: Text(
@@ -644,7 +697,7 @@ class DauamPrimaryButton extends StatelessWidget {
           style: JType.ui(
             15.5,
             w: FontWeight.w700,
-            color: enabled ? Colors.white : c.faint,
+            color: enabled ? onAccent : c.faint,
           ),
         ),
       ),
