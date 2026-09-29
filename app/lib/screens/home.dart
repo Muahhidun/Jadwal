@@ -21,12 +21,15 @@ import 'reader.dart';
 import 'kahf_reader.dart';
 import 'reminders.dart';
 import 'scene_background.dart';
+import 'settings_shell.dart';
 import 'swipe_hint.dart';
 
 import '../services/live_activity_service.dart';
 import '../services/alarm_service.dart';
 import '../services/location_checker_service.dart';
 import '../services/widget_data_service.dart';
+
+part 'day_pages.dart';
 
 /// Экспериментальный современный нижний экран. Классический слой оставлен в
 /// этом файле на время проверки владельцем; полный исходник также сохранён в
@@ -56,10 +59,18 @@ class _HomeScreenState extends State<HomeScreen>
   late final AnimationController _p = AnimationController(
     vsync: this,
     lowerBound: -1.0,
-    upperBound: 1.0,
+    upperBound: 3.0,
     value: 0.0,
     duration: const Duration(milliseconds: 420),
   );
+
+  /// Последняя страница вниз: 1 — классический экран дня, 3 — страницы
+  /// Намазы → Дела → Постоянство (прототип, только телефон).
+  int get _maxPage {
+    // Читаем без подписки: геттер вызывается и из обработчиков жестов.
+    final app = context.getInheritedWidgetOfExactType<AppScope>()!.notifier!;
+    return app.dayLayout == 'pages' && !isExpandedLayout(context) ? 3 : 1;
+  }
 
   double get swipeProgress => _p.value;
   set swipeProgress(double v) {
@@ -75,14 +86,17 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _animateToPage(double target) {
-    final normalizedTarget = target.clamp(-1.0, 1.0);
+    final normalizedTarget = target.clamp(-1.0, _maxPage.toDouble());
     final serial = ++_pageAnimationSerial;
+    final settlesOnPage = _maxPage > 1 && normalizedTarget >= 1;
     _p
         .animateTo(normalizedTarget, curve: Curves.easeOutCubic)
         .whenCompleteOrCancel(() {
           if (!mounted || serial != _pageAnimationSerial) return;
           if ((_p.value - normalizedTarget).abs() < 0.02) {
             _p.value = normalizedTarget;
+            // Мягкий «щелчок» страницы: листание должно ощущаться приятно.
+            if (settlesOnPage) HapticFeedback.selectionClick();
           }
           _dragStartProgress = _p.value;
           _hasSwipedHaptic = false;
@@ -108,20 +122,23 @@ class _HomeScreenState extends State<HomeScreen>
     }
     // На крайних экранах блокируем только движение дальше за границу ленты,
     // но оставляем встречный свайп свободным для возврата к таймеру.
-    if (_p.value >= 0.95 && d.primaryDelta! < 0) {
+    if (_p.value >= _maxPage - 0.05 && d.primaryDelta! < 0) {
       return;
     }
     if (_p.value <= -0.95 && d.primaryDelta! > 0) {
       return;
     }
-    _p.value = (_p.value - d.primaryDelta! / h).clamp(-1.0, 1.0);
+    _p.value = (_p.value - d.primaryDelta! / h).clamp(
+      -1.0,
+      _maxPage.toDouble(),
+    );
   }
 
   void _onDragEnd(DragEndDetails d) {
     _hasSwipedHaptic = false;
     final v = d.primaryVelocity ?? 0;
     final movement = _p.value - _dragStartProgress;
-    final startPage = _dragStartProgress.round().clamp(-1, 1);
+    final startPage = _dragStartProgress.round().clamp(-1, _maxPage);
     // Скорость учитываем только после заметного перемещения. Иначе лёгкий
     // сдвиг пальца при тапе по «Карта» мог выглядеть как быстрый короткий
     // свайп и возвращать ленту на главный экран.
@@ -130,13 +147,13 @@ class _HomeScreenState extends State<HomeScreen>
         : movement.abs() >= 0.075 && v.abs() >= 300
         ? (v < 0 ? 1 : -1)
         : 0;
-    final target = (startPage + direction).clamp(-1, 1).toDouble();
+    final target = (startPage + direction).clamp(-1, _maxPage).toDouble();
     _animateToPage(target);
   }
 
   void _onDragCancel() {
     _hasSwipedHaptic = false;
-    _animateToPage(_dragStartProgress.round().clamp(-1, 1).toDouble());
+    _animateToPage(_dragStartProgress.round().clamp(-1, _maxPage).toDouble());
   }
 
   @override
@@ -418,7 +435,10 @@ class _HomeScreenState extends State<HomeScreen>
           return AnimatedBuilder(
             animation: _p,
             builder: (context, _) {
-              final p = _p.value;
+              // Всё прежнее (небо, таймер, Кибла) живёт в диапазоне −1…1.
+              // Дальше вниз листаются только страницы прототипа.
+              final pRaw = _p.value;
+              final p = pRaw.clamp(-1.0, 1.0);
               final fg = t != null ? skyForeground(t, nowSec) : null;
               final dayPalette = t != null
                   ? daySurfacePalette(t, nowSec)
@@ -511,7 +531,21 @@ class _HomeScreenState extends State<HomeScreen>
                               ),
                             ),
                           Positioned.fill(
-                            child: _modernLowerScreen
+                            child: _modernLowerScreen && _maxPage > 1
+                                ? _PagesDayLayer(
+                                    p: pRaw,
+                                    s: s,
+                                    palette: dayPalette!,
+                                    app: app,
+                                    t: t,
+                                    nowMin: nowMin,
+                                    nowSec: nowSec,
+                                    h: h,
+                                    schedule: schedule,
+                                    onReader: _openContent,
+                                    onGoTo: _animateToPage,
+                                  )
+                                : _modernLowerScreen
                                 ? _ModernDayLayer(
                                     p: p,
                                     s: s,
@@ -2810,12 +2844,16 @@ class _Notebook extends StatelessWidget {
     required this.now,
     this.onDayTap,
     this.compact = false,
+    this.since,
   });
   final JColors c;
   final AppState app;
   final DateTime now;
   final ValueChanged<DateTime>? onDayTap;
   final bool compact;
+
+  /// Если задано — дни раньше этой даты рисуются без кольца, как будущие.
+  final DateTime? since;
 
   static const _weekdays = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 
@@ -2839,7 +2877,10 @@ class _Notebook extends StatelessWidget {
             label: '$day',
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: date.isAfter(today) || onDayTap == null
+              onTap:
+                  date.isAfter(today) ||
+                      onDayTap == null ||
+                      (since != null && date.isBefore(since!))
                   ? null
                   : () {
                       HapticFeedback.selectionClick();
@@ -2906,7 +2947,8 @@ class _Notebook extends StatelessWidget {
         date.year == today.year &&
         date.month == today.month &&
         date.day == today.day;
-    final isFuture = date.isAfter(today);
+    final isFuture =
+        date.isAfter(today) || (since != null && date.isBefore(since!));
 
     if (isFuture) {
       return SizedBox(
