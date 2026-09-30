@@ -385,7 +385,7 @@ class _QiblaViewState extends State<QiblaView>
               title: Text(
                 'Направление Киблы',
                 style: JType.ui(
-                  expanded ? 23 : 18,
+                  expanded ? 24 : 20,
                   color: Colors.white,
                   w: FontWeight.w700,
                 ),

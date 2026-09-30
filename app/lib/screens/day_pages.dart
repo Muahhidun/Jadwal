@@ -350,7 +350,7 @@ class _PageCaption extends StatelessWidget {
         text.toUpperCase(),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: JType.caption(c.gold, size: 11.5),
+        style: JType.caption(c.gold, size: 13),
       ),
     );
   }
@@ -772,18 +772,15 @@ class _PrayerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Восход — граница времени Фаджра, а не намаз: мельче и тише.
-    final color = isNext ? c.gold : (isPast || isSunrise ? c.sub : c.ink);
-    final size = isSunrise ? 13.0 : 16.0;
-    final weight = isNext
-        ? FontWeight.w700
-        : (isSunrise ? FontWeight.w400 : FontWeight.w500);
+    // Восход — граница времени Фаджра, не намаз, но строка читается
+    // с тем же размером и ритмом, что остальные события расписания.
+    final color = isNext ? c.gold : (isPast ? c.sub : c.ink);
+    final size = 16.0;
+    final weight = isNext ? FontWeight.w700 : FontWeight.w500;
     return _ScalePressed(
       onTap: onTap,
       child: Container(
-        constraints: BoxConstraints(
-          minHeight: isSunrise ? (dense ? 28 : 32) : (dense ? 40 : 44),
-        ),
+        constraints: BoxConstraints(minHeight: dense ? 40 : 44),
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: isNext ? c.gold.withValues(alpha: 0.10) : Colors.transparent,
@@ -868,9 +865,6 @@ class _HeroDeed extends StatelessWidget {
           ? '${_pagesHhmm(deed.minute)}–${_pagesHhmm(deed.end)}'
           : 'С ${_pagesHhmm(deed.minute)} до ${_pagesHhmm(deed.end)}';
     }
-    final windowFrac = deed.end > deed.minute
-        ? ((nowMin - deed.minute) / (deed.end - deed.minute)).clamp(0.0, 1.0)
-        : 0.0;
     final action = deed.readable
         ? (kz ? 'Оқу' : 'Читать')
         : (kz ? 'Белгілеу' : 'Отметить');
@@ -892,17 +886,13 @@ class _HeroDeed extends StatelessWidget {
             dense ? 12 : 14,
           ),
           decoration: BoxDecoration(
-            // Та же стеклянная поверхность, что у расписания и списка дел.
-            // Акцент — поверх неё, а не отдельная прозрачная карточка:
-            // так «следующее дело» заметно и на светлом, и на тёмном фоне.
-            color: Color.alphaBlend(
-              c.gold.withValues(alpha: open ? 0.17 : 0.055),
-              palette.surface,
-            ),
+            // Та же поверхность, что у расписания и остальных дел.
+            // Акцент оставлен в тонкой обводке, тексте и кнопке.
+            color: palette.surface,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: Color.lerp(palette.border, c.gold, open ? 0.68 : 0.28)!,
-              width: open ? 1.2 : 0.8,
+              color: Color.lerp(palette.border, c.gold, open ? 0.45 : 0.22)!,
+              width: 1,
             ),
             boxShadow: [
               BoxShadow(
@@ -965,29 +955,6 @@ class _HeroDeed extends StatelessWidget {
                   ),
                 ],
               ),
-              if (open && !deed.isCustom && !dense) ...[
-                const SizedBox(height: 12),
-                // Сколько времени окна уже прошло — справка, не оценка.
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: SizedBox(
-                    height: 3,
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: ColoredBox(
-                            color: c.gold.withValues(alpha: 0.18),
-                          ),
-                        ),
-                        FractionallySizedBox(
-                          widthFactor: windowFrac,
-                          child: ColoredBox(color: c.gold),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -1106,41 +1073,44 @@ class _ConsistencyPage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 18),
-        // Хадис о постоянстве — наверху, по центру; тот же утверждённый
-        // текст, что в онбординге.
-        _Beat(
-          enter: enter,
-          leave: leave,
-          at: 0.0,
-          span: 0.4,
-          from: const Offset(0, -20),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Column(
-              children: [
-                Text(
-                  s.posterQuote,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'Literata',
-                    fontStyle: FontStyle.italic,
-                    fontSize: 17,
-                    height: 1.45,
-                    color: c.ink,
-                  ),
+        // Хадис расположен посередине свободного пространства над
+        // календарём; текст и источник остаются утверждёнными владельцем.
+        Expanded(
+          child: Center(
+            child: _Beat(
+              enter: enter,
+              leave: leave,
+              at: 0.0,
+              span: 0.4,
+              from: const Offset(0, -20),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      s.posterQuote,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Literata',
+                        fontStyle: FontStyle.italic,
+                        fontSize: 17,
+                        height: 1.45,
+                        color: c.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      s.posterSrc,
+                      textAlign: TextAlign.center,
+                      style: JType.ui(11.5, color: c.sub),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  s.posterSrc,
-                  textAlign: TextAlign.center,
-                  style: JType.ui(11.5, color: c.sub),
-                ),
-              ],
+              ),
             ),
           ),
         ),
-        const Spacer(),
         // Сначала появляется пустая карточка, затем в неё со всех сторон
         // слетаются числа месяца и встают на места к концу свайпа.
         _Beat(

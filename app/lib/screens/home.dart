@@ -3121,7 +3121,7 @@ class _Notebook extends StatelessWidget {
                   child: Center(
                     child: Text(
                       w,
-                      style: JType.ui(expanded ? 13 : 10, color: c.faint),
+                      style: JType.ui(expanded ? 13 : 11, color: c.faint),
                     ),
                   ),
                 ),
@@ -3162,7 +3162,7 @@ class _Notebook extends StatelessWidget {
           child: Text(
             '${date.day}',
             style: JType.ui(
-              expanded ? 14 : 11,
+              expanded ? 16 : 14,
               w: FontWeight.w400,
               // Будущие даты отличаются отсутствием кольца; дополнительно
               // снижать opacity нельзя — на закате это делало число почти
@@ -3226,7 +3226,7 @@ class _RingCell extends StatelessWidget {
           child: Text(
             '$day',
             style: JType.ui(
-              expanded ? 13 : 10,
+              expanded ? 16 : 13.5,
               w: isToday || full ? FontWeight.w800 : FontWeight.w500,
               // На сплошном золоте число контрастное: днём золото тёмное —
               // число белое, ночью золото светлое — число тёмное.

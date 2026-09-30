@@ -258,7 +258,7 @@ void main() {
     await tester.pump();
 
     final title = find.text('Направление Киблы');
-    expect(tester.widget<Text>(title).style?.fontSize, 23);
+    expect(tester.widget<Text>(title).style?.fontSize, 24);
     expect(tester.takeException(), isNull);
   });
 

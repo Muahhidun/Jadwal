@@ -130,7 +130,9 @@ void main() {
   testWidgets('степь — дневной силуэт и плавный переход', (tester) async {
     await _render(tester, DateTime(2026, 7, 23, 12, 30), {
       0.0: 'p_16_steppe_day_main',
+      0.25: 'p_16b_steppe_day_swipe_start',
       0.45: 'p_17_steppe_day_swipe',
+      0.65: 'p_17b_steppe_day_swipe_end',
       1.0: 'p_18_steppe_day_today',
     }, scene: 'steppe');
   });

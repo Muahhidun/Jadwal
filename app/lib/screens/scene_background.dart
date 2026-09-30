@@ -834,52 +834,59 @@ class _ScenePainter extends CustomPainter {
       ..isAntiAlias = true
       ..filterQuality = FilterQuality.high;
 
-    // Пока главный экран неподвижен, весь кадр остаётся непрозрачным до
-    // самого нижнего пикселя. При жесте низ кадра мягко растворяется в том
-    // же фоне; никаких растянутых пикселей под краем и отдельного veil нет.
     void drawFrame(ui.Image image, Paint framePaint) =>
         canvas.drawImageRect(image, src(image), dest, framePaint);
 
-    canvas.saveLayer(dest, Paint());
-    if (dayBlend >= 0.999) {
-      // Полностью дневной кадр не должен лежать поверх ночного: даже при
-      // alpha=1 ночной силуэт мог выглядывать узкой тёмной линией над холмами.
-      drawFrame(day, paint);
-    } else {
-      drawFrame(nightImage, paint);
-      if (warmBlend > 0.001) {
-        if (warm != null) {
-          drawFrame(
-            warm,
-            Paint()
-              ..filterQuality = FilterQuality.high
-              ..color = Colors.white.withValues(alpha: warmBlend),
-          );
-        } else {
-          // Своего кадра сумерек нет — дневной кадр в тёплом свете.
+    void drawFrames() {
+      if (dayBlend >= 0.999) {
+        // Днём не подкладываем ночной силуэт под дневной кадр.
+        drawFrame(day, paint);
+      } else {
+        drawFrame(nightImage, paint);
+        if (warmBlend > 0.001) {
+          if (warm != null) {
+            drawFrame(
+              warm,
+              Paint()
+                ..filterQuality = FilterQuality.high
+                ..color = Colors.white.withValues(alpha: warmBlend),
+            );
+          } else {
+            drawFrame(
+              day,
+              Paint()
+                ..filterQuality = FilterQuality.high
+                ..colorFilter = ColorFilter.mode(
+                  (morning ? const Color(0xFFFFD2B0) : const Color(0xFFFFB592))
+                      .withValues(alpha: warmBlend),
+                  BlendMode.modulate,
+                ),
+            );
+          }
+        }
+        if (dayBlend > 0.001) {
           drawFrame(
             day,
             Paint()
               ..filterQuality = FilterQuality.high
-              ..colorFilter = ColorFilter.mode(
-                (morning ? const Color(0xFFFFD2B0) : const Color(0xFFFFB592))
-                    .withValues(alpha: warmBlend),
-                BlendMode.modulate,
-              ),
+              ..color = Colors.white.withValues(alpha: dayBlend),
           );
         }
       }
-      if (dayBlend > 0.001) {
-        drawFrame(
-          day,
-          Paint()
-            ..filterQuality = FilterQuality.high
-            ..color = Colors.white.withValues(alpha: dayBlend),
-        );
-      }
     }
-    final fade = smoothStep(0.02, 0.20, progress);
-    if (fade > 0) {
+
+    final photoOpacity = 1 - smoothStep(0.45, 0.75, progress);
+    canvas.saveLayer(
+      dest,
+      Paint()..color = Colors.white.withValues(alpha: photoOpacity),
+    );
+    drawFrames();
+    // Не создаём отдельную полосу ПОД пейзажем: она давала тёмный, затем
+    // светлый градиент на полусвайпе. Сама земля растворяется в общем фоне
+    // на большей части высоты изображения.
+    final dissolve = smoothStep(0.02, 0.40, progress);
+    final edgeDissolve = smoothStep(0.0, 0.18, progress);
+    if (dissolve > 0) {
       canvas.drawRect(
         dest,
         Paint()
@@ -890,23 +897,22 @@ class _ScenePainter extends CustomPainter {
             colors: [
               Colors.white,
               Colors.white,
-              Colors.white.withValues(alpha: 1 - fade),
-              Colors.white.withValues(alpha: 1 - fade),
+              Colors.white.withValues(alpha: 1 - dissolve * 0.30),
+              Colors.white.withValues(alpha: 1 - edgeDissolve),
+              Colors.white.withValues(alpha: 1 - edgeDissolve),
             ],
-            stops: const [0.0, 0.70, 0.96, 1.0],
+            stops: const [0.0, 0.35, 0.68, 0.97, 1.0],
           ).createShader(dest),
       );
     }
     canvas.restore();
-
-    if (fade > 0.99) {
-      // Skia оставляет на нижней границе saveLayer один тёмный texel даже
-      // при нулевой альфе маски. Здесь картинка уже полностью растворилась:
-      // возвращаем точные пиксели общего фона по обе стороны сгиба.
+    if (edgeDissolve > 0.99 && photoOpacity > 0.001) {
+      // У saveLayer бывает субпиксельный тёмный texel по нижнему краю.
+      // Возвращаем точные пиксели единого фона без отдельного затемнения.
       final palette = daySurfacePalette(times, nowSec);
       final sceneRect = Rect.fromLTRB(0, 0, width, horizon * 2);
       canvas.drawRect(
-        Rect.fromLTRB(0, horizon - 2, width, horizon + 2),
+        Rect.fromLTRB(0, horizon - 1, width, horizon + 1),
         Paint()
           ..shader = LinearGradient(
             begin: Alignment.topCenter,
