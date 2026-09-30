@@ -44,9 +44,15 @@ void main() {
   });
 
   test('темы используют согласованные кадры и масштаб', () {
-    expect(HomeScene.astana.photoSlots, ['day']);
-    for (final scene in [HomeScene.mecca, HomeScene.medina]) {
+    for (final scene in [
+      HomeScene.mecca,
+      HomeScene.medina,
+      HomeScene.astana,
+      HomeScene.steppe,
+    ]) {
       expect(scene.photoSlots, ['sunrise', 'day', 'sunset', 'night']);
+    }
+    for (final scene in [HomeScene.mecca, HomeScene.medina]) {
       expect(scene.photoZoom, 1.0);
     }
   });

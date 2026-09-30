@@ -209,24 +209,9 @@ class _PagesDayLayerState extends State<_PagesDayLayer> {
 
     return Stack(
       children: [
-        // Сплошной фон страниц закрывает картину главного экрана целиком:
-        // иначе сверху оставался «хвост» Мекки или пейзажа.
-        Positioned.fill(
-          child: IgnorePointer(
-            child: Opacity(
-              opacity: _seg(w.p, 0.3, 0.85),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [w.palette.top, w.palette.middle, w.palette.bottom],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+        // Фон обоих экранов уже нарисован одним непрерывным градиентом в
+        // SceneBackground. Второй полупрозрачный фон давал при медленном
+        // свайпе отдельную серую и затем светлую полосы.
         Positioned.fill(
           child: IgnorePointer(
             child: _PagesAmbience(p: w.p, c: c, isLight: w.palette.isLight),
@@ -907,14 +892,25 @@ class _HeroDeed extends StatelessWidget {
             dense ? 12 : 14,
           ),
           decoration: BoxDecoration(
-            color: open
-                ? c.gold.withValues(alpha: palette.isLight ? 0.13 : 0.12)
-                : c.ink.withValues(alpha: palette.isLight ? 0.06 : 0.07),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: open ? c.gold.withValues(alpha: 0.5) : c.hair,
-              width: open ? 1.1 : 0.8,
+            // Та же стеклянная поверхность, что у расписания и списка дел.
+            // Акцент — поверх неё, а не отдельная прозрачная карточка:
+            // так «следующее дело» заметно и на светлом, и на тёмном фоне.
+            color: Color.alphaBlend(
+              c.gold.withValues(alpha: open ? 0.17 : 0.055),
+              palette.surface,
             ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: Color.lerp(palette.border, c.gold, open ? 0.68 : 0.28)!,
+              width: open ? 1.2 : 0.8,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: palette.shadow,
+                offset: const Offset(0, 12),
+                blurRadius: 34,
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

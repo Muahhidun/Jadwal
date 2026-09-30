@@ -127,6 +127,18 @@ void main() {
       0.45: 'p_11b_steppe_swipe',
     }, scene: 'nature');
   });
+  testWidgets('степь — дневной силуэт и плавный переход', (tester) async {
+    await _render(tester, DateTime(2026, 7, 23, 12, 30), {
+      0.0: 'p_16_steppe_day_main',
+      0.45: 'p_17_steppe_day_swipe',
+      1.0: 'p_18_steppe_day_today',
+    }, scene: 'steppe');
+  });
+  testWidgets('карточки на рассвете', (tester) async {
+    await _render(tester, DateTime(2026, 7, 23, 3, 30), {
+      1.0: 'p_19_today_dawn',
+    }, scene: 'steppe');
+  });
   testWidgets('настройки и «О приложении»', (tester) async {
     await _render(
       tester,

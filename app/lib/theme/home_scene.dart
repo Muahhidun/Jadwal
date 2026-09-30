@@ -23,13 +23,12 @@ enum HomeScene {
   /// Фото-тема: картинки владельца по времени суток в assets/images/themes.
   bool get isPhoto => photoSlots.isNotEmpty;
 
-  /// Астана использует один геометрически неизменный дневной кадр: отдельные
-  /// генерации давали двойные контуры. В Мекке и Медине кадры выверены по
-  /// общему размеру и меняются вместе с освещением неба.
+  /// Все фото-темы используют одинаковые четыре фазы освещения. Кадры Астаны
+  /// экспортируются из одной геометрии, чтобы купола и минареты не двоились.
   List<String> get photoSlots => switch (this) {
-    HomeScene.astana => const ['day'],
     HomeScene.mecca ||
     HomeScene.medina ||
+    HomeScene.astana ||
     HomeScene.steppe => const ['sunrise', 'day', 'sunset', 'night'],
     _ => const [],
   };

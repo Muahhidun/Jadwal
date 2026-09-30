@@ -187,13 +187,6 @@ class _SceneBackgroundState extends State<SceneBackground>
     // Мекку намеренно не замедляем отдельно: при классическом параллаксе она
     // задерживалась и оказывалась под карточками экрана «дня».
     final dy = -widget.progress * widget.screenHeight;
-    final transitionSky = _skyAt(widget.times, widget.nowSec ~/ 60);
-    final horizonVeil = Color.lerp(
-      transitionSky.bottom,
-      const Color(0xFF0B0F1C),
-      0.62,
-    )!;
-    final transitionOpacity = sin(pi * widget.progress).clamp(0.0, 1.0);
     return Positioned(
       left: 0,
       right: 0,
@@ -218,42 +211,12 @@ class _SceneBackgroundState extends State<SceneBackground>
                           ? _photo
                           : const {},
                       introVal: _introAnimation.value,
+                      progress: widget.progress,
                       variant: widget.variant,
                     ),
                     size: Size.infinite,
                   );
                 },
-              ),
-            ),
-          ),
-          // Дымка существует только во время жеста. Она закрывает математическую
-          // границу двух кадров, но сама едет вместе со сценой, поэтому свайп
-          // по-прежнему ощущается как перелистывание целого экрана.
-          Positioned(
-            left: 0,
-            right: 0,
-            top: widget.screenHeight - 150,
-            height: 300,
-            child: IgnorePointer(
-              child: Opacity(
-                opacity: transitionOpacity,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        horizonVeil.withValues(alpha: 0.0),
-                        horizonVeil.withValues(alpha: 0.18),
-                        horizonVeil.withValues(alpha: 0.72),
-                        horizonVeil.withValues(alpha: 0.88),
-                        horizonVeil.withValues(alpha: 0.52),
-                        horizonVeil.withValues(alpha: 0.0),
-                      ],
-                      stops: const [0.0, 0.22, 0.42, 0.54, 0.72, 1.0],
-                    ),
-                  ),
-                ),
               ),
             ),
           ),
@@ -431,7 +394,9 @@ DaySurfacePalette daySurfacePalette(DayTimes t, int nowSec) {
   } else {
     nightBlend = 1;
   }
-  final surfaceBlend = _smoothStep(0.18, 0.92, nightBlend);
+  // Поверхности следуют за рассветом с самого его начала. Прежний порог
+  // 0.18 делал карточки уже белыми, когда фон ещё был сумрачно-серым.
+  final surfaceBlend = _smoothStep(0.0, 0.58, nightBlend);
 
   final lightTop = Color.lerp(const Color(0xFFDDE8ED), sky.bottom, 0.38)!;
   final lightMiddle = Color.lerp(const Color(0xFFCAD8DE), sky.top, 0.16)!;
@@ -551,8 +516,8 @@ DaySurfacePalette daySurfacePalette(DayTimes t, int nowSec) {
       surfaceBlend,
     )!,
     shadow: Color.lerp(
-      const Color(0x260D1B22),
-      const Color(0x66000000),
+      const Color(0x200D1B22),
+      const Color(0x33000000),
       surfaceBlend,
     )!,
   );
@@ -612,6 +577,7 @@ class _ScenePainter extends CustomPainter {
     required this.startY,
     required this.len,
     required this.introVal,
+    required this.progress,
     required this.variant,
     this.photoImages = const {},
   });
@@ -622,6 +588,7 @@ class _ScenePainter extends CustomPainter {
   final double startY;
   final double len;
   final double introVal;
+  final double progress;
   final HomeScene variant;
 
   /// Кадры фото-темы по времени суток: sunrise / day / sunset / night.
@@ -671,22 +638,6 @@ class _ScenePainter extends CustomPainter {
           ],
           stops: const [0.0, 0.43, 0.53, 0.72, 1.0],
         ).createShader(sceneRect),
-    );
-
-    // На втором экране движется только атмосферный свет: большой мягкий
-    // отблеск того же горизонта, что и на главном, без новых объектов.
-    final lowerRect = Rect.fromLTRB(0, horizon, W, H);
-    canvas.drawRect(
-      lowerRect,
-      Paint()
-        ..shader = ui.Gradient.radial(
-          Offset(W * 0.78, horizon + (H - horizon) * 0.08),
-          W * 1.05,
-          [
-            daySurface.glow.withValues(alpha: daySurface.isLight ? 0.28 : 0.20),
-            daySurface.glow.withValues(alpha: 0.0),
-          ],
-        ),
     );
 
     // Звёзды и падающая звезда — ночью
@@ -855,17 +806,6 @@ class _ScenePainter extends CustomPainter {
   }) {
     final day = photoImages['day'];
     if (day == null) return;
-    if (variant == HomeScene.astana) {
-      _architecturalPhotoScene(
-        canvas,
-        width,
-        horizon,
-        sky,
-        day,
-        morning: morning,
-      );
-      return;
-    }
     final nightImage = photoImages['night'] ?? day;
     final warm = photoImages[morning ? 'sunrise' : 'sunset'];
 
@@ -894,124 +834,94 @@ class _ScenePainter extends CustomPainter {
       ..isAntiAlias = true
       ..filterQuality = FilterQuality.high;
 
+    // Пока главный экран неподвижен, весь кадр остаётся непрозрачным до
+    // самого нижнего пикселя. При жесте низ кадра мягко растворяется в том
+    // же фоне; никаких растянутых пикселей под краем и отдельного veil нет.
+    void drawFrame(ui.Image image, Paint framePaint) =>
+        canvas.drawImageRect(image, src(image), dest, framePaint);
+
     canvas.saveLayer(dest, Paint());
-    canvas.drawImageRect(nightImage, src(nightImage), dest, paint);
-    if (warmBlend > 0.001) {
-      if (warm != null) {
-        canvas.drawImageRect(
-          warm,
-          src(warm),
-          dest,
-          Paint()
-            ..filterQuality = FilterQuality.high
-            ..color = Colors.white.withValues(alpha: warmBlend),
-        );
-      } else {
-        // Своего кадра сумерек нет — дневной кадр в тёплом свете.
-        canvas.drawImageRect(
+    if (dayBlend >= 0.999) {
+      // Полностью дневной кадр не должен лежать поверх ночного: даже при
+      // alpha=1 ночной силуэт мог выглядывать узкой тёмной линией над холмами.
+      drawFrame(day, paint);
+    } else {
+      drawFrame(nightImage, paint);
+      if (warmBlend > 0.001) {
+        if (warm != null) {
+          drawFrame(
+            warm,
+            Paint()
+              ..filterQuality = FilterQuality.high
+              ..color = Colors.white.withValues(alpha: warmBlend),
+          );
+        } else {
+          // Своего кадра сумерек нет — дневной кадр в тёплом свете.
+          drawFrame(
+            day,
+            Paint()
+              ..filterQuality = FilterQuality.high
+              ..colorFilter = ColorFilter.mode(
+                (morning ? const Color(0xFFFFD2B0) : const Color(0xFFFFB592))
+                    .withValues(alpha: warmBlend),
+                BlendMode.modulate,
+              ),
+          );
+        }
+      }
+      if (dayBlend > 0.001) {
+        drawFrame(
           day,
-          src(day),
-          dest,
           Paint()
             ..filterQuality = FilterQuality.high
-            ..colorFilter = ColorFilter.mode(
-              (morning ? const Color(0xFFFFD2B0) : const Color(0xFFFFB592))
-                  .withValues(alpha: warmBlend),
-              BlendMode.modulate,
-            ),
+            ..color = Colors.white.withValues(alpha: dayBlend),
         );
       }
     }
-    if (dayBlend > 0.001) {
-      canvas.drawImageRect(
-        day,
-        src(day),
-        dest,
-        Paint()
-          ..filterQuality = FilterQuality.high
-          ..color = Colors.white.withValues(alpha: dayBlend),
-      );
-    }
-    // Нижняя кромка растворяется в общий градиент — при свайпе к страницам
-    // край кадра не обрывается ровной линией.
-    canvas.drawRect(
-      dest,
-      Paint()
-        ..blendMode = BlendMode.dstIn
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.white, Colors.white, Colors.transparent],
-          stops: [0.0, 0.9, 1.0],
-        ).createShader(dest),
-    );
-    canvas.restore();
-  }
-
-  /// У отдельных генераций мечети линии куполов и минаретов не совпадают.
-  /// Смешивание кадров просвечивало чужим силуэтом даже днём. Освещение
-  /// меняем поверх одного и того же дневного изображения: геометрия не двоится.
-  void _architecturalPhotoScene(
-    Canvas canvas,
-    double width,
-    double horizon,
-    _Sky sky,
-    ui.Image day, {
-    required bool morning,
-  }) {
-    final dstWidth = width * variant.photoZoom;
-    final dstHeight = dstWidth * day.height / day.width;
-    final dest = Rect.fromLTWH(
-      (width - dstWidth) / 2,
-      horizon - dstHeight,
-      dstWidth,
-      dstHeight,
-    );
-    final src = Rect.fromLTWH(
-      0,
-      0,
-      day.width.toDouble(),
-      day.height.toDouble(),
-    );
-    final light = ((sky.day - .07) / .63).clamp(0.0, 1.0);
-    final tint = Color.lerp(const Color(0xFF33465C), Colors.white, light)!;
-    final warm = (1 - (sky.day - .18).abs() / .20).clamp(0.0, 1.0);
-    final sunlit = const Color(0xFFFFC788).withValues(alpha: warm * .54);
-
-    canvas.saveLayer(dest, Paint());
-    canvas.drawImageRect(
-      day,
-      src,
-      dest,
-      Paint()
-        ..filterQuality = FilterQuality.high
-        ..colorFilter = ColorFilter.mode(tint, BlendMode.modulate),
-    );
-    if (warm > 0) {
-      // Восход всегда слева, закат справа — как и солнце в живом небе.
+    final fade = smoothStep(0.02, 0.20, progress);
+    if (fade > 0) {
       canvas.drawRect(
         dest,
         Paint()
-          ..blendMode = BlendMode.srcATop
+          ..blendMode = BlendMode.dstIn
           ..shader = LinearGradient(
-            begin: morning ? Alignment.centerLeft : Alignment.centerRight,
-            end: morning ? Alignment.centerRight : Alignment.centerLeft,
-            colors: [sunlit, const Color(0x00FFC788)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.white,
+              Colors.white,
+              Colors.white.withValues(alpha: 1 - fade),
+              Colors.white.withValues(alpha: 1 - fade),
+            ],
+            stops: const [0.0, 0.70, 0.96, 1.0],
           ).createShader(dest),
       );
     }
-    canvas.drawRect(
-      dest,
-      Paint()
-        ..blendMode = BlendMode.dstIn
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.white, Colors.white, Colors.transparent],
-          stops: [0.0, 0.9, 1.0],
-        ).createShader(dest),
-    );
     canvas.restore();
+
+    if (fade > 0.99) {
+      // Skia оставляет на нижней границе saveLayer один тёмный texel даже
+      // при нулевой альфе маски. Здесь картинка уже полностью растворилась:
+      // возвращаем точные пиксели общего фона по обе стороны сгиба.
+      final palette = daySurfacePalette(times, nowSec);
+      final sceneRect = Rect.fromLTRB(0, 0, width, horizon * 2);
+      canvas.drawRect(
+        Rect.fromLTRB(0, horizon - 2, width, horizon + 2),
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              sky.top,
+              sky.bottom,
+              palette.top,
+              palette.middle,
+              palette.bottom,
+            ],
+            stops: const [0.0, 0.43, 0.53, 0.72, 1.0],
+          ).createShader(sceneRect),
+      );
+    }
   }
 
   void _minimalHorizon(
@@ -1047,5 +957,6 @@ class _ScenePainter extends CustomPainter {
       !identical(old.photoImages, photoImages) ||
       old.variant != variant ||
       old.introVal != introVal ||
+      old.progress != progress ||
       old.shootingStarVal != shootingStarVal;
 }
