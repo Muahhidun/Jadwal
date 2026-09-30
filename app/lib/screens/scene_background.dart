@@ -96,9 +96,6 @@ class _SceneBackgroundState extends State<SceneBackground>
   double _startX = 0;
   double _startY = 0;
   double _len = 80;
-  ui.Image? _meccaDayImage;
-  ui.Image? _meccaTwilightImage;
-  ui.Image? _meccaNightImage;
   // Фото-тема загружается одна — только выбранная: четыре декодированных
   // кадра сразу, а не двенадцать, чтобы не тратить память телефона.
   Map<String, ui.Image> _photo = const {};
@@ -124,7 +121,7 @@ class _SceneBackgroundState extends State<SceneBackground>
         if (mounted) _startShootingStar();
       });
     }
-    _loadSceneImages();
+    _loadPhoto(widget.variant);
     _introController.forward(from: 0.0);
   }
 
@@ -133,28 +130,6 @@ class _SceneBackgroundState extends State<SceneBackground>
     final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
     final frame = await codec.getNextFrame();
     return frame.image;
-  }
-
-  Future<void> _loadSceneImages() async {
-    // Фото-тема грузится параллельно с Меккой, а не после неё: иначе
-    // выбранная тема появлялась бы на экране с задержкой.
-    _loadPhoto(widget.variant);
-    try {
-      final images = await Future.wait([
-        _loadImage('assets/images/mecca_architecture_day_v3.png'),
-        _loadImage('assets/images/mecca_architecture_twilight_v3.png'),
-        _loadImage('assets/images/mecca_architecture_night_v3.png'),
-      ]);
-      if (mounted) {
-        setState(() {
-          _meccaDayImage = images[0];
-          _meccaTwilightImage = images[1];
-          _meccaNightImage = images[2];
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading scene artwork: $e');
-    }
   }
 
   Future<void> _loadPhoto(HomeScene variant) async {
@@ -239,9 +214,6 @@ class _SceneBackgroundState extends State<SceneBackground>
                       startX: _startX,
                       startY: _startY,
                       len: _len,
-                      meccaDayImage: _meccaDayImage,
-                      meccaTwilightImage: _meccaTwilightImage,
-                      meccaNightImage: _meccaNightImage,
                       photoImages: _photoFor == widget.variant
                           ? _photo
                           : const {},
@@ -641,9 +613,6 @@ class _ScenePainter extends CustomPainter {
     required this.len,
     required this.introVal,
     required this.variant,
-    this.meccaDayImage,
-    this.meccaTwilightImage,
-    this.meccaNightImage,
     this.photoImages = const {},
   });
   final DayTimes times;
@@ -654,9 +623,6 @@ class _ScenePainter extends CustomPainter {
   final double len;
   final double introVal;
   final HomeScene variant;
-  final ui.Image? meccaDayImage;
-  final ui.Image? meccaTwilightImage;
-  final ui.Image? meccaNightImage;
 
   /// Кадры фото-темы по времени суток: sunrise / day / sunset / night.
   final Map<String, ui.Image> photoImages;
@@ -776,9 +742,10 @@ class _ScenePainter extends CustomPainter {
 
     // Художественный горизонт выбирается отдельно от геолокации пользователя.
     switch (variant) {
-      case HomeScene.mecca:
-        _mecca(canvas, W, horizon, H, sky, night, cx, cy, isDay, alt);
-      case HomeScene.medina || HomeScene.astana || HomeScene.steppe:
+      case HomeScene.mecca ||
+          HomeScene.medina ||
+          HomeScene.astana ||
+          HomeScene.steppe:
         _photoScene(canvas, W, horizon, sky, morning: nowMin < dhuhr);
       case HomeScene.minimal:
         _minimalHorizon(canvas, W, horizon, sky, night);
@@ -875,119 +842,6 @@ class _ScenePainter extends CustomPainter {
     }
   }
 
-  void _mecca(
-    Canvas canvas,
-    double W,
-    double horizon,
-    double H,
-    _Sky sky,
-    double night,
-    double celX,
-    double celY,
-    bool isDay,
-    double alt,
-  ) {
-    final base = horizon;
-
-    // 1. Атмосферное свечение за зданиями (sunset/sunrise glow)
-    if (isDay && alt < 0.35) {
-      final glowFactor = 1.0 - (alt / 0.35);
-      final glowRect = Rect.fromLTRB(0, 0, W, base + 10);
-      final glowPaint = Paint()
-        ..shader = ui.Gradient.radial(
-          Offset(celX, base - 10),
-          W * 0.45,
-          [
-            const Color(0xFFE88A50).withValues(alpha: 0.35 * glowFactor),
-            const Color(0xFFD9AE52).withValues(alpha: 0.12 * glowFactor),
-            const Color(0x00000000),
-          ],
-          [0.0, 0.4, 1.0],
-        );
-      canvas.drawRect(glowRect, glowPaint);
-    } else if (!isDay && alt > 0.1) {
-      final glowFactor = (alt - 0.1) / 0.9;
-      final glowRect = Rect.fromLTRB(0, 0, W, base + 10);
-      final glowPaint = Paint()
-        ..shader = ui.Gradient.radial(Offset(celX, base - 10), W * 0.3, [
-          const Color(0xFFB0BEC5).withValues(alpha: 0.12 * glowFactor),
-          const Color(0x00000000),
-        ]);
-      canvas.drawRect(glowRect, glowPaint);
-    }
-
-    // 2. Один фиксированный ракурс Мекки. День, переходный свет и ночь
-    // сделаны из одного мастера и совпадают по пикселям: архитектура не
-    // «прыгает», плавно меняется только освещение.
-    final nightImage = meccaNightImage;
-    final twilightImage = meccaTwilightImage;
-    final dayImage = meccaDayImage;
-    if (nightImage != null && twilightImage != null && dayImage != null) {
-      // V3 содержит не только полную Каабу, но и площадь до нижней кромки.
-      // Нижнюю кромку совмещаем с краем первого экрана: под изображением не
-      // остаётся ни прозрачной, ни цветной полосы.
-      final dstWidth = W * 1.11;
-      final dstHeight = dstWidth * (nightImage.height / nightImage.width);
-      final destRect = Rect.fromLTWH(
-        (W - dstWidth) / 2,
-        base - dstHeight,
-        dstWidth,
-        dstHeight,
-      );
-      final sourceRect = Rect.fromLTWH(
-        0,
-        0,
-        nightImage.width.toDouble(),
-        nightImage.height.toDouble(),
-      );
-
-      double smoothStep(double edge0, double edge1, double value) {
-        final x = ((value - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
-        return x * x * (3 - 2 * x);
-      }
-
-      // Полдень даёт нейтральный фасад, у горизонта появляется тепло,
-      // после Иша остаются только реальные огни арок, минаретов и башни.
-      final dayBlend = smoothStep(0.32, 0.70, sky.day);
-      final twilightBlend = smoothStep(0.04, 0.28, sky.day) * (1 - dayBlend);
-
-      // Последние пиксели площади раньше заканчивались ровной границей
-      // изображения и выдавали стык двух экранов. Растушёвываем только
-      // нижние ~9% площади в уже нарисованный общий градиент; Кааба и
-      // архитектура выше этой зоны остаются полностью резкими.
-      canvas.saveLayer(destRect, Paint());
-      canvas.drawImageRect(nightImage, sourceRect, destRect, Paint());
-      if (twilightBlend > 0.001) {
-        canvas.drawImageRect(
-          twilightImage,
-          sourceRect,
-          destRect,
-          Paint()..color = Colors.white.withValues(alpha: twilightBlend),
-        );
-      }
-      if (dayBlend > 0.001) {
-        canvas.drawImageRect(
-          dayImage,
-          sourceRect,
-          destRect,
-          Paint()..color = Colors.white.withValues(alpha: dayBlend),
-        );
-      }
-      canvas.drawRect(
-        destRect,
-        Paint()
-          ..blendMode = BlendMode.dstIn
-          ..shader = const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.white, Colors.white, Colors.transparent],
-            stops: [0.0, 0.91, 1.0],
-          ).createShader(destRect),
-      );
-      canvas.restore();
-    }
-  }
-
   /// Фото-тема: кадры владельца на восход, день, закат и ночь. Как у Мекки,
   /// один ракурс — плавно меняется только свет. Днём — дневной кадр, в
   /// сумерках — восход (утром) или закат (вечером), после Иша — ночной.
@@ -1000,8 +854,19 @@ class _ScenePainter extends CustomPainter {
     required bool morning,
   }) {
     final day = photoImages['day'];
+    if (day == null) return;
+    if (variant == HomeScene.astana) {
+      _architecturalPhotoScene(
+        canvas,
+        width,
+        horizon,
+        sky,
+        day,
+        morning: morning,
+      );
+      return;
+    }
     final nightImage = photoImages['night'] ?? day;
-    if (day == null || nightImage == null) return;
     final warm = photoImages[morning ? 'sunrise' : 'sunset'];
 
     // Низ кадра совмещён с краем главного экрана, ширина — чуть больше
@@ -1083,6 +948,72 @@ class _ScenePainter extends CustomPainter {
     canvas.restore();
   }
 
+  /// У отдельных генераций мечети линии куполов и минаретов не совпадают.
+  /// Смешивание кадров просвечивало чужим силуэтом даже днём. Освещение
+  /// меняем поверх одного и того же дневного изображения: геометрия не двоится.
+  void _architecturalPhotoScene(
+    Canvas canvas,
+    double width,
+    double horizon,
+    _Sky sky,
+    ui.Image day, {
+    required bool morning,
+  }) {
+    final dstWidth = width * variant.photoZoom;
+    final dstHeight = dstWidth * day.height / day.width;
+    final dest = Rect.fromLTWH(
+      (width - dstWidth) / 2,
+      horizon - dstHeight,
+      dstWidth,
+      dstHeight,
+    );
+    final src = Rect.fromLTWH(
+      0,
+      0,
+      day.width.toDouble(),
+      day.height.toDouble(),
+    );
+    final light = ((sky.day - .07) / .63).clamp(0.0, 1.0);
+    final tint = Color.lerp(const Color(0xFF33465C), Colors.white, light)!;
+    final warm = (1 - (sky.day - .18).abs() / .20).clamp(0.0, 1.0);
+    final sunlit = const Color(0xFFFFC788).withValues(alpha: warm * .54);
+
+    canvas.saveLayer(dest, Paint());
+    canvas.drawImageRect(
+      day,
+      src,
+      dest,
+      Paint()
+        ..filterQuality = FilterQuality.high
+        ..colorFilter = ColorFilter.mode(tint, BlendMode.modulate),
+    );
+    if (warm > 0) {
+      // Восход всегда слева, закат справа — как и солнце в живом небе.
+      canvas.drawRect(
+        dest,
+        Paint()
+          ..blendMode = BlendMode.srcATop
+          ..shader = LinearGradient(
+            begin: morning ? Alignment.centerLeft : Alignment.centerRight,
+            end: morning ? Alignment.centerRight : Alignment.centerLeft,
+            colors: [sunlit, const Color(0x00FFC788)],
+          ).createShader(dest),
+      );
+    }
+    canvas.drawRect(
+      dest,
+      Paint()
+        ..blendMode = BlendMode.dstIn
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.white, Colors.white, Colors.transparent],
+          stops: [0.0, 0.9, 1.0],
+        ).createShader(dest),
+    );
+    canvas.restore();
+  }
+
   void _minimalHorizon(
     Canvas canvas,
     double width,
@@ -1113,9 +1044,6 @@ class _ScenePainter extends CustomPainter {
   bool shouldRepaint(_ScenePainter old) =>
       old.nowSec != nowSec ||
       old.times != times ||
-      old.meccaDayImage != meccaDayImage ||
-      old.meccaTwilightImage != meccaTwilightImage ||
-      old.meccaNightImage != meccaNightImage ||
       !identical(old.photoImages, photoImages) ||
       old.variant != variant ||
       old.introVal != introVal ||

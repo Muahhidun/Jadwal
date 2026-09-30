@@ -22,7 +22,12 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    for (final scene in [HomeScene.medina, HomeScene.astana, HomeScene.steppe]) {
+    for (final scene in [
+      HomeScene.mecca,
+      HomeScene.medina,
+      HomeScene.astana,
+      HomeScene.steppe,
+    ]) {
       for (final (label, sec) in [
         ('sunrise', 6 * 3600 + 40 * 60),
         ('day', 13 * 3600),

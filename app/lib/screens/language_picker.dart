@@ -90,16 +90,17 @@ class AppearancePicker extends StatelessWidget {
                   : 'Оформление не влияет на город, по которому рассчитываются времена молитв.',
               children: [
                 for (final scene in HomeScene.values)
-                  _SceneChoiceRow(
-                    scene: scene,
-                    selected: app.homeScene == scene,
-                    title: _sceneTitle(scene, kz),
-                    subtitle: _sceneSubtitle(scene, kz),
-                    onTap: () {
-                      app.homeScene = scene;
-                      HapticFeedback.mediumImpact();
-                    },
-                  ),
+                  if (scene != HomeScene.minimal)
+                    _SceneChoiceRow(
+                      scene: scene,
+                      selected: app.homeScene == scene,
+                      title: _sceneTitle(scene, kz),
+                      subtitle: _sceneSubtitle(scene, kz),
+                      onTap: () {
+                        app.homeScene = scene;
+                        HapticFeedback.mediumImpact();
+                      },
+                    ),
               ],
             ),
             DauamSection(
@@ -298,29 +299,6 @@ class _ScenePreviewPainter extends CustomPainter {
     );
 
     switch (scene) {
-      case HomeScene.mecca:
-        canvas.drawRect(
-          Rect.fromLTWH(
-            size.width * .39,
-            size.height * .54,
-            size.width * .22,
-            size.height * .30,
-          ),
-          Paint()..color = const Color(0xFF111216),
-        );
-        canvas.drawRect(
-          Rect.fromLTWH(
-            size.width * .39,
-            size.height * .58,
-            size.width * .22,
-            2,
-          ),
-          Paint()..color = const Color(0xFFD2A74E),
-        );
-        canvas.drawOval(
-          Rect.fromLTWH(-8, size.height * .76, size.width + 16, 20),
-          Paint()..color = const Color(0xFF182328),
-        );
       case HomeScene.minimal:
         canvas.drawRect(
           Rect.fromLTWH(0, size.height * .82, size.width, size.height * .18),
@@ -333,7 +311,10 @@ class _ScenePreviewPainter extends CustomPainter {
         );
       // Фото-темы: кадр накладывается виджетом Image поверх этого неба.
       // Пустой блок, а не пустой case: иначе вариант провалился бы в соседний.
-      case HomeScene.medina || HomeScene.astana || HomeScene.steppe:
+      case HomeScene.mecca ||
+          HomeScene.medina ||
+          HomeScene.astana ||
+          HomeScene.steppe:
         {}
     }
   }

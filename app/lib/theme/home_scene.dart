@@ -13,7 +13,8 @@ enum HomeScene {
     'steppe' => HomeScene.steppe,
     // «Природа» убрана — по сути это та же степь.
     'nature' => HomeScene.steppe,
-    'minimal' => HomeScene.minimal,
+    // Убранный вариант не должен оставаться выбранным у прежних пользователей.
+    'minimal' => HomeScene.mecca,
     _ => HomeScene.mecca,
   };
 
@@ -22,13 +23,14 @@ enum HomeScene {
   /// Фото-тема: картинки владельца по времени суток в assets/images/themes.
   bool get isPhoto => photoSlots.isNotEmpty;
 
-  /// Какие варианты по времени суток есть у темы. У Астаны восход и закат
-  /// пока рисуются из дня тёплым светом: присланные кадры отличаются по
-  /// композиции, и при плавной смене мечеть двоилась бы.
+  /// Астана использует один геометрически неизменный дневной кадр: отдельные
+  /// генерации давали двойные контуры. В Мекке и Медине кадры выверены по
+  /// общему размеру и меняются вместе с освещением неба.
   List<String> get photoSlots => switch (this) {
+    HomeScene.astana => const ['day'],
+    HomeScene.mecca ||
     HomeScene.medina ||
     HomeScene.steppe => const ['sunrise', 'day', 'sunset', 'night'],
-    HomeScene.astana => const ['day', 'night'],
     _ => const [],
   };
 
@@ -38,6 +40,7 @@ enum HomeScene {
   /// небольшая — крупнее, края с деревьями уходят за экран.
   double get photoZoom => switch (this) {
     HomeScene.astana => 1.45,
+    HomeScene.medina || HomeScene.mecca => 1.0,
     HomeScene.steppe => 1.2,
     _ => 1.08,
   };

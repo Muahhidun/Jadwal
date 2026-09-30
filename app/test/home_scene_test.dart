@@ -36,10 +36,19 @@ void main() {
     expect(restored.city.name, 'Екібастұз қаласы');
   });
 
-  test('убранная «Природа» превращается в «Степь», «Орнамент» — в Мекку', () {
+  test('убранные оформления переводятся на доступную тему', () {
     expect(HomeScene.fromStorage('nature'), HomeScene.steppe);
     expect(HomeScene.fromStorage('ornament'), HomeScene.mecca);
+    expect(HomeScene.fromStorage('minimal'), HomeScene.mecca);
     expect(HomeScene.fromStorage('astana'), HomeScene.astana);
+  });
+
+  test('темы используют согласованные кадры и масштаб', () {
+    expect(HomeScene.astana.photoSlots, ['day']);
+    for (final scene in [HomeScene.mecca, HomeScene.medina]) {
+      expect(scene.photoSlots, ['sunrise', 'day', 'sunset', 'night']);
+      expect(scene.photoZoom, 1.0);
+    }
   });
 
   testWidgets('все оформления главного экрана рисуются', (tester) async {
@@ -69,7 +78,7 @@ void main() {
       );
       // Scene artwork is decoded by dart:ui outside the fake test clock.
       await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 120)),
+        () => Future<void>.delayed(const Duration(milliseconds: 900)),
       );
       if (scene == HomeScene.steppe) {
         // В начале появления солнце проходит через середину неба. Этот кадр
@@ -84,12 +93,10 @@ void main() {
         await tester.pump(const Duration(milliseconds: 1600));
       }
       expect(tester.takeException(), isNull, reason: scene.name);
-      if (scene != HomeScene.mecca) {
-        await expectLater(
-          find.byType(SceneBackground),
-          matchesGoldenFile('goldens/home_scene_${scene.name}_393x852.png'),
-        );
-      }
+      await expectLater(
+        find.byType(SceneBackground),
+        matchesGoldenFile('goldens/home_scene_${scene.name}_393x852.png'),
+      );
     }
   });
 }

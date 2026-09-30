@@ -65,6 +65,7 @@ void main() {
     expect(find.text('Вид'), findsOneWidget);
     expect(find.text('Язык'), findsOneWidget);
     await tester.tap(find.text('Вид'));
+    await tester.pump();
     // Let the raster scene preview finish decoding outside the fake clock.
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 120)),
@@ -72,7 +73,7 @@ void main() {
     await _pumpFrames(tester, 10);
     expect(find.text('Мекка'), findsOneWidget);
     expect(find.text('Степь'), findsOneWidget);
-    expect(find.text('Минимализм'), findsOneWidget);
+    expect(find.text('Минимализм'), findsNothing);
     expect(find.text('Русский'), findsNothing);
     await expectLater(
       find.byType(JadwalApp),
