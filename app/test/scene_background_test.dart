@@ -69,6 +69,34 @@ void main() {
     expect(distance(before.surface, after.surface), lessThan(0.08));
   });
 
+  test('карточки не белеют раньше рассветного фона', () {
+    final dawn = daySurfacePalette(times, 3 * 3600 + 30 * 60);
+    final day = daySurfacePalette(times, 5 * 3600);
+
+    expect(
+      dawn.surface.computeLuminance(),
+      lessThan(day.surface.computeLuminance()),
+    );
+    expect(dawn.surface.computeLuminance(), lessThan(0.75));
+  });
+
+  test('карточки и текст остаются читаемыми весь рассвет', () {
+    for (var minute = 120; minute <= 240; minute += 10) {
+      final palette = daySurfacePalette(times, minute * 60);
+      final backgrounds = [
+        compositeOver(palette.surface, palette.top),
+        compositeOver(palette.surface, palette.middle),
+        compositeOver(palette.surface, palette.bottom),
+      ];
+      final minimumContrast = backgrounds
+          .map(
+            (background) => colorContrastRatio(palette.colors.ink, background),
+          )
+          .reduce((a, b) => a < b ? a : b);
+      expect(minimumContrast, greaterThanOrEqualTo(4.5), reason: '$minute');
+    }
+  });
+
   test('текст карточек остаётся читаемым вокруг Магриба', () {
     for (final offset in [-30, -25, -15, 0, 15]) {
       final palette = daySurfacePalette(

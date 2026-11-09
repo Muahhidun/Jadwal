@@ -239,6 +239,10 @@ class _KahfReaderScreenState extends State<KahfReaderScreen>
     _finishing = true;
     _chromeTimer?.cancel();
     final app = AppScope.of(context);
+    if (app.isDone('kahf')) {
+      Navigator.of(context).pop();
+      return;
+    }
     app.markDone('kahf');
     HapticFeedback.mediumImpact();
     Navigator.of(context).pushReplacement(

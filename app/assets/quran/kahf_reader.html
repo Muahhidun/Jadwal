@@ -7,7 +7,7 @@
   <style>
     @font-face {
       font-family: UthmanicHafs;
-      src: url("https://verses.quran.foundation/fonts/quran/hafs/uthmanic_hafs/UthmanicHafs1Ver18.woff2") format("woff2");
+      src: url("kahf/UthmanicHafs1Ver18.woff2") format("woff2");
       font-display: swap;
     }
 
@@ -191,8 +191,11 @@
     <div class="notice" id="loading">Загрузка проверенного текста и разметки мусхафа…</div>
   </main>
 
+  <!-- Текст и шрифты суры встроены в приложение: читается без интернета. -->
+  <script src="kahf/kahf_data.js"></script>
   <script>
     const API = 'https://api.quran.com/api/v4';
+    const LOCAL_FONTS = 'kahf';
     const FONT_CDN = 'https://verses.quran.foundation/fonts/quran/hafs';
     const reader = document.getElementById('reader');
     let currentTheme = 'paper';
@@ -234,9 +237,15 @@
     async function loadFont(page) {
       const family = `qcf-${page}-v4`;
       if (loadedFonts.has(family)) return family;
-      const path = `${FONT_CDN}/v4/colrv1/woff2/p${page}.woff2`;
-      const font = new FontFace(family, `url("${path}")`, { display: 'block' });
-      await font.load();
+      // Сначала встроенный шрифт страницы; сеть — только если его нет.
+      let font = new FontFace(family, `url("${LOCAL_FONTS}/p${page}.woff2")`, { display: 'block' });
+      try {
+        await font.load();
+      } catch (_) {
+        const path = `${FONT_CDN}/v4/colrv1/woff2/p${page}.woff2`;
+        font = new FontFace(family, `url("${path}")`, { display: 'block' });
+        await font.load();
+      }
       document.fonts.add(font);
       loadedFonts.add(family);
       return family;
@@ -403,7 +412,8 @@
       try {
         const pages = [];
         for (let page = 293; page <= 304; page += 1) pages.push(page);
-        const results = await Promise.all(pages.map(async (page) => {
+        const local = Array.isArray(window.KAHF_PAGES) && window.KAHF_PAGES.length === pages.length;
+        const results = local ? window.KAHF_PAGES : await Promise.all(pages.map(async (page) => {
           const query = new URLSearchParams({
             words: 'true',
             word_fields: 'code_v2,text_qpc_hafs',

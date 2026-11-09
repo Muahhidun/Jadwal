@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+22
+version: 1.0.0+27
 
 environment:
   sdk: ^3.11.5
@@ -47,6 +47,7 @@ dependencies:
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   webview_flutter: ^4.13.0
+  package_info_plus: ^10.2.0
 
 dev_dependencies:
   flutter_test:
@@ -74,27 +75,21 @@ flutter:
     - assets/data/adhkar.json
     - assets/data/cities.json
     - assets/quran/kahf_reader.html
-    - assets/images/scene_bg.png
-    - assets/images/mecca_silhouette.png
-    - assets/images/mecca_master_v1.png
-    - assets/images/mecca_architecture_day.png
-    - assets/images/mecca_architecture_twilight.png
-    - assets/images/mecca_architecture_night.png
-    - assets/images/mecca_master_v2.png
-    - assets/images/mecca_architecture_day_v2.png
-    - assets/images/mecca_architecture_twilight_v2.png
-    - assets/images/mecca_architecture_night_v2.png
-    - assets/images/mecca_master_v3.png
-    - assets/images/mecca_architecture_day_v3.png
-    - assets/images/mecca_architecture_twilight_v3.png
-    - assets/images/mecca_architecture_night_v3.png
-    - assets/images/nature_landscape_v2.png
+    - assets/quran/kahf/
+    # Мекка, Медина и Степь — четыре кадра по времени суток.
+    # Астана — дневной мастер с динамическим светом (WebP, 1440 px).
+    - assets/images/themes/
 
   # Вшитые шрифты — без рантайм-загрузки (иначе мелькание при старте).
   fonts:
     - family: Manrope
       fonts:
         - asset: assets/fonts/Manrope.ttf
+    # Запасной шрифт для казахских букв Ә Ғ Қ Ң Ұ — в Manrope их нет.
+    # SIL Open Font License (assets/fonts/Inter-OFL.txt).
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
     - family: Literata
       fonts:
         - asset: assets/fonts/Literata.ttf

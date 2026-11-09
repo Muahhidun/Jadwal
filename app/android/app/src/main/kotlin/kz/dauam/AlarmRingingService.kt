@@ -118,7 +118,13 @@ class AlarmRingingService : Service() {
         val secondary = actionIntent(spec, secondaryAction, 2)
         val kz = spec.language == "kz"
 
-        return Notification.Builder(this, channelId)
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, channelId)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        return builder
             .setSmallIcon(R.drawable.ic_dauam_alarm)
             .setContentTitle(spec.title)
             .setContentText(
@@ -140,7 +146,7 @@ class AlarmRingingService : Service() {
                 Notification.Action.Builder(
                     null,
                     if (spec.heavySleeper) {
-                        if (kz) "3 минуттан кейін қайталау" else "Повторить через 3 минуты"
+                        if (kz) "Осы дабылды өшіру" else "Выключить этот сигнал"
                     } else {
                         if (kz) "5 минутқа шегеру" else "Отложить на 5 минут"
                     },

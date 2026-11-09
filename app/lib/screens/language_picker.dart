@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../data/app_state.dart';
 import '../theme/home_scene.dart';
 import '../theme/tokens.dart';
+import 'contextual_hint.dart';
 import 'settings_shell.dart';
 
 class LanguagePicker extends StatelessWidget {
@@ -68,7 +68,7 @@ class AppearancePicker extends StatelessWidget {
   static Future<void> open(BuildContext context) =>
       DauamSettingsSheet.open<void>(
         context,
-        heightFactor: .66,
+        heightFactor: .88,
         builder: (_) => const AppearancePicker(),
       );
 
@@ -91,16 +91,28 @@ class AppearancePicker extends StatelessWidget {
                   : 'Оформление не влияет на город, по которому рассчитываются времена молитв.',
               children: [
                 for (final scene in HomeScene.values)
-                  _SceneChoiceRow(
-                    scene: scene,
-                    selected: app.homeScene == scene,
-                    title: _sceneTitle(scene, kz),
-                    subtitle: _sceneSubtitle(scene, kz),
-                    onTap: () {
-                      app.homeScene = scene;
-                      HapticFeedback.mediumImpact();
-                    },
-                  ),
+                  if (scene != HomeScene.minimal)
+                    ContextualHint(
+                      key: ValueKey('scene-hint-${scene.storageValue}'),
+                      id: 'appearance',
+                      enabled: scene == HomeScene.mecca,
+                      title: kz
+                          ? 'Көріністі өзіңіз таңдаңыз'
+                          : 'Выберите свой вид',
+                      message: kz
+                          ? 'Мекке, Мәдина, Астана немесе дала көрінісін таңдаңыз. Намаз уақыттары өзгермейді.'
+                          : 'Выберите Мекку, Медину, Астану или степь. Времена молитв останутся прежними.',
+                      child: _SceneChoiceRow(
+                        scene: scene,
+                        selected: app.homeScene == scene,
+                        title: _sceneTitle(scene, kz),
+                        subtitle: _sceneSubtitle(scene, kz),
+                        onTap: () {
+                          app.homeScene = scene;
+                          HapticFeedback.mediumImpact();
+                        },
+                      ),
+                    ),
               ],
             ),
           ],
@@ -110,20 +122,24 @@ class AppearancePicker extends StatelessWidget {
   }
 }
 
+/// Название темы — для строки «Оформление» в настройках.
+String homeSceneTitle(HomeScene scene, bool kz) => _sceneTitle(scene, kz);
+
 String _sceneTitle(HomeScene scene, bool kz) => switch (scene) {
   HomeScene.mecca => kz ? 'Мекке' : 'Мекка',
-  HomeScene.nature => kz ? 'Табиғат' : 'Природа',
+  HomeScene.medina => kz ? 'Мәдина' : 'Медина',
+  HomeScene.astana => kz ? 'Астана' : 'Астана',
+  HomeScene.steppe => kz ? 'Дала' : 'Степь',
   HomeScene.minimal => kz ? 'Минимализм' : 'Минимализм',
-  HomeScene.ornament => kz ? 'Өрнек' : 'Орнамент',
 };
 
 String _sceneSubtitle(HomeScene scene, bool kz) => switch (scene) {
   HomeScene.mecca =>
     kz ? 'Қағба және Харам мешіті' : 'Кааба и Заповедная мечеть',
-  HomeScene.nature => kz ? 'Таулар мен дала' : 'Горы и степь',
+  HomeScene.medina => kz ? 'Пайғамбар мешіті' : 'Мечеть Пророка ﷺ',
+  HomeScene.astana => kz ? 'Әзірет Сұлтан мешіті' : 'Мечеть Хазрет Султан',
+  HomeScene.steppe => kz ? 'Төбелер арасындағы киіз үй' : 'Юрта среди холмов',
   HomeScene.minimal => kz ? 'Тек аспан мен жарық' : 'Только небо и свет',
-  HomeScene.ornament =>
-      kz ? 'Жұлдызды өрнек пен аркалар' : 'Звёздный узор и аркада',
 };
 
 class _SceneChoiceRow extends StatelessWidget {
@@ -206,12 +222,17 @@ class _ScenePreview extends StatelessWidget {
       duration: const Duration(milliseconds: 180),
       width: 70,
       height: 52,
-      decoration: BoxDecoration(
+      // Обводка — поверх картинки: иначе превью темы перекрывало её и
+      // рамка выбранной темы выглядела обрезанной.
+      foregroundDecoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: selected ? accent : Colors.white.withValues(alpha: .22),
           width: selected ? 2 : 1,
         ),
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
         boxShadow: selected
             ? [
                 BoxShadow(
@@ -227,9 +248,10 @@ class _ScenePreview extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           CustomPaint(painter: _ScenePreviewPainter(scene)),
-          if (scene == HomeScene.nature)
+          // Фото-тема: дневной кадр поверх нарисованного неба превью.
+          if (scene.isPhoto)
             Image.asset(
-              'assets/images/nature_landscape_v2.png',
+              scene.photoAsset('day'),
               fit: BoxFit.cover,
               alignment: Alignment.bottomCenter,
               filterQuality: FilterQuality.medium,
@@ -264,31 +286,6 @@ class _ScenePreviewPainter extends CustomPainter {
     );
 
     switch (scene) {
-      case HomeScene.mecca:
-        canvas.drawRect(
-          Rect.fromLTWH(
-            size.width * .39,
-            size.height * .54,
-            size.width * .22,
-            size.height * .30,
-          ),
-          Paint()..color = const Color(0xFF111216),
-        );
-        canvas.drawRect(
-          Rect.fromLTWH(
-            size.width * .39,
-            size.height * .58,
-            size.width * .22,
-            2,
-          ),
-          Paint()..color = const Color(0xFFD2A74E),
-        );
-        canvas.drawOval(
-          Rect.fromLTWH(-8, size.height * .76, size.width + 16, 20),
-          Paint()..color = const Color(0xFF182328),
-        );
-      case HomeScene.nature:
-      // Реальный пейзаж накладывается виджетом Image поверх этого неба.
       case HomeScene.minimal:
         canvas.drawRect(
           Rect.fromLTWH(0, size.height * .82, size.width, size.height * .18),
@@ -299,50 +296,13 @@ class _ScenePreviewPainter extends CustomPainter {
               colors: [Colors.transparent, Color(0x33131F27)],
             ).createShader(rect),
         );
-      case HomeScene.ornament:
-        final line = const Color(0xFFD2A74E);
-        // Аркада
-        final wall = Path()
-          ..moveTo(0, size.height)
-          ..lineTo(0, size.height * .62);
-        const arches = 3;
-        final aw = size.width / arches;
-        for (var i = 0; i < arches; i++) {
-          final left = i * aw;
-          wall.lineTo(left + aw * .12, size.height * .62);
-          wall.lineTo(left + aw * .12, size.height * .70);
-          wall.quadraticBezierTo(
-            left + aw * .5,
-            size.height * .48,
-            left + aw * .88,
-            size.height * .70,
-          );
-          wall.lineTo(left + aw * .88, size.height * .62);
-          wall.lineTo(left + aw, size.height * .62);
-        }
-        wall
-          ..lineTo(size.width, size.height)
-          ..close();
-        canvas.drawPath(wall, Paint()..color = const Color(0xFF0B1118));
-        // Звезда-мотив над аркадой
-        final star = Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1
-          ..color = line.withValues(alpha: .75);
-        for (var i = 0; i < 3; i++) {
-          final c = Offset(size.width * (.24 + i * .26), size.height * .46);
-          final r = size.height * .07;
-          for (final turn in [0.0, 0.7853981633974483]) {
-            final path = Path();
-            for (var k = 0; k < 4; k++) {
-              final a = turn + k * 1.5707963267948966;
-              final pt = Offset(c.dx + cos(a) * r, c.dy + sin(a) * r);
-              k == 0 ? path.moveTo(pt.dx, pt.dy) : path.lineTo(pt.dx, pt.dy);
-            }
-            path.close();
-            canvas.drawPath(path, star);
-          }
-        }
+      // Фото-темы: кадр накладывается виджетом Image поверх этого неба.
+      // Пустой блок, а не пустой case: иначе вариант провалился бы в соседний.
+      case HomeScene.mecca ||
+          HomeScene.medina ||
+          HomeScene.astana ||
+          HomeScene.steppe:
+        {}
     }
   }
 

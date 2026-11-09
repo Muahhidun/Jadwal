@@ -101,8 +101,39 @@ void main() {
     // В заголовке — неразрывный пробел ( ), как в дизайн-прототипе.
     expect(find.text('Вечерние зикры'), findsWidgets);
     expect(find.text('Читать зикры'), findsOneWidget);
-    expect(find.textContaining('42'), findsWidgets); // адаптивно: «42 мин»
+    expect(find.text('ДО МАГРИБА'), findsOneWidget);
   });
+
+  for (final layout in ['classic', 'pages']) {
+    for (final lang in ['ru', 'kz']) {
+      testWidgets('$layout/$lang: аль-Кахф предлагает читать суру, не зикры', (
+        tester,
+      ) async {
+        SharedPreferences.setMockInitialValues({
+          'onboardingDone': true,
+          'pagesDiscoveryV1Seen': true,
+          'lang': lang,
+          'dayLayout': layout,
+        });
+        final state = await AppState.load();
+        final schedule = ScheduleService(
+          await SharedPreferences.getInstance(),
+          now: () => DateTime(2026, 10, 2, 8, 39),
+        );
+        schedule.preload(kDefaultCity, 2026, {
+          '2026-10-02': [265, 352, 714, 949, 1064, 1151],
+          '2026-10-03': [265, 352, 714, 949, 1064, 1151],
+        });
+        await tester.pumpWidget(JadwalApp(state: state, schedule: schedule));
+        await tester.pump();
+        final strings = lang == 'ru' ? S.ru : S.kz;
+        expect(find.text(strings.kahfTitle), findsWidgets);
+        expect(find.text(strings.readSurah), findsOneWidget);
+        expect(find.text(strings.read), findsNothing);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+    }
+  }
 
   testWidgets('верхний и нижний экраны свайпом возвращаются к таймеру', (
     tester,
@@ -127,7 +158,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
       await gesture.up();
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 2200));
     }
 
     // Центральный таймер → верхняя Кибла → центральный таймер.
@@ -152,14 +183,14 @@ void main() {
     );
     // Шапка и вкладки не являются зонами перелистывания.
     await tester.drag(
-      find.descendant(of: qibla, matching: find.text('Карта')),
+      find.byKey(state.navigationGuide.target('qibla-mode')),
       const Offset(0, -240),
     );
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 2200));
     expect(homeState().swipeProgress, closeTo(-1.0, 0.01));
 
     // Переключение карты не должно возвращать приложение на главный экран.
-    await tester.tap(find.descendant(of: qibla, matching: find.text('Карта')));
+    await tester.tap(find.byKey(state.navigationGuide.target('qibla-mode')));
     await tester.pump(const Duration(milliseconds: 250));
     expect((tester.state(qibla) as dynamic).selectedTab, 1);
     expect(homeState().swipeProgress, closeTo(-1.0, 0.01));
@@ -182,7 +213,7 @@ void main() {
     expect(edge, findsOneWidget);
     await tester.drag(edge, const Offset(0, -240));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 2200));
     expect(homeState().swipeProgress, closeTo(0.0, 0.01));
 
     // Центральный таймер → нижний экран дня → центральный таймер.
@@ -258,7 +289,7 @@ void main() {
     await tester.pump();
 
     final title = find.text('Направление Киблы');
-    expect(tester.widget<Text>(title).style?.fontSize, 23);
+    expect(tester.widget<Text>(title).style?.fontSize, 24);
     expect(tester.takeException(), isNull);
   });
 
@@ -314,7 +345,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
       await gesture.up();
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 2200));
     }
 
     // Сначала воспроизводим пользовательский путь Кибла → главный.
@@ -338,7 +369,7 @@ void main() {
       find.byKey(const ValueKey('home-header-gesture-shield')),
       const Offset(0, -80),
     );
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 2200));
     expect(homeState().swipeProgress, closeTo(0.0, 0.01));
 
     // Осознанный свайп из центральной допустимой зоны по-прежнему работает.
@@ -371,7 +402,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 16));
         await gesture.up();
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pump(const Duration(milliseconds: 2200));
       }
 
       // Главный → нижний экран → главный, затем сразу нажатие по дате.
@@ -467,7 +498,7 @@ void main() {
       find.text('Отметить без чтения ✓').first,
       warnIfMissed: false,
     );
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 2200));
 
     expect(find.text('Час дуа'), findsWidgets);
   });
@@ -545,7 +576,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Fold использует двухколоночный экран дня', (tester) async {
+  testWidgets('Fold использует те же Страницы без классического вида', (
+    tester,
+  ) async {
     // Approximate logical viewport of an unfolded Galaxy Fold in portrait.
     tester.view.physicalSize = const Size(673, 841);
     tester.view.devicePixelRatio = 1;
@@ -566,7 +599,11 @@ void main() {
     (tester.state(home) as dynamic).swipeProgress = 1.0;
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('expanded-day-layout')), findsOneWidget);
+    expect(
+      find.byKey(state.navigationGuide.target('prayer-times')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('expanded-day-layout')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -610,7 +647,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('центр напоминаний знакомит один раз и оставляет справку', (
+  testWidgets('центр напоминаний открывается сразу и оставляет справку', (
     tester,
   ) async {
     final fonts = FontLoader('Manrope')
@@ -635,7 +672,7 @@ void main() {
       JadwalApp(state: state, schedule: await demoSchedule()),
     );
     await tester.pump();
-    (tester.state(find.byType(HomeScreen)) as dynamic).swipeProgress = 1.0;
+    (tester.state(find.byType(HomeScreen)) as dynamic).swipeProgress = 2.0;
     await tester.pump();
     await tester
         .pump(); // применить автопозиционирование ленты на актуальном деле
@@ -644,27 +681,7 @@ void main() {
     for (var i = 0; i < 18; i++) {
       await tester.pump(const Duration(milliseconds: 30));
     }
-    expect(find.text('В нужный момент'), findsOneWidget);
-    expect(find.text('Пропустить'), findsOneWidget);
-    await expectLater(
-      find.byType(JadwalApp),
-      matchesGoldenFile('goldens/reminders_guide_393x852.png'),
-    );
-
-    await tester.tap(find.text('Далее'));
-    for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 30));
-    }
-    expect(find.text('Готовые напоминания'), findsOneWidget);
-    await tester.tap(find.text('Далее'));
-    for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 30));
-    }
-    expect(find.text('Свои — только если нужны'), findsOneWidget);
-    await tester.tap(find.text('Открыть напоминания'));
-    for (var i = 0; i < 18; i++) {
-      await tester.pump(const Duration(milliseconds: 30));
-    }
+    expect(find.text('В нужный момент'), findsNothing);
     expect(find.text('Времена молитв'), findsOneWidget);
     expect(find.text('ЕЖЕДНЕВНЫЕ'), findsOneWidget);
     expect(find.text('ЕЖЕНЕДЕЛЬНЫЕ'), findsOneWidget);
@@ -675,7 +692,7 @@ void main() {
     expect(find.text('Час дуа в пятницу'), findsOneWidget);
     expect(find.text('Добавить напоминание'), findsOneWidget);
     expect(find.text('Название'), findsNothing);
-    expect(state.remindersGuideSeen, isTrue);
+    expect(state.remindersGuideSeen, isFalse);
     await expectLater(
       find.byType(JadwalApp),
       matchesGoldenFile('goldens/reminders_hub_393x852.png'),
@@ -854,56 +871,12 @@ void main() {
     expect(find.text('Иша'), findsWidgets);
     expect(find.textContaining('Вечерние'), findsWidgets);
     expect(find.text('Час дуа'), findsOneWidget);
-    expect(
-      tester.getTopLeft(find.byKey(const ValueKey('today-task-evening'))).dx,
-      closeTo(
-        tester.getTopLeft(find.byKey(const ValueKey('today-task-rail'))).dx,
-        0.5,
-      ),
-    );
-    expect(
-      find.byKey(const ValueKey('today-task-forward-hint')),
-      findsOneWidget,
-    );
-    // Аль-Кахф остаётся делом всю пятницу, даже если окно
-    // напоминания уже закрыто. Тап по делу ведёт во встроенную читалку.
-    await tester.drag(
-      find.byKey(const ValueKey('today-task-rail')),
-      const Offset(500, 0),
-    );
-    for (var i = 0; i < 20; i++) {
-      await tester.pump(const Duration(milliseconds: 30));
-    }
-    expect(find.byKey(const ValueKey('today-task-kahf')), findsOneWidget);
+    // В едином виде все дела видны списком, без горизонтальной карусели.
+    expect(find.byKey(const ValueKey('page-deed-morning')), findsOneWidget);
+    expect(find.byKey(const ValueKey('page-deed-kahf')), findsOneWidget);
+    expect(find.byKey(const ValueKey('page-deed-dua')), findsOneWidget);
     expect(find.text('Сура аль-Кахф'), findsOneWidget);
-    await tester.drag(
-      find.byKey(const ValueKey('today-task-rail')),
-      const Offset(-500, 0),
-    );
-    for (var i = 0; i < 20; i++) {
-      await tester.pump(const Duration(milliseconds: 30));
-    }
-    expect(
-      tester.getTopLeft(find.byKey(const ValueKey('today-task-dua'))).dx,
-      closeTo(
-        tester.getTopLeft(find.byKey(const ValueKey('today-task-rail'))).dx,
-        0.5,
-      ),
-    );
-    expect(find.byKey(const ValueKey('today-task-forward-hint')), findsNothing);
-    expect(find.textContaining(RegExp(r'^42:\d{2}$')), findsWidgets);
     expect(find.text('Тетрадь постоянства'), findsOneWidget);
-    expect(find.byType(SingleChildScrollView), findsNothing);
-    expect(tester.takeException(), isNull);
-
-    final fajrBefore = tester.getTopLeft(find.text('Фаджр'));
-    await tester.dragFrom(const Offset(196, 430), const Offset(0, -120));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 250));
-    await tester.pump(const Duration(milliseconds: 250));
-    final fajrAfter = tester.getTopLeft(find.text('Фаджр'));
-
-    expect(fajrAfter.dy, closeTo(fajrBefore.dy, 0.5));
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('Магриб'));
@@ -919,6 +892,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 30));
     }
 
+    (tester.state(find.byType(HomeScreen)) as dynamic).swipeProgress = 2.0;
+    await tester.pump();
     await tester.tap(find.text('Напоминания'));
     for (var i = 0; i < 18; i++) {
       await tester.pump(const Duration(milliseconds: 30));

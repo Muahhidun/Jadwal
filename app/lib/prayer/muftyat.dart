@@ -13,7 +13,10 @@ class MuftyatApi {
   /// [latStr]/[lngStr] — ТОЧНЫЕ строки координат из справочника ДУМК,
   /// передаются в URL дословно (endpoint ищет город по точному совпадению).
   static Future<Map<String, List<int>>> fetchYear(
-      String latStr, String lngStr, int year) async {
+    String latStr,
+    String lngStr,
+    int year,
+  ) async {
     final url = Uri.parse('$_base/prayer-times/$year/$latStr/$lngStr');
     final resp = await http.get(url).timeout(const Duration(seconds: 20));
     if (resp.statusCode != 200) {

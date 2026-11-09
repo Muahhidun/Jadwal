@@ -66,6 +66,7 @@ private struct DauamWatchNextView: View {
 
   var body: some View {
     TimelineView(.periodic(from: .now, by: 1)) { context in
+      let snapshot = self.snapshot.projected(at: context.date)
       let called = snapshot.justCalledPrayer(at: context.date)
       let next = snapshot.nextEvent(after: context.date)
       let currentPrayer = called ?? next
@@ -165,6 +166,7 @@ private struct DauamWatchScheduleView: View {
 
   var body: some View {
     TimelineView(.periodic(from: .now, by: 30)) { context in
+      let snapshot = self.snapshot.projected(at: context.date)
       let next = snapshot.nextEvent(after: context.date)
       let palette = DauamWatchPalette.resolve(snapshot: snapshot, at: context.date)
       let primary = palette.darkText ? Color(rgb: 0x101F2A) : Color(rgb: 0xF8F4EA)
@@ -178,6 +180,11 @@ private struct DauamWatchScheduleView: View {
             .font(.system(size: 14, weight: .bold, design: .rounded))
             .foregroundStyle(primary)
 
+          if snapshot.prayers(on: context.date).isEmpty {
+            Text(snapshot.openPhoneTitle)
+              .font(.system(size: 12, weight: .medium, design: .rounded))
+              .foregroundStyle(secondary)
+          }
           ForEach(snapshot.prayers(on: context.date)) { prayer in
             HStack(spacing: 6) {
               Image(systemName: prayer.symbol)
@@ -215,13 +222,12 @@ private struct DauamWatchScheduleView: View {
 private struct DauamWatchTasksView: View {
   let snapshot: DauamWatchSnapshot
 
-  private var progress: Double {
-    guard snapshot.taskTotal > 0 else { return 0 }
-    return min(1, max(0, Double(snapshot.taskDone) / Double(snapshot.taskTotal)))
-  }
-
   var body: some View {
     TimelineView(.periodic(from: .now, by: 60)) { context in
+      let snapshot = self.snapshot.projected(at: context.date)
+      let current = snapshot.hasCurrentTasks(at: context.date)
+      let progress = snapshot.taskTotal > 0
+        ? min(1, max(0, Double(snapshot.taskDone) / Double(snapshot.taskTotal))) : 0
       let palette = DauamWatchPalette.resolve(snapshot: snapshot, at: context.date)
       let primary = palette.darkText ? Color(rgb: 0x101F2A) : Color(rgb: 0xF8F4EA)
       let accent = Color(rgb: palette.accent)
@@ -231,18 +237,20 @@ private struct DauamWatchTasksView: View {
         ScrollView {
           VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 10) {
-              ZStack {
-                Circle()
-                  .stroke(primary.opacity(0.14), lineWidth: 5)
-                Circle()
-                  .trim(from: 0, to: progress)
-                  .stroke(accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                  .rotationEffect(.degrees(-90))
-                Text("\(snapshot.taskDone)/\(snapshot.taskTotal)")
-                  .font(.system(size: 10, weight: .bold, design: .rounded).monospacedDigit())
-                  .foregroundStyle(primary)
+              if current {
+                ZStack {
+                  Circle()
+                    .stroke(primary.opacity(0.14), lineWidth: 5)
+                  Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                  Text("\(snapshot.taskDone)/\(snapshot.taskTotal)")
+                    .font(.system(size: 10, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(primary)
+                }
+                .frame(width: 48, height: 48)
               }
-              .frame(width: 48, height: 48)
 
               VStack(alignment: .leading, spacing: 2) {
                 Text(snapshot.tasksTitle)
@@ -255,7 +263,11 @@ private struct DauamWatchTasksView: View {
               .foregroundStyle(primary)
             }
 
-            if snapshot.tasks.isEmpty {
+            if !current {
+              Label(snapshot.openPhoneTitle, systemImage: "iphone")
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(primary.opacity(0.7))
+            } else if snapshot.tasks.isEmpty {
               Text(snapshot.noTasksTitle)
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(primary.opacity(0.7))
@@ -289,6 +301,8 @@ private final class DauamWatchCompass: NSObject, ObservableObject, @preconcurren
   @Published private(set) var heading: CLLocationDirection?
   @Published private(set) var coordinate: CLLocationCoordinate2D?
   @Published private(set) var isAvailable = CLLocationManager.headingAvailable()
+  @Published private(set) var permissionDenied = false
+  @Published private(set) var sensorFailed = false
 
   private let manager = CLLocationManager()
   private var isActive = false
@@ -302,6 +316,8 @@ private final class DauamWatchCompass: NSObject, ObservableObject, @preconcurren
 
   func start() {
     isActive = true
+    heading = nil
+    isAvailable = CLLocationManager.headingAvailable()
     guard CLLocationManager.headingAvailable() else {
       isAvailable = false
       return
@@ -309,22 +325,32 @@ private final class DauamWatchCompass: NSObject, ObservableObject, @preconcurren
 
     switch manager.authorizationStatus {
     case .notDetermined:
+      permissionDenied = false
       manager.requestWhenInUseAuthorization()
     case .authorizedAlways, .authorizedWhenInUse:
       beginUpdates()
     default:
+      permissionDenied = true
       isAvailable = false
     }
   }
 
   func stop() {
     isActive = false
+    heading = nil
     manager.stopUpdatingHeading()
     manager.stopUpdatingLocation()
   }
 
   private func beginUpdates() {
     guard isActive else { return }
+    guard CLLocationManager.headingAvailable() else {
+      isAvailable = false
+      heading = nil
+      return
+    }
+    permissionDenied = false
+    sensorFailed = false
     isAvailable = true
     manager.startUpdatingLocation()
     manager.startUpdatingHeading()
@@ -334,18 +360,34 @@ private final class DauamWatchCompass: NSObject, ObservableObject, @preconcurren
     if manager.authorizationStatus == .authorizedAlways ||
         manager.authorizationStatus == .authorizedWhenInUse {
       beginUpdates()
+    } else if manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted {
+      permissionDenied = true
+      isAvailable = false
+      heading = nil
+      coordinate = nil
+      manager.stopUpdatingHeading()
+      manager.stopUpdatingLocation()
     }
   }
 
   func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-    if let coordinate = locations.last?.coordinate {
+    if let location = locations.last, location.horizontalAccuracy >= 0,
+       CLLocationCoordinate2DIsValid(location.coordinate) {
+      let coordinate = location.coordinate
       self.coordinate = coordinate
     }
   }
 
   func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
-    guard newHeading.headingAccuracy >= 0 else { return }
+    guard isActive, isAvailable, !permissionDenied else { return }
     let raw = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+    guard newHeading.headingAccuracy >= 0,
+          DauamWatchQiblaPresentation.arrowAngle(bearing: 0, heading: raw, available: true) != nil else {
+      heading = nil
+      sensorFailed = true
+      return
+    }
+    sensorFailed = false
     guard let previous = heading else {
       heading = raw
       return
@@ -358,8 +400,10 @@ private final class DauamWatchCompass: NSObject, ObservableObject, @preconcurren
   }
 
   func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-    // Последнее валидное направление остаётся на экране; Core Location сам
-    // продолжит доставку после временного сбоя датчика.
+    // После ошибки старое направление не выдаём за актуальное измерение.
+    heading = nil
+    coordinate = nil
+    sensorFailed = true
   }
 }
 
@@ -372,7 +416,8 @@ private struct DauamWatchQiblaView: View {
     if let live = compass.coordinate {
       return (live.latitude, live.longitude)
     }
-    guard let lat = snapshot.lat, let lng = snapshot.lng else { return nil }
+    guard let lat = snapshot.lat, let lng = snapshot.lng,
+          lat.isFinite, lng.isFinite, (-90...90).contains(lat), (-180...180).contains(lng) else { return nil }
     return (lat, lng)
   }
 
@@ -432,15 +477,18 @@ private struct DauamWatchQiblaView: View {
 
             // Стрелка показывает Киблу относительно фактического направления
             // корпуса часов, а не просто статичный азимут от севера.
-            VStack {
-              Image(systemName: "location.north.circle.fill")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(accent)
-              Spacer()
+            if let angle = DauamWatchQiblaPresentation.arrowAngle(
+              bearing: qiblaAngle, heading: compass.heading, available: compass.isAvailable
+            ) {
+              VStack {
+                Image(systemName: "location.north.circle.fill")
+                  .font(.system(size: 22, weight: .bold))
+                  .foregroundStyle(accent)
+                Spacer()
+              }
+              .frame(width: 86, height: 86)
+              .rotationEffect(.degrees(angle))
             }
-            .frame(width: 86, height: 86)
-            .rotationEffect(.degrees((qiblaAngle ?? 0) - (compass.heading ?? 0)))
-            .opacity(qiblaAngle == nil ? 0.25 : 1)
 
             Text(snapshot.city)
               .font(.system(size: 9, weight: .semibold, design: .rounded))
@@ -451,11 +499,19 @@ private struct DauamWatchQiblaView: View {
           Spacer(minLength: 0)
 
           Text(
-            distanceToMecca.map { "Мекке: \(Int($0.rounded())) км" } ??
-              (snapshot.isKazakh ? "Бағыт анықталуда" : "Определяем направление")
+            compass.permissionDenied
+              ? (snapshot.isKazakh ? "Баптауларда геолокацияға рұқсат беріңіз" : "Разрешите геолокацию в настройках часов")
+              : !compass.isAvailable
+                ? (snapshot.isKazakh ? "Компас қолжетімсіз" : "Компас недоступен")
+                : compass.heading == nil
+                  ? (compass.sensorFailed
+                    ? (snapshot.isKazakh ? "Бағытты анықтау мүмкін болмады" : "Не удалось определить направление")
+                    : (snapshot.isKazakh ? "Бағыт анықталуда" : "Определяем направление"))
+                  : (distanceToMecca.map { snapshot.isKazakh ? "Меккеге: \(Int($0.rounded())) км" : "До Мекки: \(Int($0.rounded())) км" } ?? snapshot.openPhoneTitle)
           )
             .font(.system(size: 10, weight: .medium, design: .rounded))
             .foregroundStyle(primary.opacity(0.65))
+            .multilineTextAlignment(.center)
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 6)

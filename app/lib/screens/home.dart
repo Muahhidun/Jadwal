@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hijri/hijri_calendar.dart';
 import '../data/app_state.dart';
+import '../data/navigation_guide.dart';
 import '../i18n/strings.dart';
 import '../notifications/notifications.dart';
 import '../prayer/schedule.dart';
@@ -14,28 +15,36 @@ import '../prayer/windows.dart';
 import '../theme/tokens.dart';
 import '../theme/adaptive_layout.dart';
 import '../theme/system_bars.dart';
+import '../theme/ornament.dart';
+import 'about_screen.dart';
 import 'city_picker.dart';
+import 'features_guide.dart';
 import 'language_picker.dart';
 import 'qibla_screen.dart';
 import 'reader.dart';
 import 'kahf_reader.dart';
 import 'reminders.dart';
 import 'scene_background.dart';
+import 'settings_shell.dart';
+import 'sounds_screen.dart';
 import 'swipe_hint.dart';
+import 'guided_spotlight.dart';
 
 import '../services/live_activity_service.dart';
 import '../services/alarm_service.dart';
 import '../services/location_checker_service.dart';
 import '../services/widget_data_service.dart';
+import 'swipe_lesson.dart';
+
+part 'day_pages.dart';
+part 'home_learning.dart';
 
 /// Экспериментальный современный нижний экран. Классический слой оставлен в
 /// этом файле на время проверки владельцем; полный исходник также сохранён в
 /// `tmp/lower-screen-rollback-2026-07-22/` для точного отката.
 const _modernLowerScreen = true;
 
-/// Главный экран = центральная страница вертикальной ленты из трёх экранов:
-/// Кибла сверху, таймер по центру, дела дня снизу. С каждого соседнего экрана
-/// встречный свайп возвращает пользователя к центральному таймеру.
+/// Вертикальная лента: Кибла, главный таймер, дела дня и календарь.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -56,10 +65,13 @@ class _HomeScreenState extends State<HomeScreen>
   late final AnimationController _p = AnimationController(
     vsync: this,
     lowerBound: -1.0,
-    upperBound: 1.0,
+    upperBound: 3.0,
     value: 0.0,
     duration: const Duration(milliseconds: 420),
   );
+
+  /// Последняя страница вниз: Сегодня → Постоянство.
+  int get _maxPage => 2;
 
   double get swipeProgress => _p.value;
   set swipeProgress(double v) {
@@ -68,6 +80,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _onDragStart(DragStartDetails _) {
+    AppScope.of(context).navigationGuide.navigationStarted();
     _pageAnimationSerial++;
     _p.stop();
     _dragStartProgress = _p.value;
@@ -75,14 +88,42 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _animateToPage(double target) {
-    final normalizedTarget = target.clamp(-1.0, 1.0);
+    AppScope.of(context).navigationGuide.navigationStarted();
+    final normalizedTarget = target.clamp(-1.0, _maxPage.toDouble());
     final serial = ++_pageAnimationSerial;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _p.stop();
+      _p.value = normalizedTarget;
+      _dragStartProgress = normalizedTarget;
+      _hasSwipedHaptic = false;
+      AppScope.of(context).navigationGuide.settled(normalizedTarget.round());
+      return;
+    }
+    final settlesOnPage = _maxPage > 1 && normalizedTarget >= 1;
+    // В режиме страниц доводка неспешная: иначе при обычном свайпе
+    // хореография элементов пролетает незаметно. Длительность — по
+    // оставшемуся пути, кривая без резкого рывка в начале.
+    final choreographed = _maxPage > 1;
+    final remaining = (normalizedTarget - _p.value).abs();
     _p
-        .animateTo(normalizedTarget, curve: Curves.easeOutCubic)
+        .animateTo(
+          normalizedTarget,
+          duration: choreographed
+              ? Duration(milliseconds: (260 + 760 * remaining).round())
+              : null,
+          curve: choreographed
+              ? const Cubic(0.3, 0.1, 0.25, 1.0)
+              : Curves.easeOutCubic,
+        )
         .whenCompleteOrCancel(() {
           if (!mounted || serial != _pageAnimationSerial) return;
           if ((_p.value - normalizedTarget).abs() < 0.02) {
             _p.value = normalizedTarget;
+            // Мягкий «щелчок» страницы: листание должно ощущаться приятно.
+            if (settlesOnPage) HapticFeedback.selectionClick();
+            AppScope.of(
+              context,
+            ).navigationGuide.settled(normalizedTarget.round());
           }
           _dragStartProgress = _p.value;
           _hasSwipedHaptic = false;
@@ -108,20 +149,23 @@ class _HomeScreenState extends State<HomeScreen>
     }
     // На крайних экранах блокируем только движение дальше за границу ленты,
     // но оставляем встречный свайп свободным для возврата к таймеру.
-    if (_p.value >= 0.95 && d.primaryDelta! < 0) {
+    if (_p.value >= _maxPage - 0.05 && d.primaryDelta! < 0) {
       return;
     }
     if (_p.value <= -0.95 && d.primaryDelta! > 0) {
       return;
     }
-    _p.value = (_p.value - d.primaryDelta! / h).clamp(-1.0, 1.0);
+    _p.value = (_p.value - d.primaryDelta! / h).clamp(
+      -1.0,
+      _maxPage.toDouble(),
+    );
   }
 
   void _onDragEnd(DragEndDetails d) {
     _hasSwipedHaptic = false;
     final v = d.primaryVelocity ?? 0;
     final movement = _p.value - _dragStartProgress;
-    final startPage = _dragStartProgress.round().clamp(-1, 1);
+    final startPage = _dragStartProgress.round().clamp(-1, _maxPage);
     // Скорость учитываем только после заметного перемещения. Иначе лёгкий
     // сдвиг пальца при тапе по «Карта» мог выглядеть как быстрый короткий
     // свайп и возвращать ленту на главный экран.
@@ -130,13 +174,13 @@ class _HomeScreenState extends State<HomeScreen>
         : movement.abs() >= 0.075 && v.abs() >= 300
         ? (v < 0 ? 1 : -1)
         : 0;
-    final target = (startPage + direction).clamp(-1, 1).toDouble();
+    final target = (startPage + direction).clamp(-1, _maxPage).toDouble();
     _animateToPage(target);
   }
 
   void _onDragCancel() {
     _hasSwipedHaptic = false;
-    _animateToPage(_dragStartProgress.round().clamp(-1, 1).toDouble());
+    _animateToPage(_dragStartProgress.round().clamp(-1, _maxPage).toDouble());
   }
 
   @override
@@ -144,6 +188,18 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _listenToSiriChannel();
+    // Тап по уведомлению, пока приложение в фоне, раньше терялся: открываем
+    // чтение сразу. «Выполнено» из уведомления — обновляем экран и очередь.
+    gNotifier?.onOpen = (target) {
+      if (mounted) _openContent(target);
+    };
+    gNotifier?.onTaskChanged = () {
+      if (!mounted) return;
+      final app = AppScope.of(context);
+      app.reloadFromDisk().then((_) {
+        if (mounted) syncNotifications(app, ScheduleScope.of(context));
+      });
+    };
     LiveActivityService.init(
       openZikrHandler: (collectionId, index) {
         if (mounted) _openReader(collectionId, initialIndex: index);
@@ -153,8 +209,7 @@ class _HomeScreenState extends State<HomeScreen>
       if (mounted) setState(() {});
     });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Разрешение на уведомления
-      await gNotifier?.requestPermission();
+      // Permission is requested only by explicit onboarding/settings actions.
       if (!mounted) return;
       syncNotifications(AppScope.of(context), ScheduleScope.of(context));
 
@@ -171,6 +226,12 @@ class _HomeScreenState extends State<HomeScreen>
       }
       _checkAlarmTarget();
       LiveActivityService.claimPendingDeepLink();
+      if (mounted &&
+          pending == null &&
+          ModalRoute.of(context)?.isCurrent == true &&
+          AppScope.of(context).navigationGuidePending) {
+        AppScope.of(context).navigationGuide.offer();
+      }
     });
   }
 
@@ -188,6 +249,16 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      final pending = gNotifier?.pendingCollection;
+      if (pending != null && pending.isNotEmpty) {
+        gNotifier!.pendingCollection = null;
+        _openContent(pending);
+      }
+      // Дело могли отметить кнопкой в уведомлении, пока приложение спало.
+      final app = AppScope.of(context);
+      app.reloadFromDisk().then((_) {
+        if (mounted) syncNotifications(app, ScheduleScope.of(context));
+      });
       _checkSiriTarget();
       _checkAlarmTarget();
       _checkLocationChange();
@@ -252,7 +323,8 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
     if (target == 'morning' || target == 'evening') {
-      _openReader(target, autoStartSpeech: true);
+      // Siri открывает текст. Синтезированная озвучка временно отключена.
+      _openReader(target);
     }
   }
 
@@ -303,11 +375,9 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   /// Перепланировать уведомления, только когда изменилось что-то значимое
-  /// (город / язык / набор выполненного за сегодня).
+  /// (дата / город / расписание / настройки / выполненные дела).
   void _syncNotificationsIfNeeded(AppState app, ScheduleService schedule) {
-    final sig =
-        '${app.city.name}|${app.lang}|'
-        '${TaskId.values.where((id) => app.isDone(id.name)).join(",")}';
+    final sig = notificationStateSignature(app, schedule);
     if (sig == _lastNotifSig) return;
     _lastNotifSig = sig;
     syncNotifications(app, schedule);
@@ -364,6 +434,8 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    gNotifier?.onOpen = null;
+    gNotifier?.onTaskChanged = null;
     _ticker?.cancel();
     _p.dispose();
     super.dispose();
@@ -385,6 +457,7 @@ class _HomeScreenState extends State<HomeScreen>
   );
 
   void _openContent(String target) {
+    if (!const {'morning', 'evening', 'kahf'}.contains(target)) return;
     if (target == 'kahf') {
       Navigator.of(context).push(kahfReaderRoute());
       return;
@@ -418,7 +491,10 @@ class _HomeScreenState extends State<HomeScreen>
           return AnimatedBuilder(
             animation: _p,
             builder: (context, _) {
-              final p = _p.value;
+              // Всё прежнее (небо, таймер, Кибла) живёт в диапазоне −1…1.
+              // Дальше вниз листается календарь.
+              final pRaw = _p.value;
+              final p = pRaw.clamp(-1.0, 1.0);
               final fg = t != null ? skyForeground(t, nowSec) : null;
               final dayPalette = t != null
                   ? daySurfacePalette(t, nowSec)
@@ -489,13 +565,33 @@ class _HomeScreenState extends State<HomeScreen>
                               onExpand: () => _animateToPage(1),
                             ),
                           ),
+                          // Тот же звёздный узор и свечение, что у страниц
+                          // внизу, — лента выглядит одним целым.
+                          if (p < 0 && _maxPage > 1)
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: _PagesAmbience(
+                                  p: -p,
+                                  c: JColors.dark,
+                                  isLight: false,
+                                ),
+                              ),
+                            ),
                           if (p < 0)
                             Positioned.fill(
                               child: Transform.translate(
-                                offset: Offset(0, -h * (1 + p)),
+                                offset: Offset(
+                                  0,
+                                  -h * (1 + p) * (_maxPage > 1 ? 0.15 : 1.0),
+                                ),
                                 child: Opacity(
-                                  opacity: (-p * 1.4).clamp(0.0, 1.0),
+                                  opacity: _maxPage > 1
+                                      ? 1.0
+                                      : (-p * 1.4).clamp(0.0, 1.0),
                                   child: QiblaView(
+                                    reveal: _maxPage > 1
+                                        ? _seg(-p, 0.45, 1.0)
+                                        : 1.0,
                                     key: const ValueKey('embedded-qibla'),
                                     selectedCity: app.city,
                                     showAppBar: true,
@@ -506,12 +602,27 @@ class _HomeScreenState extends State<HomeScreen>
                                         _onDragUpdate(details, h),
                                     onVerticalDragEnd: _onDragEnd,
                                     onVerticalDragCancel: _onDragCancel,
+                                    onGuideDone: () => _animateToPage(0),
                                   ),
                                 ),
                               ),
                             ),
                           Positioned.fill(
-                            child: _modernLowerScreen
+                            child: _modernLowerScreen && _maxPage > 1
+                                ? _PagesDayLayer(
+                                    p: pRaw,
+                                    s: s,
+                                    palette: dayPalette!,
+                                    app: app,
+                                    t: t,
+                                    nowMin: nowMin,
+                                    nowSec: nowSec,
+                                    h: h,
+                                    schedule: schedule,
+                                    onReader: _openContent,
+                                    onGoTo: _animateToPage,
+                                  )
+                                : _modernLowerScreen
                                 ? _ModernDayLayer(
                                     p: p,
                                     s: s,
@@ -545,6 +656,7 @@ class _HomeScreenState extends State<HomeScreen>
                           // Общий элемент поверх: только таймер (переезжает наверх).
                           // Времена молитв — на экране «дня» (сеткой 3+3), не на главном.
                           _HeroTimer(
+                            onReader: _openContent,
                             p: p,
                             s: s,
                             c: c,
@@ -555,9 +667,50 @@ class _HomeScreenState extends State<HomeScreen>
                             schedule: schedule,
                             app: app,
                           ),
+                          // Индикатор ленты — на всех экранах: Кибла, таймер
+                          // и страницы. Цвет перетекает от неба к странице.
+                          if (_maxPage > 1)
+                            Positioned(
+                              right: 9,
+                              top: 0,
+                              bottom: 0,
+                              child: IgnorePointer(
+                                child: Center(
+                                  child: _PageDots(
+                                    progress: pRaw + 1,
+                                    color: Color.lerp(
+                                      fg.text,
+                                      dayPalette!.colors.ink,
+                                      _seg(pRaw, 0.3, 0.9),
+                                    )!,
+                                    labels: s == S.kz
+                                        ? const [
+                                            'Құбыла',
+                                            'Таймер',
+                                            'Бүгін',
+                                            'Тұрақтылық',
+                                          ]
+                                        : const [
+                                            'Кибла',
+                                            'Таймер',
+                                            'Сегодня',
+                                            'Постоянство',
+                                          ],
+                                  ),
+                                ),
+                              ),
+                            ),
                         ] else
                           Center(
                             child: CircularProgressIndicator(color: c.gold),
+                          ),
+                        if (t != null && app.navigationGuide.active)
+                          Positioned.fill(
+                            child: _HomeLearning(
+                              page: pRaw,
+                              pages: _maxPage > 1,
+                              onGoTo: _animateToPage,
+                            ),
                           ),
                       ],
                     ),
@@ -575,6 +728,7 @@ class _HomeScreenState extends State<HomeScreen>
 // ── Общий герой: таймер (переезжает из центра главного наверх «дня») ──────────
 class _HeroTimer extends StatelessWidget {
   const _HeroTimer({
+    required this.onReader,
     required this.p,
     required this.s,
     required this.c,
@@ -593,6 +747,7 @@ class _HeroTimer extends StatelessWidget {
   final int nowSec;
   final ScheduleService schedule;
   final AppState app;
+  final void Function(String) onReader;
 
   @override
   Widget build(BuildContext context) {
@@ -608,7 +763,13 @@ class _HeroTimer extends StatelessWidget {
     final value = v >= 3600
         ? '${v ~/ 3600}:${mm.toString().padLeft(2, '0')}:$ss'
         : '$mm:$ss';
-    final fade = p < 0
+    final choreo = p != 0 && app.dayLayout == 'pages';
+    final pl = choreo ? p.abs().clamp(0.0, 1.0) : 0.0;
+    // К страницам элементы всплывают вверх, к Кибле — зеркально вниз.
+    final dir = p < 0 ? -1.0 : 1.0;
+    final fade = choreo
+        ? 1.0
+        : p < 0
         ? (1 + p * 2.2).clamp(0.0, 1.0)
         : (1 - p * 1.6).clamp(0.0, 1.0);
     final expanded = isExpandedLayout(context);
@@ -619,27 +780,48 @@ class _HeroTimer extends StatelessWidget {
       // К экрану дня таймер переезжает в компактную верхнюю позицию. К
       // Кибле он движется 1:1 вместе с центральной страницей и не может
       // остаться подписью у нижнего края верхнего экрана.
-      top: p < 0 ? h * 0.35 - h * p : h * 0.35 - h * p * 0.6,
+      top: h * 0.35 - h * p * (choreo ? 0.2 : (p < 0 ? 1.0 : 0.6)),
       child: IgnorePointer(
+        ignoring: p.abs() > 0.02,
         child: Opacity(
           opacity: fade,
           child: Column(
             children: [
-              Text(
-                caption,
-                style: JType.caption(
-                  fg.accent,
-                  size: expanded ? 18 : 15,
-                ).copyWith(shadows: fg.shadows),
+              _Leave(
+                p: pl,
+                start: 0.03,
+                span: 0.26,
+                to: Offset(0, -36 * dir),
+                child: Text(
+                  caption,
+                  style: JType.caption(
+                    fg.accent,
+                    size: expanded ? 18 : 15,
+                  ).copyWith(shadows: fg.shadows),
+                ),
               ),
               const SizedBox(height: 6),
-              _RollingTimerText(
-                value: value,
-                size: timerSize,
-                color: fg.text,
-                shadows: fg.shadows,
+              // Цифры таймера отступают вглубь — уменьшаются и растворяются.
+              _Leave(
+                p: pl,
+                start: 0.1,
+                span: 0.36,
+                to: Offset(0, -70 * dir),
+                scaleTo: 0.78,
+                child: _RollingTimerText(
+                  value: value,
+                  size: timerSize,
+                  color: fg.text,
+                  shadows: fg.shadows,
+                ),
               ),
-              _DoneChips(app: app, s: s, fg: fg),
+              _Leave(
+                p: pl,
+                start: 0.0,
+                span: 0.24,
+                to: Offset(0, 40 * dir),
+                child: _DoneChips(app: app, s: s, fg: fg, onReader: onReader),
+              ),
             ],
           ),
         ),
@@ -726,19 +908,25 @@ class _RollingTimerText extends StatelessWidget {
 /// Заметный статус выполненного (дизайн-отчёт): стеклянные пилюли под
 /// таймером — «Вечерние зикры ✓» вместо незаметной строки внизу.
 class _DoneChips extends StatelessWidget {
-  const _DoneChips({required this.app, required this.s, required this.fg});
+  const _DoneChips({
+    required this.app,
+    required this.s,
+    required this.fg,
+    required this.onReader,
+  });
   final AppState app;
   final S s;
   final SkyFg fg;
+  final void Function(String) onReader;
 
   @override
   Widget build(BuildContext context) {
-    final done = <String>[
-      if (app.isDone('morning')) s.morningTitle,
-      if (app.isDone('kahf')) s.kahfTitle,
-      if (app.isDone('evening')) s.eveningTitle,
-      if (app.isDone('dua')) s.duaTitle,
-    ];
+    final done = <String, String>{
+      if (app.isDone('morning')) 'morning': s.morningTitle,
+      if (app.isDone('kahf')) 'kahf': s.kahfTitle,
+      if (app.isDone('evening')) 'evening': s.eveningTitle,
+      if (app.isDone('dua')) 'dua': s.duaTitle,
+    }.entries.toList();
     if (done.isEmpty) return const SizedBox(height: 22);
     return Padding(
       padding: const EdgeInsets.only(top: 14),
@@ -757,20 +945,35 @@ class _DoneChips extends StatelessWidget {
               children: [
                 for (var i = 0; i < done.length; i++) ...[
                   if (i > 0) const SizedBox(height: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.check, size: 14, color: Colors.white),
-                      const SizedBox(width: 8),
-                      Text(
-                        done[i],
-                        style: JType.ui(
-                          13,
-                          w: FontWeight.w600,
-                          color: Colors.white,
-                        ),
+                  Semantics(
+                    button: true,
+                    checked: true,
+                    child: GestureDetector(
+                      key: ValueKey('home-done-${done[i].key}'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: done[i].key == 'dua'
+                          ? () => app.toggleDone('dua')
+                          : () => onReader(done[i].key),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.check,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            done[i].value,
+                            style: JType.ui(
+                              13,
+                              w: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ],
               ],
@@ -886,6 +1089,11 @@ class _HomeLayer extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = currentWindow(t, nowMin, (id) => app.isDone(id.name));
     final fade = (1 - p * 1.4).clamp(0.0, 1.0);
+    // Прототип «Страницы»: вниз экран уходит не одной картинкой, а по
+    // элементам — каждый в свою сторону и в своё время.
+    final choreo = _choreo(context) && p != 0;
+    final layerShift = choreo ? -h * p * 0.15 : -h * p;
+    final layerFade = choreo ? 1.0 : fade;
 
     // Верхний блок окна (над геройским таймером): caption, title, sub.
     Widget topBlock;
@@ -947,15 +1155,26 @@ class _HomeLayer extends StatelessWidget {
       );
       // Кнопка окна — ниже геройского таймера.
       return Transform.translate(
-        offset: Offset(0, -h * p),
+        offset: Offset(0, layerShift),
         child: Opacity(
-          opacity: fade,
+          opacity: layerFade,
           child: SafeArea(
             bottom: false,
             child: Stack(
               children: [
                 _header(context),
-                Positioned(left: 0, right: 0, top: h * 0.16, child: topBlock),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: h * 0.16,
+                  child: _Leave(
+                    p: _pl(context),
+                    start: 0.02,
+                    to: Offset(0, -80 * _dir),
+                    scaleTo: 0.9,
+                    child: topBlock,
+                  ),
+                ),
                 Positioned(
                   left: 0,
                   right: 0,
@@ -963,51 +1182,57 @@ class _HomeLayer extends StatelessWidget {
                   // поэтому действия держим в свободной зоне сразу под
                   // таймером, а не поверх башни Абрадж аль-Бейт.
                   top: actionTop,
-                  child: Column(
-                    children: [
-                      GestureDetector(
-                        onTap: onBtn,
-                        child: Container(
-                          key: const ValueKey('home-window-action'),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 44,
-                            vertical: 16,
-                          ),
-                          decoration: BoxDecoration(
-                            color: c.btnbg,
-                            borderRadius: BorderRadius.circular(100),
-                          ),
-                          child: Text(
-                            btn,
-                            style: JType.ui(
-                              16,
-                              w: FontWeight.w700,
-                              color: c.btnink,
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (link != null) ...[
-                        const SizedBox(height: 16),
+                  child: _Leave(
+                    p: _pl(context),
+                    start: 0.06,
+                    to: Offset(0, 90 * _dir),
+                    scaleTo: 0.92,
+                    child: Column(
+                      children: [
                         GestureDetector(
-                          onTap: onLink,
-                          child: Text(
-                            link,
-                            style: JType.ui(14, color: fg.text).copyWith(
-                              decoration: TextDecoration.underline,
-                              decorationColor: fg.text,
-                              shadows: const [
-                                Shadow(
-                                  color: Colors.black26,
-                                  offset: Offset(0, 0.5),
-                                  blurRadius: 2.0,
-                                ),
-                              ],
+                          onTap: onBtn,
+                          child: Container(
+                            key: const ValueKey('home-window-action'),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 44,
+                              vertical: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: c.btnbg,
+                              borderRadius: BorderRadius.circular(100),
+                            ),
+                            child: Text(
+                              btn,
+                              style: JType.ui(
+                                16,
+                                w: FontWeight.w700,
+                                color: c.btnink,
+                              ),
                             ),
                           ),
                         ),
+                        if (link != null) ...[
+                          const SizedBox(height: 16),
+                          GestureDetector(
+                            onTap: onLink,
+                            child: Text(
+                              link,
+                              style: JType.ui(14, color: fg.text).copyWith(
+                                decoration: TextDecoration.underline,
+                                decorationColor: fg.text,
+                                shadows: const [
+                                  Shadow(
+                                    color: Colors.black26,
+                                    offset: Offset(0, 0.5),
+                                    blurRadius: 2.0,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
                 _swipeHint(context),
@@ -1020,9 +1245,9 @@ class _HomeLayer extends StatelessWidget {
 
     // Нет окна: бейдж «всё выполнено» (если есть) + подпись под таймером.
     return Transform.translate(
-      offset: Offset(0, -h * p),
+      offset: Offset(0, layerShift),
       child: Opacity(
-        opacity: fade,
+        opacity: layerFade,
         child: SafeArea(
           bottom: false,
           child: Stack(children: [_header(context), _swipeHint(context)]),
@@ -1040,95 +1265,121 @@ class _HomeLayer extends StatelessWidget {
       // Город, Кибла и календарная дата — самостоятельные элементы управления.
       // Их вертикальные жесты не должны попадать в распознаватель трёхэкранной
       // ленты: иначе небольшой сдвиг пальца при тапе менял экран вместо даты.
-      child: Listener(
-        onPointerDown: (_) => onHeaderPointerDown(),
-        child: GestureDetector(
-          key: const ValueKey('home-header-gesture-shield'),
-          behavior: HitTestBehavior.opaque,
-          onVerticalDragStart: (_) {},
-          onVerticalDragUpdate: (_) {},
-          onVerticalDragEnd: (_) {},
-          onVerticalDragCancel: () {},
-          child: Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: onCity,
-                  behavior: HitTestBehavior.opaque,
-                  child: Row(
-                    children: [
-                      Icon(Icons.place_outlined, size: 14, color: fg.faint),
-                      const SizedBox(width: 3),
-                      Flexible(
-                        child: Text(
-                          app.city.displayName(app.lang),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: style,
+      child: _Leave(
+        p: _pl(context),
+        start: 0.0,
+        span: 0.22,
+        to: Offset(0, -24 * _dir),
+        scaleTo: 1.0,
+        child: Listener(
+          onPointerDown: (_) => onHeaderPointerDown(),
+          child: GestureDetector(
+            key: const ValueKey('home-header-gesture-shield'),
+            behavior: HitTestBehavior.opaque,
+            onVerticalDragStart: (_) {},
+            onVerticalDragUpdate: (_) {},
+            onVerticalDragEnd: (_) {},
+            onVerticalDragCancel: () {},
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onCity,
+                    behavior: HitTestBehavior.opaque,
+                    child: Row(
+                      children: [
+                        Icon(Icons.place_outlined, size: 14, color: fg.faint),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
+                            app.city.displayName(app.lang),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: style,
+                          ),
                         ),
-                      ),
-                      Icon(
-                        Icons.keyboard_arrow_down,
-                        size: 14,
-                        color: fg.faint,
-                      ),
-                    ],
+                        Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 14,
+                          color: fg.faint,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              GestureDetector(
-                onTap: onQibla,
-                behavior: HitTestBehavior.opaque,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.navigation_outlined,
-                        size: 14,
-                        color: fg.faint,
-                      ),
-                      const SizedBox(width: 3),
-                      Text('Кибла ↑', style: style),
-                    ],
-                  ),
-                ),
-              ),
-              Expanded(
-                child: GestureDetector(
-                  key: const ValueKey('home-date-toggle'),
-                  onTap: onToggleDate,
+                GestureDetector(
+                  onTap: onQibla,
+                  key: app.navigationGuide.target('qibla'),
                   behavior: HitTestBehavior.opaque,
-                  child: Text(
-                    dateLine(s, schedule.now(), app.dateGregorian),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.right,
-                    style: style,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.navigation_outlined,
+                          size: 14,
+                          color: fg.faint,
+                        ),
+                        const SizedBox(width: 3),
+                        Text('Кибла ↑', style: style),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+                Expanded(
+                  child: GestureDetector(
+                    key: const ValueKey('home-date-toggle'),
+                    onTap: onToggleDate,
+                    behavior: HitTestBehavior.opaque,
+                    child: Text(
+                      dateLine(s, schedule.now(), app.dateGregorian),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: style,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
+  bool _choreo(BuildContext context) => app.dayLayout == 'pages';
+
+  /// Прогресс ухода для хореографии (к страницам и к Кибле); вне режима
+  /// страниц — 0 (без эффекта).
+  double _pl(BuildContext context) =>
+      _choreo(context) ? p.abs().clamp(0.0, 1.0) : 0.0;
+
+  /// Направление ухода: к страницам элементы всплывают вверх, к Кибле —
+  /// зеркально опускаются вниз.
+  double get _dir => p < 0 ? -1.0 : 1.0;
+
   Widget _swipeHint(BuildContext context) => Positioned(
     left: 0,
     right: 0,
     bottom: 8,
-    child: SwipeHint(
-      label: s.swipe,
-      direction: SwipeHintDirection.up,
-      // Подсказка лежит поверх архитектуры, поэтому не наследует дневной
-      // тёмный foreground неба: её прежний светлый вид читается стабильнее.
-      color: const Color(0xFFF2EFE6),
-      shadows: const [
-        Shadow(color: Colors.black54, offset: Offset(0, 1), blurRadius: 2.5),
-      ],
-      onTap: onExpand,
+    child: _Leave(
+      p: _pl(context),
+      start: 0.0,
+      span: 0.15,
+      to: Offset(0, 24 * _dir),
+      scaleTo: 1.0,
+      child: SwipeHint(
+        label: s.swipe,
+        direction: SwipeHintDirection.up,
+        // Подсказка лежит поверх архитектуры, поэтому не наследует дневной
+        // тёмный foreground неба: её прежний светлый вид читается стабильнее.
+        color: const Color(0xFFF2EFE6),
+        shadows: const [
+          Shadow(color: Colors.black54, offset: Offset(0, 1), blurRadius: 2.5),
+        ],
+        onTap: onExpand,
+      ),
     ),
   );
 }
@@ -1153,7 +1404,7 @@ class _HomeLayer extends StatelessWidget {
       return (
         s.kahfTitle,
         s.kahfSub,
-        s.read,
+        s.readSurah,
         null,
         () => onReader('kahf'),
         null,
@@ -1386,7 +1637,7 @@ class _DayLayer extends StatelessWidget {
                                   label: s.duaTitle,
                                   done: app.isDone('dua'),
                                   c: c,
-                                  onTap: () => app.markDone('dua'),
+                                  onTap: () => app.toggleDone('dua'),
                                 ),
                             ],
                           ),
@@ -1478,6 +1729,7 @@ class _DayLayer extends StatelessWidget {
 
 class _SurfaceCard extends StatelessWidget {
   const _SurfaceCard({
+    super.key,
     required this.palette,
     required this.child,
     this.padding = const EdgeInsets.all(16),
@@ -1728,6 +1980,9 @@ class _ModernDayLayer extends StatelessWidget {
                                         child: SizedBox(
                                           width: 470,
                                           child: _Notebook(
+                                            key: app.navigationGuide.target(
+                                              'calendar',
+                                            ),
                                             c: c,
                                             app: app,
                                             now: schedule.now(),
@@ -1761,7 +2016,7 @@ class _ModernDayLayer extends StatelessWidget {
                         palette: palette,
                         onReminders: () => RemindersScreen.open(context),
                         onAppearance: () => AppearancePicker.open(context),
-                        onLanguage: () => LanguagePicker.open(context),
+                        onSettings: () => _showPagesSettings(context),
                       ),
                     ),
                   ],
@@ -1906,6 +2161,7 @@ class _ModernDayLayer extends StatelessWidget {
                               child: SizedBox(
                                 width: MediaQuery.sizeOf(context).width - 68,
                                 child: _Notebook(
+                                  key: app.navigationGuide.target('calendar'),
                                   c: c,
                                   app: app,
                                   now: schedule.now(),
@@ -1935,7 +2191,7 @@ class _ModernDayLayer extends StatelessWidget {
                     palette: palette,
                     onReminders: () => RemindersScreen.open(context),
                     onAppearance: () => AppearancePicker.open(context),
-                    onLanguage: () => LanguagePicker.open(context),
+                    onSettings: () => _showPagesSettings(context),
                   ),
                 ),
               ],
@@ -2016,7 +2272,7 @@ class _ModernTasksCard extends StatelessWidget {
               active: false,
               orderMinute: windows['dua']!.start,
               expiresAt: windows['dua']!.end + taskRailGraceMinutes,
-              onTap: () => app.markDone('dua'),
+              onTap: () => app.toggleDone('dua'),
             ),
           for (final reminder in app.customReminders.where(
             (item) => app.reminderOccursOn(item, t.date),
@@ -2035,7 +2291,7 @@ class _ModernTasksCard extends StatelessWidget {
                             reminder.offsetMin
                       : reminder.fixedHour * 60 + reminder.fixedMinute) +
                   taskRailGraceMinutes,
-              onTap: () => app.markDone('custom:${reminder.id}'),
+              onTap: () => app.toggleDone('custom:${reminder.id}'),
             ),
         ];
     tasks.sort((a, b) => a.orderMinute.compareTo(b.orderMinute));
@@ -2320,12 +2576,10 @@ class _CompactTaskTile extends StatelessWidget {
       label: label,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: done
-            ? null
-            : () {
-                HapticFeedback.selectionClick();
-                onTap();
-              },
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           constraints: BoxConstraints(minHeight: expanded ? 54 : 42),
@@ -2380,12 +2634,12 @@ class _UtilityDock extends StatelessWidget {
     required this.palette,
     required this.onReminders,
     required this.onAppearance,
-    required this.onLanguage,
+    required this.onSettings,
   });
 
   final S s;
   final DaySurfacePalette palette;
-  final VoidCallback onReminders, onAppearance, onLanguage;
+  final VoidCallback onReminders, onAppearance, onSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -2418,9 +2672,18 @@ class _UtilityDock extends StatelessWidget {
                 Expanded(
                   child: _DockAction(
                     icon: CupertinoIcons.bell,
+                    key: AppScope.of(
+                      context,
+                    ).navigationGuide.target('classic-reminders'),
                     label: s.remindersBtn,
                     color: c.ink,
-                    onTap: onReminders,
+                    onTap: () {
+                      final guide = AppScope.of(context).navigationGuide;
+                      if (guide.step == GuideStep.add) {
+                        guide.go(GuideStep.remindersAdd);
+                      }
+                      onReminders();
+                    },
                   ),
                 ),
                 Container(
@@ -2443,10 +2706,11 @@ class _UtilityDock extends StatelessWidget {
                 ),
                 Expanded(
                   child: _DockAction(
-                    icon: CupertinoIcons.globe,
-                    label: s.langBtn,
+                    key: const ValueKey('classic-settings'),
+                    icon: CupertinoIcons.gear,
+                    label: s == S.kz ? 'Баптаулар' : 'Настройки',
                     color: c.ink,
-                    onTap: onLanguage,
+                    onTap: onSettings,
                   ),
                 ),
               ],
@@ -2460,6 +2724,7 @@ class _UtilityDock extends StatelessWidget {
 
 class _DockAction extends StatelessWidget {
   const _DockAction({
+    super.key,
     required this.icon,
     required this.label,
     required this.color,
@@ -2758,7 +3023,7 @@ class _TaskRow extends StatelessWidget {
     return Opacity(
       opacity: done ? 0.75 : 1.0,
       child: InkWell(
-        onTap: done ? null : onTap,
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: Row(
@@ -2805,17 +3070,32 @@ class _TaskRow extends StatelessWidget {
 /// Сегодня — в золотом круге с числом дня. Будущие — просто число дня.
 class _Notebook extends StatelessWidget {
   const _Notebook({
+    super.key,
     required this.c,
     required this.app,
     required this.now,
     this.onDayTap,
     this.compact = false,
+    this.since,
+    this.softEmpty = false,
+    this.assemble = 1.0,
   });
   final JColors c;
   final AppState app;
   final DateTime now;
   final ValueChanged<DateTime>? onDayTap;
   final bool compact;
+
+  /// Если задано — дни раньше этой даты рисуются без кольца, как будущие.
+  final DateTime? since;
+
+  /// Пустой прошедший день — едва заметная точка, а не серое кольцо:
+  /// месяц из пустых колец читается как упрёк.
+  final bool softEmpty;
+
+  /// Появление месяца при свайпе (0…1). Числа всегда остаются на своих
+  /// местах; вся сетка лишь слегка поднимается и проявляется.
+  final double assemble;
 
   static const _weekdays = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 
@@ -2839,7 +3119,10 @@ class _Notebook extends StatelessWidget {
             label: '$day',
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: date.isAfter(today) || onDayTap == null
+              onTap:
+                  date.isAfter(today) ||
+                      onDayTap == null ||
+                      (since != null && date.isBefore(since!))
                   ? null
                   : () {
                       HapticFeedback.selectionClick();
@@ -2868,30 +3151,37 @@ class _Notebook extends StatelessWidget {
       rows.add(rowCells);
     }
 
-    return Column(
-      children: [
-        Row(
+    final settled = Curves.easeOutCubic.transform(_seg(assemble, 0.05, 0.75));
+    return Opacity(
+      opacity: settled,
+      child: Transform.translate(
+        offset: Offset(0, 8 * (1 - settled)),
+        child: Column(
           children: [
-            for (final w in _weekdays)
-              Expanded(
-                child: Center(
-                  child: Text(
-                    w,
-                    style: JType.ui(expanded ? 13 : 10, color: c.faint),
+            Row(
+              children: [
+                for (final w in _weekdays)
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        w,
+                        style: JType.ui(expanded ? 13 : 11, color: c.faint),
+                      ),
+                    ),
                   ),
+              ],
+            ),
+            SizedBox(height: expanded ? 8 : (compact ? 4 : 8)),
+            for (final row in rows)
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  vertical: expanded ? 5 : (compact ? 2.5 : 5.5),
                 ),
+                child: Row(children: row),
               ),
           ],
         ),
-        SizedBox(height: expanded ? 8 : (compact ? 4 : 8)),
-        for (final row in rows)
-          Padding(
-            padding: EdgeInsets.symmetric(
-              vertical: expanded ? 5 : (compact ? 2.5 : 5.5),
-            ),
-            child: Row(children: row),
-          ),
-      ],
+      ),
     );
   }
 
@@ -2906,7 +3196,8 @@ class _Notebook extends StatelessWidget {
         date.year == today.year &&
         date.month == today.month &&
         date.day == today.day;
-    final isFuture = date.isAfter(today);
+    final isFuture =
+        date.isAfter(today) || (since != null && date.isBefore(since!));
 
     if (isFuture) {
       return SizedBox(
@@ -2916,7 +3207,7 @@ class _Notebook extends StatelessWidget {
           child: Text(
             '${date.day}',
             style: JType.ui(
-              expanded ? 14 : 11,
+              expanded ? 16 : 14,
               w: FontWeight.w400,
               // Будущие даты отличаются отсутствием кольца; дополнительно
               // снижать opacity нельзя — на закате это делало число почти
@@ -2937,6 +3228,7 @@ class _Notebook extends StatelessWidget {
       gold: c.gold,
       faint: c.faint,
       expanded: expanded,
+      softEmpty: softEmpty && !isToday,
     );
   }
 }
@@ -2952,12 +3244,14 @@ class _RingCell extends StatelessWidget {
     required this.gold,
     required this.faint,
     this.expanded = false,
+    this.softEmpty = false,
   });
   final int day;
   final double frac;
   final bool isToday;
   final Color gold, faint;
   final bool expanded;
+  final bool softEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -2966,14 +3260,26 @@ class _RingCell extends StatelessWidget {
       width: expanded ? 36 : 28,
       height: expanded ? 36 : 28,
       child: CustomPaint(
-        painter: _RingPainter(frac: frac, gold: gold, faint: faint, full: full),
+        painter: _RingPainter(
+          frac: frac,
+          gold: gold,
+          faint: faint,
+          full: full,
+          softEmpty: softEmpty,
+        ),
         child: Center(
           child: Text(
             '$day',
             style: JType.ui(
-              expanded ? 13 : 10,
+              expanded ? 16 : 13.5,
               w: isToday || full ? FontWeight.w800 : FontWeight.w500,
-              color: isToday || full
+              // На сплошном золоте число контрастное: днём золото тёмное —
+              // число белое, ночью золото светлое — число тёмное.
+              color: full
+                  ? (gold.computeLuminance() < 0.3
+                        ? Colors.white
+                        : const Color(0xFF2A1D08))
+                  : isToday
                   ? gold
                   : (frac > 0 ? gold.withValues(alpha: 0.8) : faint),
             ),
@@ -2990,15 +3296,27 @@ class _RingPainter extends CustomPainter {
     required this.gold,
     required this.faint,
     required this.full,
+    this.softEmpty = false,
   });
   final double frac;
   final Color gold, faint;
   final bool full;
+  final bool softEmpty;
 
   @override
   void paint(Canvas canvas, Size size) {
     final cCenter = Offset(size.width / 2, size.height / 2);
     final r = size.width / 2 - 1.5;
+    if (softEmpty && frac <= 0) {
+      // Прошедший день без отметок: крошечная точка под числом отличает
+      // его от будущих дней, но не кричит о «пропуске».
+      canvas.drawCircle(
+        Offset(size.width / 2, size.height - 2.5),
+        1.6,
+        Paint()..color = faint.withValues(alpha: 0.55),
+      );
+      return;
+    }
     final base = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.2
@@ -3006,18 +3324,17 @@ class _RingPainter extends CustomPainter {
     canvas.drawCircle(cCenter, r, base);
     if (frac <= 0) return;
     if (full) {
-      // Сияние + лёгкая заливка — день полностью выполнен.
-      final glow = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 5
-        ..color = gold.withValues(alpha: 0.35)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-      canvas.drawCircle(cCenter, r, glow);
+      // День полностью выполнен — сплошной золотой круг с мягким сиянием:
+      // его видно сразу, без крестиков и оценок остальных дней.
       canvas.drawCircle(
         cCenter,
-        r - 1,
-        Paint()..color = gold.withValues(alpha: 0.14),
+        r + 1,
+        Paint()
+          ..color = gold.withValues(alpha: 0.4)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
       );
+      canvas.drawCircle(cCenter, r + 1, Paint()..color = gold);
+      return;
     }
     final arc = Paint()
       ..style = PaintingStyle.stroke
@@ -3034,7 +3351,8 @@ class _RingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RingPainter o) => o.frac != frac || o.full != full;
+  bool shouldRepaint(_RingPainter o) =>
+      o.frac != frac || o.full != full || o.softEmpty != softEmpty;
 }
 
 class _SmallOutlineButton extends StatelessWidget {

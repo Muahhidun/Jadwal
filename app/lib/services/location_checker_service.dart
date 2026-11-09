@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import '../data/app_state.dart';
+import '../prayer/aladhan.dart';
 import '../prayer/city.dart';
 import '../screens/location_change_prompt.dart';
 import '../screens/settings_shell.dart';
@@ -10,6 +11,11 @@ import '../screens/settings_shell.dart';
 class LocationCheckerService {
   static bool _hasPromptedThisSession = false;
   static bool _checkInFlight = false;
+
+  /// Дальше этого от любого пункта справочника ДУМК — человек за пределами
+  /// Казахстана (у границы, например в Ташкенте или Бишкеке, ближайшее село
+  /// справочника рядом, и его времена практически те же).
+  static const _abroadKm = 120.0;
 
   /// Фоновая проверка GPS может завершиться уже после того, как
   /// пользователь открыл настройки или читалку. Новый modal route в этот
@@ -47,13 +53,49 @@ class LocationCheckerService {
         ),
       );
 
-      final detectedCity = await CityRepository.nearest(
+      final (nearest, km) = await CityRepository.nearestWithDistance(
         pos.latitude,
         pos.longitude,
       );
 
+      City detectedCity = nearest;
+      if (km > _abroadKm) {
+        // За границей: справочник ДУМК не подходит, нужен местный расчёт.
+        // Уже стоим на этом месте — ничего не предлагаем.
+        if (currentCity.isLocalCalc &&
+            CityRepository.distanceKm(
+                  pos.latitude,
+                  pos.longitude,
+                  currentCity.lat,
+                  currentCity.lng,
+                ) <
+                50) {
+          return;
+        }
+        if (!context.mounted) return;
+        final lang = AppScope.of(context).lang;
+        final place = await PlaceNameApi.lookup(
+          pos.latitude,
+          pos.longitude,
+          lang,
+        );
+        // Координаты места за границей округляем до ~1 км: для времён намаза
+        // точнее не нужно, а отправлять точную позицию незачем. (Координаты
+        // ДУМК внутри Казахстана НЕ округляются никогда — это другой путь.)
+        detectedCity = City(
+          place?.city ?? (lang == 'kz' ? 'Қазіргі орын' : 'Текущее место'),
+          pos.latitude.toStringAsFixed(2),
+          pos.longitude.toStringAsFixed(2),
+          region: place?.country ?? '',
+          source: City.sourceLocal,
+        );
+      }
+
       if (!context.mounted) return;
-      if (detectedCity.name != currentCity.name && canPresentPrompt(context)) {
+      final changed =
+          detectedCity.name != currentCity.name ||
+          detectedCity.source != currentCity.source;
+      if (changed && canPresentPrompt(context)) {
         _hasPromptedThisSession = true;
         final selectedCity = await _showLocationPrompt(
           context: context,
@@ -90,6 +132,7 @@ class LocationCheckerService {
         return LocationChangePrompt(
           currentCity: currentCity,
           detectedCity: detectedCity,
+          abroad: detectedCity.isLocalCalc,
           lang: lang,
           palette: palette,
           accent: accent,

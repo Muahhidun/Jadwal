@@ -92,7 +92,7 @@ class AlarmActivity : Activity() {
 
         val repeat = actionButton(
             if (spec.heavySleeper) {
-                if (kz) "3 минуттан кейін қайталау" else "Повторить через 3 минуты"
+                if (kz) "Осы дабылды өшіру" else "Выключить этот сигнал"
             } else {
                 if (kz) "5 минутқа шегеру" else "Отложить на 5 минут"
             },

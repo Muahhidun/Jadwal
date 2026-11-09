@@ -1,6 +1,8 @@
 import Flutter
 import CoreLocation
 import UIKit
+// Для кнопок в уведомлениях: фоновый движок получает плагины через этот вызов.
+import flutter_local_notifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -46,6 +48,11 @@ import UIKit
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    // Кнопки «Выполнено» / «Через 10 мин» работают без открытия приложения:
+    // их обрабатывает отдельный фоновый движок, которому нужны плагины.
+    FlutterLocalNotificationsPlugin.setPluginRegistrantCallback { registry in
+      GeneratedPluginRegistrant.register(with: registry)
+    }
     let registry = engineBridge.pluginRegistry
     GeneratedPluginRegistrant.register(with: registry)
 

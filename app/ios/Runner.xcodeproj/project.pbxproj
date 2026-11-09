@@ -41,10 +41,15 @@
 		C0525459E64246A745DEB793 /* DauamWatchViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A8601F631DF7D8643823C61 /* DauamWatchViews.swift */; };
 		C20000000000000000000001 /* WidgetDataManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000003 /* WidgetDataManager.swift */; };
 		C20000000000000000000002 /* DauamWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000005 /* DauamWidgets.swift */; };
+		C20000000000000000000013 /* DauamWatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13BA66BA2A221EFF934FF85E /* DauamWatchSnapshot.swift */; };
 		C20000000000000000000007 /* AlarmManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000008 /* AlarmManager.swift */; };
 		C20000000000000000000009 /* ZikrSpeechManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000010 /* ZikrSpeechManager.swift */; };
 		C20000000000000000000011 /* DauamAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000012 /* DauamAppIntents.swift */; };
 		C30000000000000000000001 /* DauamWake.caf in Resources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000002 /* DauamWake.caf */; };
+		C30000000000000000000011 /* dauam_bell.wav in Resources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000012 /* dauam_bell.wav */; };
+		C30000000000000000000013 /* dauam_chime.wav in Resources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000014 /* dauam_chime.wav */; };
+		C30000000000000000000015 /* dauam_drop.wav in Resources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000016 /* dauam_drop.wav */; };
+		C30000000000000000000017 /* dauam_adhan_haram.wav in Resources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000018 /* dauam_adhan_haram.wav */; };
 		D907A604F4E8AE45223CDD48 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AD68D94FEF011023C139093F /* Assets.xcassets */; };
 		DD31FBA5229476562069D53B /* DauamWatchWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54FE68E4F6FAB7AE1C9448D4 /* DauamWatchWidgetsBundle.swift */; };
 /* End PBXBuildFile section */
@@ -178,6 +183,10 @@
 		C20000000000000000000010 /* ZikrSpeechManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ZikrSpeechManager.swift; sourceTree = "<group>"; };
 		C20000000000000000000012 /* DauamAppIntents.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DauamAppIntents.swift; sourceTree = "<group>"; };
 		C30000000000000000000002 /* DauamWake.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = DauamWake.caf; sourceTree = "<group>"; };
+		C30000000000000000000012 /* dauam_bell.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = dauam_bell.wav; sourceTree = "<group>"; };
+		C30000000000000000000014 /* dauam_chime.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = dauam_chime.wav; sourceTree = "<group>"; };
+		C30000000000000000000016 /* dauam_drop.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = dauam_drop.wav; sourceTree = "<group>"; };
+		C30000000000000000000018 /* dauam_adhan_haram.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = dauam_adhan_haram.wav; sourceTree = "<group>"; };
 		C94CB80FD5B44B96D24DDEE0 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D6CDDB63EA63A3945C93FEF8 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		DA03F54C869FF4CDE621C2F1 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
@@ -347,6 +356,10 @@
 				C20000000000000000000010 /* ZikrSpeechManager.swift */,
 				C20000000000000000000012 /* DauamAppIntents.swift */,
 				C30000000000000000000002 /* DauamWake.caf */,
+				C30000000000000000000012 /* dauam_bell.wav */,
+				C30000000000000000000014 /* dauam_chime.wav */,
+				C30000000000000000000016 /* dauam_drop.wav */,
+				C30000000000000000000018 /* dauam_adhan_haram.wav */,
 				C20000000000000000000004 /* Runner.entitlements */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
@@ -569,6 +582,10 @@
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
 				C30000000000000000000001 /* DauamWake.caf in Resources */,
+				C30000000000000000000011 /* dauam_bell.wav in Resources */,
+				C30000000000000000000013 /* dauam_chime.wav in Resources */,
+				C30000000000000000000015 /* dauam_drop.wav in Resources */,
+				C30000000000000000000017 /* dauam_adhan_haram.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -723,6 +740,7 @@
 				B10000000000000000000006 /* JadwalLiveActivity.swift in Sources */,
 				B10000000000000000000007 /* JadwalActivityAttributes.swift in Sources */,
 				C20000000000000000000002 /* DauamWidgets.swift in Sources */,
+				C20000000000000000000013 /* DauamWatchSnapshot.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -790,7 +808,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = DauamWatchApp/DauamWatchApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				DEVELOPMENT_TEAM = ZV5872VU8H;
 				ENABLE_BITCODE = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -819,7 +837,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = DauamWatchWidgets/DauamWatchWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				DEVELOPMENT_TEAM = ZV5872VU8H;
 				ENABLE_BITCODE = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -885,7 +903,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = iphoneos;
@@ -901,7 +919,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				DEVELOPMENT_TEAM = ZV5872VU8H;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
@@ -923,7 +941,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = kz.dauam.RunnerTests;
@@ -941,7 +959,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = kz.dauam.RunnerTests;
@@ -957,7 +975,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = kz.dauam.RunnerTests;
@@ -974,7 +992,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = DauamWatchApp/DauamWatchApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				DEVELOPMENT_TEAM = ZV5872VU8H;
 				ENABLE_BITCODE = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1003,7 +1021,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = DauamWatchWidgets/DauamWatchWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				DEVELOPMENT_TEAM = ZV5872VU8H;
 				ENABLE_BITCODE = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1075,7 +1093,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -1126,7 +1144,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = iphoneos;
@@ -1144,7 +1162,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				DEVELOPMENT_TEAM = ZV5872VU8H;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
@@ -1168,7 +1186,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				DEVELOPMENT_TEAM = ZV5872VU8H;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
@@ -1190,7 +1208,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = JadwalWidgetExtension/JadwalWidgetExtension.entitlements;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				DEVELOPMENT_TEAM = ZV5872VU8H;
 				ENABLE_BITCODE = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1218,7 +1236,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = JadwalWidgetExtension/JadwalWidgetExtension.entitlements;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				DEVELOPMENT_TEAM = ZV5872VU8H;
 				ENABLE_BITCODE = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1244,7 +1262,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = JadwalWidgetExtension/JadwalWidgetExtension.entitlements;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				DEVELOPMENT_TEAM = ZV5872VU8H;
 				ENABLE_BITCODE = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1271,7 +1289,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = DauamWatchApp/DauamWatchApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				DEVELOPMENT_TEAM = ZV5872VU8H;
 				ENABLE_BITCODE = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1300,7 +1318,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = DauamWatchWidgets/DauamWatchWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 27;
 				DEVELOPMENT_TEAM = ZV5872VU8H;
 				ENABLE_BITCODE = NO;
 				GENERATE_INFOPLIST_FILE = NO;

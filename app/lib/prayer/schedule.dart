@@ -51,18 +51,24 @@ DayTimes calculateDayTimes(City city, DateTime date) {
     ..madhab = Madhab.hanafi
     ..highLatitudeRule = HighLatitudeRule.seventh_of_the_night;
   final pt = PrayerTimes(
-      Coordinates(city.lat, city.lng), DateComponents.from(date), params);
+    Coordinates(city.lat, city.lng),
+    DateComponents.from(date),
+    params,
+  );
   int mins(DateTime t) {
     final l = t.toLocal();
     return l.hour * 60 + l.minute;
   }
 
-  return DayTimes(date: DateTime(date.year, date.month, date.day), times: {
-    Prayer.fajr: mins(pt.fajr),
-    Prayer.sunrise: mins(pt.sunrise),
-    Prayer.dhuhr: mins(pt.dhuhr),
-    Prayer.asr: mins(pt.asr),
-    Prayer.maghrib: mins(pt.maghrib),
-    Prayer.isha: mins(pt.isha),
-  });
+  return DayTimes(
+    date: DateTime(date.year, date.month, date.day),
+    times: {
+      Prayer.fajr: mins(pt.fajr),
+      Prayer.sunrise: mins(pt.sunrise),
+      Prayer.dhuhr: mins(pt.dhuhr),
+      Prayer.asr: mins(pt.asr),
+      Prayer.maghrib: mins(pt.maghrib),
+      Prayer.isha: mins(pt.isha),
+    },
+  );
 }

@@ -38,17 +38,25 @@ void main() {
       );
 
       for (var index = 0; index < expectedMorning.length; index++) {
-        expect(
-          morning.items[index].source,
-          contains('№ ${expectedMorning[index]}'),
-        );
+        if (expectedMorning[index] == 83) {
+          expect(morning.items[index].source, 'Абу Дауд, 5081');
+        } else {
+          expect(
+            morning.items[index].source,
+            contains('№ ${expectedMorning[index]}'),
+          );
+        }
         expect(morning.items[index].status, contains('религиозная проверка'));
       }
       for (var index = 0; index < expectedEvening.length; index++) {
-        expect(
-          evening.items[index].source,
-          contains('№ ${expectedEvening[index]}'),
-        );
+        if (expectedEvening[index] == 83) {
+          expect(evening.items[index].source, 'Абу Дауд, 5081');
+        } else {
+          expect(
+            evening.items[index].source,
+            contains('№ ${expectedEvening[index]}'),
+          );
+        }
         expect(evening.items[index].status, contains('религиозная проверка'));
       }
     },
@@ -90,6 +98,39 @@ void main() {
     expect(evening, startsWith('Аллахумма инни амсайту'));
     expect(morning, endsWith('ва анна Мухаммадан ‘абду-ка ва расулю-ка.'));
     expect(evening, endsWith('ва анна Мухаммадан ‘абду-ка ва расулю-ка.'));
+  });
+
+  test('аят аль-Курси и три суры полные в обоих сборниках', () async {
+    final collections = await AdhkarRepository.load();
+    for (final id in ['morning', 'evening']) {
+      final items = collections[id]!.items;
+      final kursi = items[0];
+      expect(kursi.ru, contains('Он — Возвышенный, Великий'));
+      expect(kursi.ru, isNot(contains('…')));
+      expect(kursi.ru, contains('2:255'));
+
+      final surahs = items[1];
+      expect(surahs.ar, contains('أَحَدٌ ۝٤'));
+      expect(surahs.ar, contains('حَسَدَ ۝٥'));
+      expect(surahs.ar, contains('وَالنَّاسِ ۝٦'));
+      expect(RegExp('۝[١-٦]').allMatches(surahs.ar).length, 15);
+      expect(surahs.ru, contains('Аллах Самодостаточный'));
+      expect(surahs.ru, contains('Господа рассвета'));
+      expect(surahs.ru, contains('джиннов и людей'));
+    }
+  });
+
+  test('спорный зикр остаётся без обещания достоинства', () async {
+    final collections = await AdhkarRepository.load();
+    for (final id in ['morning', 'evening']) {
+      final zikr = collections[id]!.items[8];
+      expect(zikr.repeat, 7);
+      expect(zikr.ru, isNotEmpty);
+      expect(zikr.fazRu, isNull);
+      expect(zikr.fazKz, isNull);
+      expect(zikr.source, 'Абу Дауд, 5081');
+      expect(zikr.note, contains('проверка религиозным специалистом'));
+    }
   });
 
   test('варианты зикра на 10 и 100 раз не смешивают достоинства', () async {

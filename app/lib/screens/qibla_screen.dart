@@ -11,9 +11,11 @@ import '../prayer/city.dart';
 import '../theme/tokens.dart';
 import '../theme/adaptive_layout.dart';
 import '../data/app_state.dart';
+import '../data/navigation_guide.dart';
 import '../i18n/strings.dart';
 import '../services/compass_capability_service.dart';
 import 'swipe_hint.dart';
+import 'guided_spotlight.dart';
 
 enum _CompassAvailability { checking, available, unavailable, noData, unknown }
 
@@ -28,6 +30,11 @@ class QiblaView extends StatefulWidget {
   final GestureDragEndCallback? onVerticalDragEnd;
   final GestureDragCancelCallback? onVerticalDragCancel;
   final Future<bool?> Function()? compassAvailabilityProbe;
+  final VoidCallback? onGuideDone;
+
+  /// Насколько экран проявился при свайпе (0…1) — для хореографии в режиме
+  /// «Страницы»: элементы появляются по очереди, а не всем экраном сразу.
+  final double reveal;
 
   const QiblaView({
     super.key,
@@ -40,10 +47,46 @@ class QiblaView extends StatefulWidget {
     this.onVerticalDragEnd,
     this.onVerticalDragCancel,
     this.compassAvailabilityProbe,
+    this.onGuideDone,
+    this.reveal = 1.0,
   });
 
   @override
   State<QiblaView> createState() => _QiblaViewState();
+}
+
+/// Элемент Киблы в хореографии свайпа: проявляется в окне [at]…[at]+[span],
+/// прилетая со смещения [from] и вырастая из [scaleFrom].
+class _QReveal extends StatelessWidget {
+  const _QReveal({
+    required this.reveal,
+    required this.at,
+    required this.child,
+    this.span = 0.4,
+    this.from = const Offset(0, 24),
+    this.scaleFrom = 0.96,
+  });
+
+  final double reveal, at, span, scaleFrom;
+  final Offset from;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final raw = ((reveal - at) / span).clamp(0.0, 1.0);
+    if (raw >= 1) return child;
+    final t = Curves.easeOutCubic.transform(raw);
+    return Opacity(
+      opacity: t,
+      child: Transform.translate(
+        offset: from * (1 - t),
+        child: Transform.scale(
+          scale: scaleFrom + (1 - scaleFrom) * t,
+          child: child,
+        ),
+      ),
+    );
+  }
 }
 
 class _QiblaViewState extends State<QiblaView>
@@ -169,6 +212,21 @@ class _QiblaViewState extends State<QiblaView>
     _compassDataTimer?.cancel();
     _hapticStage = 0;
     setState(() => _selectedTab = 1);
+    final guide = AppScope.of(context).navigationGuide;
+    if (guide.step == GuideStep.finish) {
+      guide.go(GuideStep.qiblaMap);
+    }
+  }
+
+  void _returnHome() {
+    final app = AppScope.of(context);
+    if (const {
+      GuideStep.finish,
+      GuideStep.qiblaMap,
+    }.contains(app.navigationGuide.step)) {
+      app.closeNavigationGuide();
+    }
+    widget.onGuideDone?.call();
   }
 
   void _showCompassUnavailableMessage() {
@@ -267,6 +325,9 @@ class _QiblaViewState extends State<QiblaView>
     }
   }
 
+  bool _minimal(BuildContext context) =>
+      widget.embedded && AppScope.of(context).dayLayout == 'pages';
+
   @override
   Widget build(BuildContext context) {
     final expanded = isExpandedLayout(context);
@@ -274,11 +335,69 @@ class _QiblaViewState extends State<QiblaView>
         ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
         : const LatLng(43.238949, 76.889709);
 
+    // Минималистичная Кибла для прототипа «Страницы»: одна подпись вместо
+    // заголовка и крупного переключателя, карта — круглой кнопкой.
+    final minimal = _minimal(context);
+    final kz = AppScope.of(context).lang == 'kz';
+
     final content = AdaptiveContentPane(
       expandedMaxWidth: 980,
       child: Column(
         children: [
-          if (widget.showAppBar) ...[
+          if (minimal)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 14, 16, 0),
+              child: _QReveal(
+                reveal: widget.reveal,
+                at: 0.0,
+                from: const Offset(0, -18),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        kz ? 'ҚҰБЫЛА' : 'КИБЛА',
+                        style: JType.caption(const Color(0xFFE5B872), size: 12),
+                      ),
+                    ),
+                    Semantics(
+                      key: AppScope.of(
+                        context,
+                      ).navigationGuide.target('qibla-mode'),
+                      button: true,
+                      label: _selectedTab == 0
+                          ? (kz ? 'Картаны ашу' : 'Открыть карту')
+                          : (kz ? 'Локаторға оралу' : 'Вернуться к локатору'),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          _selectedTab == 0 ? _selectMap() : _selectLocator();
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: 0.10),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.14),
+                            ),
+                          ),
+                          child: Icon(
+                            _selectedTab == 0
+                                ? Icons.map_outlined
+                                : Icons.explore,
+                            size: 19,
+                            color: Colors.white.withValues(alpha: 0.9),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (widget.showAppBar) ...[
             AppBar(
               backgroundColor: Colors.transparent,
               surfaceTintColor: Colors.transparent,
@@ -288,7 +407,7 @@ class _QiblaViewState extends State<QiblaView>
               title: Text(
                 'Направление Киблы',
                 style: JType.ui(
-                  expanded ? 23 : 18,
+                  expanded ? 24 : 20,
                   color: Colors.white,
                   w: FontWeight.w700,
                 ),
@@ -297,51 +416,42 @@ class _QiblaViewState extends State<QiblaView>
           ] else
             const SizedBox(height: 12),
           // Вкладки переключения: Локатор | Карта
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Container(
-              height: expanded ? 56 : 44,
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.13)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _selectLocator,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        decoration: BoxDecoration(
-                          color: _selectedTab == 0
-                              ? const Color(0xFFC88D51).withValues(alpha: 0.90)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        alignment: Alignment.center,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.explore,
-                              size: expanded ? 22 : 18,
-                              color:
-                                  _compassAvailability ==
-                                      _CompassAvailability.unavailable
-                                  ? Colors.white30
-                                  : (_selectedTab == 0
-                                        ? Colors.white
-                                        : Colors.white60),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Локатор',
-                              style: JType.ui(
-                                expanded ? 17 : 14,
-                                w: FontWeight.w600,
+          if (!minimal)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Container(
+                height: expanded ? 56 : 44,
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.13),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _selectLocator,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          decoration: BoxDecoration(
+                            color: _selectedTab == 0
+                                ? const Color(
+                                    0xFFC88D51,
+                                  ).withValues(alpha: 0.90)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.explore,
+                                size: expanded ? 22 : 18,
                                 color:
                                     _compassAvailability ==
                                         _CompassAvailability.unavailable
@@ -350,58 +460,81 @@ class _QiblaViewState extends State<QiblaView>
                                           ? Colors.white
                                           : Colors.white60),
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 6),
+                              Text(
+                                'Локатор',
+                                style: JType.ui(
+                                  expanded ? 17 : 14,
+                                  w: FontWeight.w600,
+                                  color:
+                                      _compassAvailability ==
+                                          _CompassAvailability.unavailable
+                                      ? Colors.white30
+                                      : (_selectedTab == 0
+                                            ? Colors.white
+                                            : Colors.white60),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _selectMap,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        decoration: BoxDecoration(
-                          color: _selectedTab == 1
-                              ? const Color(0xFFC88D51).withValues(alpha: 0.90)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        alignment: Alignment.center,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.map,
-                              size: expanded ? 22 : 18,
-                              color: _selectedTab == 1
-                                  ? Colors.white
-                                  : Colors.white60,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Карта',
-                              style: JType.ui(
-                                expanded ? 17 : 14,
-                                w: FontWeight.w600,
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _selectMap,
+                        key: AppScope.of(
+                          context,
+                        ).navigationGuide.target('qibla-mode'),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          decoration: BoxDecoration(
+                            color: _selectedTab == 1
+                                ? const Color(
+                                    0xFFC88D51,
+                                  ).withValues(alpha: 0.90)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.map,
+                                size: expanded ? 22 : 18,
                                 color: _selectedTab == 1
                                     ? Colors.white
                                     : Colors.white60,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 6),
+                              Text(
+                                'Карта',
+                                style: JType.ui(
+                                  expanded ? 17 : 14,
+                                  w: FontWeight.w600,
+                                  color: _selectedTab == 1
+                                      ? Colors.white
+                                      : Colors.white60,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
           if (_compassAvailability == _CompassAvailability.unavailable ||
               _compassAvailability == _CompassAvailability.noData)
-            _buildCompassNotice(),
+            _QReveal(
+              reveal: minimal ? widget.reveal : 1.0,
+              at: 0.1,
+              child: _buildCompassNotice(),
+            ),
           const SizedBox(height: 12),
           Expanded(
             child: _selectedTab == 0
@@ -411,26 +544,57 @@ class _QiblaViewState extends State<QiblaView>
                   )
                 // Карта создаётся уже в видимом размере. Скрытая инициализация
                 // внутри IndexedStack могла оставить загруженным один тайл.
-                : _buildMapView(userLatLng),
+                : _QReveal(
+                    reveal: minimal ? widget.reveal : 1.0,
+                    at: 0.15,
+                    child: _buildMapView(userLatLng),
+                  ),
           ),
+          if (widget.embedded &&
+              _selectedTab == 1 &&
+              widget.onGuideDone != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+              child: SizedBox(
+                key: AppScope.of(context).navigationGuide.target('qibla-home'),
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('qibla-home-button'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: const Color(0xFF203A53),
+                    minimumSize: const Size(0, 48),
+                    side: const BorderSide(color: Colors.white54),
+                  ),
+                  onPressed: _returnHome,
+                  icon: const Icon(Icons.home_outlined),
+                  label: Text(kz ? 'Басты экранға' : 'На главный экран'),
+                ),
+              ),
+            ),
           if (widget.embedded &&
               _selectedTab == 0 &&
               widget.onVerticalDragStart != null)
             IgnorePointer(
               child: Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 8),
-                child: SwipeHint(
-                  key: const ValueKey('qibla-return-swipe-hint'),
-                  label: S.of(AppScope.of(context).lang).swipeBack,
-                  direction: SwipeHintDirection.down,
-                  color: Colors.white.withValues(alpha: 0.88),
-                  shadows: const [
-                    Shadow(
-                      color: Colors.black54,
-                      offset: Offset(0, 1),
-                      blurRadius: 2.5,
-                    ),
-                  ],
+                child: _QReveal(
+                  reveal: minimal ? widget.reveal : 1.0,
+                  at: 0.55,
+                  from: const Offset(0, 12),
+                  child: SwipeHint(
+                    key: const ValueKey('qibla-return-swipe-hint'),
+                    label: S.of(AppScope.of(context).lang).swipeBack,
+                    direction: SwipeHintDirection.down,
+                    color: Colors.white.withValues(alpha: 0.88),
+                    shadows: const [
+                      Shadow(
+                        color: Colors.black54,
+                        offset: Offset(0, 1),
+                        blurRadius: 2.5,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -441,7 +605,18 @@ class _QiblaViewState extends State<QiblaView>
     if (widget.embedded) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        body: SafeArea(child: content),
+        body: Stack(
+          children: [
+            SafeArea(child: content),
+            if (!AppScope.of(context).navigationGuide.moving &&
+                widget.reveal >= .999 &&
+                const {
+                  GuideStep.finish,
+                  GuideStep.qiblaMap,
+                }.contains(AppScope.of(context).navigationGuide.step))
+              Positioned.fill(child: _learning()),
+          ],
+        ),
       );
     }
     if (widget.showAppBar) {
@@ -451,6 +626,34 @@ class _QiblaViewState extends State<QiblaView>
       );
     }
     return content;
+  }
+
+  Widget _learning() {
+    final app = AppScope.of(context);
+    final map = _selectedTab == 1;
+    final kz = app.lang == 'kz';
+    return GuidedSpotlight(
+      key: const ValueKey('qibla-map-button-guide'),
+      compact: true,
+      allowBackgroundInteraction: map,
+      target: map && widget.onGuideDone != null
+          ? app.navigationGuide.target('qibla-home')
+          : app.navigationGuide.target('qibla-mode'),
+      title: kz ? 'Құбыла картасы' : 'Карта Киблы',
+      message: map
+          ? (kz
+                ? 'Картадағы сызық Қағбаға бағытты көрсетеді. Төмендегі «Басты экранға» батырмасы сізді қайтарады.'
+                : 'Линия показывает направление к Каабе. Кнопка «На главный экран» под картой вернёт вас назад.')
+          : (kz
+                ? 'Компас жұмыс істемесе немесе дәл болмаса, осы батырмамен картаны ашыңыз.'
+                : 'Если компас не работает или неточен, откройте карту этой кнопкой.'),
+      action: map
+          ? (kz ? 'Басты экранға' : 'На главный экран')
+          : (kz ? 'Дайын' : 'Готово'),
+      onAction: map ? _returnHome : app.closeNavigationGuide,
+      secondary: map ? null : (kz ? 'Картаны ашу' : 'Открыть карту'),
+      onSecondary: map ? null : _selectMap,
+    );
   }
 
   Widget _buildReturnSwipeRegion({Key? key, required Widget child}) {
@@ -515,28 +718,34 @@ class _QiblaViewState extends State<QiblaView>
 
   Widget _buildCompassFallback([String? message]) {
     final kz = AppScope.of(context).lang == 'kz';
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            Icons.compass_calibration,
-            size: 48,
-            color: Color(0xFFC88D51),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            message ??
-                (kz
-                    ? 'Компас деректерін алып жатырмыз…'
-                    : 'Получаем данные компаса…'),
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontFamily: 'Manrope',
+    return _QReveal(
+      reveal: _minimal(context) ? widget.reveal : 1.0,
+      at: 0.2,
+      child: Center(
+        child: Column(
+          key: AppScope.of(context).navigationGuide.target('qibla-visual'),
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.compass_calibration,
+              size: 48,
+              color: Color(0xFFC88D51),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            Text(
+              message ??
+                  (kz
+                      ? 'Компас деректерін алып жатырмыз…'
+                      : 'Получаем данные компаса…'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontFamily: 'Manrope',
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -637,6 +846,21 @@ class _QiblaViewState extends State<QiblaView>
                               : 'Поверните устройство (${qiblaAngle.toStringAsFixed(0)}°)')));
 
         final expanded = isExpandedLayout(context);
+        final minimal = _minimal(context);
+        // В минимальном виде подсказка говорит, куда и на сколько
+        // повернуться, а не абсолютный азимут.
+        final turn = diff <= 180 ? diff : 360 - diff;
+        final turnText = needsCalibration
+            ? statusText
+            : isExact
+            ? (kz ? 'Құбылаға қарап тұрсыз' : 'Вы смотрите на Киблу')
+            : diff <= 180
+            ? (kz
+                  ? 'Оңға ${turn.toStringAsFixed(0)}° бұрылыңыз'
+                  : 'Повернитесь вправо на ${turn.toStringAsFixed(0)}°')
+            : (kz
+                  ? 'Солға ${turn.toStringAsFixed(0)}° бұрылыңыз'
+                  : 'Повернитесь влево на ${turn.toStringAsFixed(0)}°');
         final compassSize = expanded ? 340.0 : 270.0;
         final dialSize = expanded ? 316.0 : 250.0;
         final arrowSize = expanded ? 304.0 : 240.0;
@@ -644,231 +868,287 @@ class _QiblaViewState extends State<QiblaView>
         return Column(
           children: [
             const SizedBox(height: 12),
-            // Индикатор статуса ориентации
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              padding: EdgeInsets.symmetric(
-                horizontal: expanded ? 26 : 20,
-                vertical: expanded ? 13 : 10,
-              ),
-              decoration: BoxDecoration(
-                color: needsCalibration
-                    ? const Color(0xFFC88D51).withValues(alpha: 0.2)
-                    : isExact
-                    ? const Color(0xFF2E7D32).withValues(alpha: 0.3)
-                    : (isNear
-                          ? const Color(0xFFC88D51).withValues(alpha: 0.2)
-                          : Colors.white.withValues(alpha: 0.06)),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: statusColor, width: 1.5),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    needsCalibration
-                        ? Icons.compass_calibration
-                        : isExact
-                        ? Icons.check_circle
-                        : (isNear ? Icons.near_me : Icons.navigation),
-                    color: isExact
-                        ? const Color(0xFF81C784)
-                        : const Color(0xFFC88D51),
-                    size: expanded ? 24 : 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    statusText,
-                    style: TextStyle(
-                      color: isExact ? const Color(0xFF81C784) : Colors.white,
-                      fontFamily: 'Manrope',
-                      fontSize: expanded ? 17 : 14,
-                      fontWeight: FontWeight.w600,
+            if (minimal)
+              _QReveal(
+                reveal: widget.reveal,
+                at: 0.12,
+                from: const Offset(0, -14),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 250),
+                    style: JType.ui(
+                      16,
+                      w: FontWeight.w600,
+                      color: isExact
+                          ? const Color(0xFF81C784)
+                          : Colors.white.withValues(alpha: 0.92),
                     ),
+                    child: Text(turnText, textAlign: TextAlign.center),
                   ),
-                ],
+                ),
+              )
+            else
+              // Индикатор статуса ориентации
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                padding: EdgeInsets.symmetric(
+                  horizontal: expanded ? 26 : 20,
+                  vertical: expanded ? 13 : 10,
+                ),
+                decoration: BoxDecoration(
+                  color: needsCalibration
+                      ? const Color(0xFFC88D51).withValues(alpha: 0.2)
+                      : isExact
+                      ? const Color(0xFF2E7D32).withValues(alpha: 0.3)
+                      : (isNear
+                            ? const Color(0xFFC88D51).withValues(alpha: 0.2)
+                            : Colors.white.withValues(alpha: 0.06)),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: statusColor, width: 1.5),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      needsCalibration
+                          ? Icons.compass_calibration
+                          : isExact
+                          ? Icons.check_circle
+                          : (isNear ? Icons.near_me : Icons.navigation),
+                      color: isExact
+                          ? const Color(0xFF81C784)
+                          : const Color(0xFFC88D51),
+                      size: expanded ? 24 : 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      statusText,
+                      style: TextStyle(
+                        color: isExact ? const Color(0xFF81C784) : Colors.white,
+                        fontFamily: 'Manrope',
+                        fontSize: expanded ? 17 : 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
             const Spacer(),
-            // Диск компаса
-            Center(
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Внешнее кольцо с динамической подсветкой
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    width: compassSize,
-                    height: compassSize,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: isExact
-                              ? const Color(0xFF4CAF50).withValues(alpha: 0.4)
-                              : (isNear
-                                    ? const Color(
-                                        0xFFC88D51,
-                                      ).withValues(alpha: 0.3)
-                                    : Colors.black45),
-                          blurRadius: isExact ? 30 : (isNear ? 20 : 12),
-                          spreadRadius: isExact ? 4 : 0,
+            // Диск компаса — в режиме «Страницы» вырастает из глубины.
+            _QReveal(
+              reveal: minimal ? widget.reveal : 1.0,
+              at: 0.2,
+              span: 0.55,
+              from: const Offset(0, 30),
+              scaleFrom: 0.8,
+              child: Center(
+                child: Stack(
+                  key: AppScope.of(
+                    context,
+                  ).navigationGuide.target('qibla-visual'),
+                  alignment: Alignment.center,
+                  children: [
+                    // Внешнее кольцо с динамической подсветкой
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      width: compassSize,
+                      height: compassSize,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: isExact
+                                ? const Color(0xFF4CAF50).withValues(alpha: 0.4)
+                                : (isNear
+                                      ? const Color(
+                                          0xFFC88D51,
+                                        ).withValues(alpha: 0.3)
+                                      : Colors.black45),
+                            blurRadius: isExact ? 30 : (isNear ? 20 : 12),
+                            spreadRadius: isExact ? 4 : 0,
+                          ),
+                        ],
+                        gradient: const RadialGradient(
+                          colors: [Color(0xD91E2634), Color(0xC7131A24)],
                         ),
-                      ],
-                      gradient: const RadialGradient(
-                        colors: [Color(0xD91E2634), Color(0xC7131A24)],
-                      ),
-                      border: Border.all(
-                        color: isExact
-                            ? const Color(0xFF81C784)
-                            : (isNear
-                                  ? const Color(0xFFE5A96A)
-                                  : const Color(0xFF323F52)),
-                        width: isExact ? 3 : 2,
+                        border: Border.all(
+                          color: isExact
+                              ? const Color(0xFF81C784)
+                              : (isNear
+                                    ? const Color(0xFFE5A96A)
+                                    : const Color(0xFF323F52)),
+                          width: isExact ? 3 : 2,
+                        ),
                       ),
                     ),
-                  ),
-                  // Шкала компаса
-                  Transform.rotate(
-                    angle: -heading * (math.pi / 180),
-                    child: SizedBox(
-                      width: dialSize,
-                      height: dialSize,
-                      child: CustomPaint(
-                        painter: _CompassDialPainter(qiblaBearing: qiblaAngle),
+                    // Шкала компаса
+                    Transform.rotate(
+                      angle: -heading * (math.pi / 180),
+                      child: SizedBox(
+                        width: dialSize,
+                        height: dialSize,
+                        child: CustomPaint(
+                          painter: _CompassDialPainter(
+                            qiblaBearing: qiblaAngle,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                  // Золотая стрелка Киблы
-                  Transform.rotate(
-                    angle: (qiblaAngle - heading) * (math.pi / 180),
-                    child: SizedBox(
-                      width: arrowSize,
-                      height: arrowSize,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.all(7),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
+                    // Золотая стрелка Киблы
+                    Transform.rotate(
+                      angle: (qiblaAngle - heading) * (math.pi / 180),
+                      child: SizedBox(
+                        width: arrowSize,
+                        height: arrowSize,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.all(7),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isExact
+                                    ? const Color(0xFF4CAF50)
+                                    : const Color(0xFFC88D51),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: isExact
+                                        ? const Color(0xFF4CAF50)
+                                        : const Color(0xFFC88D51),
+                                    blurRadius: 10,
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                Icons.mosque,
+                                size: expanded ? 25 : 20,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Icon(
+                              Icons.arrow_drop_down,
+                              size: expanded ? 32 : 26,
                               color: isExact
                                   ? const Color(0xFF4CAF50)
                                   : const Color(0xFFC88D51),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: isExact
-                                      ? const Color(0xFF4CAF50)
-                                      : const Color(0xFFC88D51),
-                                  blurRadius: 10,
-                                ),
-                              ],
                             ),
-                            child: Icon(
-                              Icons.mosque,
-                              size: expanded ? 25 : 20,
-                              color: Colors.white,
-                            ),
-                          ),
-                          Icon(
-                            Icons.arrow_drop_down,
-                            size: expanded ? 32 : 26,
-                            color: isExact
-                                ? const Color(0xFF4CAF50)
-                                : const Color(0xFFC88D51),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  // Центральная тумба
-                  Container(
-                    width: expanded ? 23 : 18,
-                    height: expanded ? 23 : 18,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isExact
-                          ? const Color(0xFF4CAF50)
-                          : const Color(0xFFC88D51),
-                      border: Border.all(color: Colors.white, width: 2),
+                    // Центральная тумба
+                    Container(
+                      width: expanded ? 23 : 18,
+                      height: expanded ? 23 : 18,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isExact
+                            ? const Color(0xFF4CAF50)
+                            : const Color(0xFFC88D51),
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             const Spacer(),
-            // Плашка метаданных
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.17),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.14),
+            if (minimal)
+              _QReveal(
+                reveal: widget.reveal,
+                at: 0.5,
+                span: 0.35,
+                from: const Offset(0, 16),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Text(
+                    kz
+                        ? 'Мекке · ${_distanceToKaabaKm.toStringAsFixed(0)} км'
+                        : 'Мекка · ${_distanceToKaabaKm.toStringAsFixed(0)} км',
+                    style: JType.ui(
+                      13,
+                      color: Colors.white.withValues(alpha: 0.55),
+                    ),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.14),
-                      blurRadius: 24,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    Column(
-                      children: [
-                        Text(
-                          'Азимут Киблы',
-                          style: TextStyle(
-                            color: Colors.white54,
-                            fontFamily: 'Manrope',
-                            fontSize: expanded ? 15 : 12,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${qiblaAngle.toStringAsFixed(1)}°',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontFamily: 'Manrope',
-                            fontSize: expanded ? 21 : 17,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
+              )
+            else
+              // Плашка метаданных
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.17),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.14),
                     ),
-                    Container(width: 1, height: 28, color: Colors.white12),
-                    Column(
-                      children: [
-                        Text(
-                          'До Мекки',
-                          style: TextStyle(
-                            color: Colors.white54,
-                            fontFamily: 'Manrope',
-                            fontSize: expanded ? 15 : 12,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.14),
+                        blurRadius: 24,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      Column(
+                        children: [
+                          Text(
+                            'Азимут Киблы',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontFamily: 'Manrope',
+                              fontSize: expanded ? 15 : 12,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${_distanceToKaabaKm.toStringAsFixed(0)} км',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontFamily: 'Manrope',
-                            fontSize: expanded ? 21 : 17,
-                            fontWeight: FontWeight.w700,
+                          const SizedBox(height: 2),
+                          Text(
+                            '${qiblaAngle.toStringAsFixed(1)}°',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontFamily: 'Manrope',
+                              fontSize: expanded ? 21 : 17,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                      Container(width: 1, height: 28, color: Colors.white12),
+                      Column(
+                        children: [
+                          Text(
+                            'До Мекки',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontFamily: 'Manrope',
+                              fontSize: expanded ? 15 : 12,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${_distanceToKaabaKm.toStringAsFixed(0)} км',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontFamily: 'Manrope',
+                              fontSize: expanded ? 21 : 17,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
           ],
         );
       },
