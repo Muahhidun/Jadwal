@@ -5,11 +5,13 @@ import 'notifications/notifications.dart';
 import 'prayer/schedule_service.dart';
 import 'screens/home.dart';
 import 'screens/onboarding.dart';
+import 'services/orientation_service.dart';
 import 'theme/tokens.dart';
 import 'theme/system_bars.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppOrientation.lockPortrait();
   final prefs = await SharedPreferences.getInstance();
 
   // Онбординг показывается только при первой установке. Раньше здесь был

@@ -16,10 +16,21 @@ void main() {
     ).allMatches(array!.group(1)!).map((match) => match.group(1)!).toList();
   }
 
-  test('iPhone keeps every app screen in portrait when the phone rotates', () {
+  test('iPhone разрешает горизонталь только для читалок', () {
+    // Нативный список открывает горизонталь; остальные экраны остаются
+    // вертикальными за счёт AppOrientation.lockPortrait() (main.dart).
     expect(orientations('UISupportedInterfaceOrientations'), [
       'UIInterfaceOrientationPortrait',
+      'UIInterfaceOrientationLandscapeLeft',
+      'UIInterfaceOrientationLandscapeRight',
     ]);
+    final main = File('lib/main.dart').readAsStringSync();
+    expect(main, contains('AppOrientation.lockPortrait()'));
+    for (final file in ['reader.dart', 'kahf_reader.dart']) {
+      final src = File('lib/screens/$file').readAsStringSync();
+      expect(src, contains('AppOrientation.allowReading()'), reason: file);
+      expect(src, contains('AppOrientation.lockPortrait()'), reason: file);
+    }
   });
 
   test('iPad retains all orientations and multitasking support', () {

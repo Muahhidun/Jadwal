@@ -14,6 +14,8 @@ import 'contextual_hint.dart';
 import '../services/live_activity_service.dart';
 import '../services/zikr_speech_service.dart';
 import 'reader_palette.dart';
+import 'reader_rotate_button.dart';
+import '../services/orientation_service.dart';
 import 'zikr_reader_session.dart';
 
 /// Чтение зикров — «книга» (README §4). Один зикр на экран, четыре локальные
@@ -45,6 +47,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void initState() {
     super.initState();
+    AppOrientation.allowReading();
     LiveActivityService.activeCollection = widget.collectionId;
     ZikrSpeechService.init(
       onZikrStarted: (i, total) {
@@ -184,6 +187,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   @override
   void dispose() {
+    AppOrientation.lockPortrait();
     ++_playbackRequest;
     ZikrSpeechService.stop();
     if (LiveActivityService.activeCollection == widget.collectionId) {
@@ -221,6 +225,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
       ),
       builder: (sheetContext) => ReaderPalettePicker(
         current: palette,
+        selectedId: app.readerPalette,
         lang: app.lang,
         onSelected: (selected) {
           app.readerPalette = selected.id;
@@ -234,7 +239,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final s = S.of(app.lang);
-    final palette = ReaderPalette.fromId(app.readerPalette);
+    final palette = ReaderPalette.current(context);
     final expanded = isExpandedLayout(context);
     final col = collection;
     if (col == null) {
@@ -421,44 +426,55 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     expandedMaxWidth: 760,
                     child: Column(
                       children: [
-                        Row(
+                        Stack(
+                          alignment: Alignment.centerRight,
                           children: [
-                            // Ровно та же левая зона, что занята кнопкой «назад»
-                            // и промежутком под ней в строке ниже.
-                            const SizedBox(width: 64),
-                            Expanded(
-                              child: Center(
-                                child: GestureDetector(
-                                  key: const ValueKey('reader-skip-action'),
-                                  onTap: () {
-                                    HapticFeedback.selectionClick();
-                                    session!.skipCurrent();
-                                    if (last) {
-                                      _finish();
-                                    } else {
-                                      _goToIndex(idx + 1);
-                                    }
-                                  },
-                                  behavior: HitTestBehavior.opaque,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 8,
-                                    ),
-                                    child: Text(
-                                      app.lang == 'kz'
-                                          ? 'Бұл зікірді өткізу'
-                                          : 'Пропустить этот зикр',
-                                      textAlign: TextAlign.center,
-                                      style: JType.ui(
-                                        expanded ? 15 : 12,
-                                        w: FontWeight.w600,
-                                        color: palette.source,
+                            Row(
+                              children: [
+                                // Ровно та же левая зона, что занята кнопкой «назад»
+                                // и промежутком под ней в строке ниже.
+                                const SizedBox(width: 64),
+                                Expanded(
+                                  child: Center(
+                                    child: GestureDetector(
+                                      key: const ValueKey('reader-skip-action'),
+                                      onTap: () {
+                                        HapticFeedback.selectionClick();
+                                        session!.skipCurrent();
+                                        if (last) {
+                                          _finish();
+                                        } else {
+                                          _goToIndex(idx + 1);
+                                        }
+                                      },
+                                      behavior: HitTestBehavior.opaque,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 8,
+                                        ),
+                                        child: Text(
+                                          app.lang == 'kz'
+                                              ? 'Бұл зікірді өткізу'
+                                              : 'Пропустить этот зикр',
+                                          textAlign: TextAlign.center,
+                                          style: JType.ui(
+                                            expanded ? 15 : 12,
+                                            w: FontWeight.w600,
+                                            color: palette.source,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
+                              ],
+                            ),
+                            // Правый нижний угол: перевернуть текст набок.
+                            // Поверх строки, чтобы не сдвигать центр «Пропустить».
+                            ReaderRotateButton(
+                              palette: palette,
+                              kz: app.lang == 'kz',
                             ),
                           ],
                         ),
@@ -537,11 +553,13 @@ class ReaderPalettePicker extends StatelessWidget {
   const ReaderPalettePicker({
     super.key,
     required this.current,
+    required this.selectedId,
     required this.lang,
     required this.onSelected,
   });
 
   final ReaderPalette current;
+  final String selectedId;
   final String lang;
   final ValueChanged<ReaderPalette> onSelected;
 
@@ -580,7 +598,7 @@ class ReaderPalettePicker extends StatelessWidget {
               style: JType.ui(12, color: current.source),
             ),
             const SizedBox(height: 18),
-            for (final palette in ReaderPalette.values) ...[
+            for (final palette in ReaderPalette.options) ...[
               GestureDetector(
                 key: ValueKey('reader-palette-${palette.id}'),
                 onTap: () => onSelected(palette),
@@ -594,10 +612,10 @@ class ReaderPalettePicker extends StatelessWidget {
                     color: current.fazPlate,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: palette.id == current.id
+                      color: palette.id == selectedId
                           ? current.accent
                           : current.divider,
-                      width: palette.id == current.id ? 1.5 : 1,
+                      width: palette.id == selectedId ? 1.5 : 1,
                     ),
                   ),
                   child: Row(
@@ -608,6 +626,7 @@ class ReaderPalettePicker extends StatelessWidget {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: palette.bg,
+                          gradient: palette.swatchGradient,
                           shape: BoxShape.circle,
                           border: Border.all(color: palette.divider),
                         ),
@@ -631,7 +650,7 @@ class ReaderPalettePicker extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (palette.id == current.id)
+                      if (palette.id == selectedId)
                         Icon(
                           Icons.check_rounded,
                           size: 20,
@@ -641,7 +660,7 @@ class ReaderPalettePicker extends StatelessWidget {
                   ),
                 ),
               ),
-              if (palette != ReaderPalette.values.last)
+              if (palette != ReaderPalette.options.last)
                 const SizedBox(height: 8),
             ],
           ],

@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../data/app_state.dart';
+import '../prayer/schedule.dart';
+import '../prayer/schedule_service.dart';
+
 const readerTransliterationFontSize = 17.0;
 
 /// Локальные палитры читалки. Они не меняют общую тему приложения и нужны
@@ -111,8 +115,76 @@ class ReaderPalette {
     disabled: Color(0xFF414C58),
   );
 
+  /// Не отдельная палитра, а режим: светлая бумага днём (от восхода до
+  /// магриба), мягкая тёмная ночью и до восхода. Реальные цвета даёт
+  /// [resolve]; здесь — только подпись и образец для выбора.
+  static const auto = ReaderPalette(
+    id: autoId,
+    titleRu: 'Авто по времени суток',
+    titleKz: 'Тәулік уақытына қарай',
+    isDark: false,
+    bg: Color(0xFFF7F2E7),
+    ink: Color(0xFF2C2A24),
+    arabic: Color(0xFF23211B),
+    translit: Color(0xFF615B4E),
+    accent: Color(0xFF8C7A4E),
+    fazPlate: Color(0xFFEFE8D6),
+    source: Color(0xFF7F7868),
+    divider: Color(0xFFE3DCC9),
+    button: Color(0xFF2C2A24),
+    buttonInk: Color(0xFFF7F2E7),
+    disabled: Color(0xFFD9D1BC),
+  );
+
+  static const autoId = 'auto';
+
+  /// Настоящие палитры (без режима «авто»).
   static const values = [paper, monoLight, monoDark, softDark];
+
+  /// Всё, что видно в выборе: четыре палитры и режим «авто».
+  static const options = [paper, monoLight, monoDark, softDark, auto];
+
+  bool get isAuto => id == autoId;
+
+  /// Образец для выбора: у «авто» — светлая и тёмная половинки.
+  Gradient? get swatchGradient => isAuto
+      ? const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            Color(0xFFF7F2E7),
+            Color(0xFFF7F2E7),
+            Color(0xFF19212B),
+            Color(0xFF19212B),
+          ],
+          stops: [0, .5, .5, 1],
+        )
+      : null;
 
   static ReaderPalette fromId(String id) =>
       values.firstWhere((palette) => palette.id == id, orElse: () => paper);
+
+  /// Палитра, которой реально рисуется текст. [night] нужен только «авто».
+  static ReaderPalette resolve(String id, {required bool night}) =>
+      id == autoId ? (night ? softDark : paper) : fromId(id);
+
+  /// Ночь для читалки: до восхода (включая время после Фаджра) и после
+  /// магриба. Если расписание недоступно — день, как прежняя бумага.
+  static bool isNight(DateTime now, Map<Prayer, int>? times) {
+    final sunrise = times?[Prayer.sunrise];
+    final maghrib = times?[Prayer.maghrib];
+    if (sunrise == null || maghrib == null) return false;
+    final minute = now.hour * 60 + now.minute;
+    return minute < sunrise || minute >= maghrib;
+  }
+
+  /// Текущая палитра читалки с учётом выбора владельца и времени суток.
+  static ReaderPalette current(BuildContext context) {
+    final app = AppScope.of(context);
+    if (app.readerPalette != autoId) return fromId(app.readerPalette);
+    final schedule = ScheduleScope.of(context);
+    final now = schedule.now();
+    final t = schedule.timesFor(app.city, now);
+    return resolve(autoId, night: isNight(now, t?.times));
+  }
 }

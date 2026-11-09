@@ -401,6 +401,17 @@ class _NextHint extends StatelessWidget {
 
 enum _DeedState { upcoming, open, done, passed }
 
+/// Открывает правку личного дела (название, время, повтор, удаление).
+void _editCustomDeed(BuildContext context, String deedId) {
+  if (!deedId.startsWith('custom:')) return;
+  HapticFeedback.selectionClick();
+  Navigator.of(context).push(
+    dauamSettingsRoute(
+      ReminderDetailScreen(configId: deedId.substring(7), isCustom: true),
+    ),
+  );
+}
+
 class _Deed {
   const _Deed({
     required this.id,
@@ -915,6 +926,9 @@ class _HeroDeed extends StatelessWidget {
           HapticFeedback.mediumImpact();
           deed.onTap();
         },
+        onLongPress: deed.isCustom
+            ? () => _editCustomDeed(context, deed.id)
+            : null,
         child: Container(
           padding: EdgeInsets.fromLTRB(
             18,
@@ -942,9 +956,34 @@ class _HeroDeed extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                caption.toUpperCase(),
-                style: JType.caption(open ? c.gold : c.sub, size: 10.5),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      caption.toUpperCase(),
+                      style: JType.caption(open ? c.gold : c.sub, size: 10.5),
+                    ),
+                  ),
+                  if (deed.isCustom)
+                    Semantics(
+                      button: true,
+                      label: kz ? 'Өзгерту немесе жою' : 'Изменить или удалить',
+                      child: GestureDetector(
+                        key: ValueKey('deed-edit-${deed.id}'),
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _editCustomDeed(context, deed.id),
+                        child: SizedBox(
+                          width: 40,
+                          height: 24,
+                          child: Icon(
+                            CupertinoIcons.pencil,
+                            size: 16,
+                            color: c.sub,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 5),
               Row(
@@ -1036,6 +1075,9 @@ class _DeedRow extends StatelessWidget {
           HapticFeedback.selectionClick();
           deed.onTap();
         },
+        onLongPress: deed.isCustom
+            ? () => _editCustomDeed(context, deed.id)
+            : null,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 44),
           child: Padding(
@@ -1074,6 +1116,25 @@ class _DeedRow extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Text(hint, style: JType.ui(12.5, color: c.sub)),
+                if (deed.isCustom)
+                  Semantics(
+                    button: true,
+                    label: kz ? 'Өзгерту немесе жою' : 'Изменить или удалить',
+                    child: GestureDetector(
+                      key: ValueKey('deed-edit-${deed.id}'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _editCustomDeed(context, deed.id),
+                      child: SizedBox(
+                        width: 36,
+                        height: 44,
+                        child: Icon(
+                          CupertinoIcons.pencil,
+                          size: 16,
+                          color: c.sub,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

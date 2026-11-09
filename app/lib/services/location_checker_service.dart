@@ -9,8 +9,21 @@ import '../screens/settings_shell.dart';
 
 /// Сервис авто-определения смены города и вежливого предложения обновить расписание
 class LocationCheckerService {
-  static bool _hasPromptedThisSession = false;
   static bool _checkInFlight = false;
+
+  /// Город, предложение которого человек уже закрыл («Оставить»). Его не
+  /// повторяем, но другой город (новая поездка) снова вызывает подсказку.
+  /// Раньше один показ блокировал проверки до полной выгрузки приложения,
+  /// поэтому возвращение из фона в новом городе ничего не предлагало.
+  static String? _dismissedCityKey;
+
+  static String _cityKey(City c) => '${c.source}:${c.name}';
+
+  @visibleForTesting
+  static void resetForTest() {
+    _dismissedCityKey = null;
+    _checkInFlight = false;
+  }
 
   /// Дальше этого от любого пункта справочника ДУМК — человек за пределами
   /// Казахстана (у границы, например в Ташкенте или Бишкеке, ближайшее село
@@ -35,7 +48,7 @@ class LocationCheckerService {
     required City currentCity,
     required Function(City newCity) onCitySelected,
   }) async {
-    if (_hasPromptedThisSession || _checkInFlight) return;
+    if (_checkInFlight) return;
     _checkInFlight = true;
 
     try {
@@ -47,11 +60,21 @@ class LocationCheckerService {
         return;
       }
 
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-        ),
-      );
+      Position pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 20),
+          ),
+        );
+      } catch (_) {
+        // Свежая точка не успела прийти (только что вернулись из фона) —
+        // берём последнюю известную, лучше устаревшая, чем никакой.
+        final last = await Geolocator.getLastKnownPosition();
+        if (last == null) return;
+        pos = last;
+      }
 
       final (nearest, km) = await CityRepository.nearestWithDistance(
         pos.latitude,
@@ -95,15 +118,23 @@ class LocationCheckerService {
       final changed =
           detectedCity.name != currentCity.name ||
           detectedCity.source != currentCity.source;
-      if (changed && canPresentPrompt(context)) {
-        _hasPromptedThisSession = true;
+      if (!changed) {
+        // Вернулись в «свой» город — прежний отказ больше не нужен.
+        _dismissedCityKey = null;
+        return;
+      }
+      if (_dismissedCityKey == _cityKey(detectedCity)) return;
+      if (canPresentPrompt(context)) {
         final selectedCity = await _showLocationPrompt(
           context: context,
           currentCity: currentCity,
           detectedCity: detectedCity,
         );
-        if (selectedCity != null && context.mounted) {
-          onCitySelected(selectedCity);
+        if (selectedCity != null) {
+          _dismissedCityKey = null;
+          if (context.mounted) onCitySelected(selectedCity);
+        } else {
+          _dismissedCityKey = _cityKey(detectedCity);
         }
       }
     } catch (_) {

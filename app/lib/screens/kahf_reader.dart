@@ -10,6 +10,8 @@ import '../theme/system_bars.dart';
 import '../theme/tokens.dart';
 import 'celebration.dart';
 import 'reader_palette.dart';
+import 'reader_rotate_button.dart';
+import '../services/orientation_service.dart';
 
 PageRoute<void> kahfReaderRoute() => PageRouteBuilder<void>(
   settings: const RouteSettings(name: 'kahf-reader'),
@@ -55,6 +57,7 @@ class _KahfReaderScreenState extends State<KahfReaderScreen>
   @override
   void initState() {
     super.initState();
+    AppOrientation.allowReading();
     _handleHintController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1450),
@@ -107,6 +110,7 @@ class _KahfReaderScreenState extends State<KahfReaderScreen>
 
   @override
   void dispose() {
+    AppOrientation.lockPortrait();
     _chromeTimer?.cancel();
     _handleHintController.dispose();
     _finalHintController.dispose();
@@ -267,7 +271,8 @@ class _KahfReaderScreenState extends State<KahfReaderScreen>
     final app = AppScope.of(context);
     await _controller.runJavaScript(
       'window.setReaderAppearance('
-      '${jsonEncode(app.readerPalette)}, ${jsonEncode(app.lang)});',
+      '${jsonEncode(ReaderPalette.current(context).id)}, '
+      '${jsonEncode(app.lang)});',
     );
   }
 
@@ -280,7 +285,7 @@ class _KahfReaderScreenState extends State<KahfReaderScreen>
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final palette = ReaderPalette.fromId(app.readerPalette);
+    final palette = ReaderPalette.current(context);
     final kz = app.lang == 'kz';
     final height = MediaQuery.sizeOf(context).height;
     final dismissProgress = height == 0
@@ -328,6 +333,22 @@ class _KahfReaderScreenState extends State<KahfReaderScreen>
                   fit: StackFit.expand,
                   children: [
                     WebViewWidget(controller: _controller),
+                    Positioned(
+                      right: 14,
+                      bottom: 34,
+                      child: IgnorePointer(
+                        ignoring: !_chromeVisible,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 180),
+                          opacity: _chromeVisible ? 1 : 0,
+                          child: ReaderRotateButton(
+                            palette: palette,
+                            kz: kz,
+                            size: 34,
+                          ),
+                        ),
+                      ),
+                    ),
                     if (!_pageReady)
                       ColoredBox(
                         color: palette.bg,
@@ -470,7 +491,7 @@ class _KahfReaderScreenState extends State<KahfReaderScreen>
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    for (final option in ReaderPalette.values)
+                                    for (final option in ReaderPalette.options)
                                       Padding(
                                         padding: const EdgeInsets.symmetric(
                                           horizontal: 7,
@@ -479,7 +500,8 @@ class _KahfReaderScreenState extends State<KahfReaderScreen>
                                           message: option.title(app.lang),
                                           child: Semantics(
                                             button: true,
-                                            selected: option.id == palette.id,
+                                            selected:
+                                                option.id == app.readerPalette,
                                             label: option.title(app.lang),
                                             child: InkResponse(
                                               key: ValueKey(
@@ -497,13 +519,17 @@ class _KahfReaderScreenState extends State<KahfReaderScreen>
                                                 decoration: BoxDecoration(
                                                   shape: BoxShape.circle,
                                                   color: option.bg,
+                                                  gradient:
+                                                      option.swatchGradient,
                                                   border: Border.all(
                                                     color:
-                                                        option.id == palette.id
+                                                        option.id ==
+                                                            app.readerPalette
                                                         ? palette.accent
                                                         : option.divider,
                                                     width:
-                                                        option.id == palette.id
+                                                        option.id ==
+                                                            app.readerPalette
                                                         ? 3
                                                         : 1,
                                                   ),

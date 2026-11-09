@@ -55,6 +55,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   Timer? _ticker;
+  Timer? _locationRecheck;
   String _lastNotifSig = '';
   String _lastLiveActivityMinute = '';
   String _lastWidgetSignature = '';
@@ -262,6 +263,13 @@ class _HomeScreenState extends State<HomeScreen>
       _checkSiriTarget();
       _checkAlarmTarget();
       _checkLocationChange();
+      // Сразу после возврата из фона GPS мог ещё отдавать старую точку из
+      // прежнего города — повторяем проверку, когда определение успеет.
+      _locationRecheck?.cancel();
+      _locationRecheck = Timer(
+        const Duration(seconds: 25),
+        _checkLocationChange,
+      );
       LiveActivityService.claimPendingDeepLink();
       if (mounted) {
         AlarmService.sync(AppScope.of(context), ScheduleScope.of(context));
@@ -437,6 +445,7 @@ class _HomeScreenState extends State<HomeScreen>
     gNotifier?.onOpen = null;
     gNotifier?.onTaskChanged = null;
     _ticker?.cancel();
+    _locationRecheck?.cancel();
     _p.dispose();
     super.dispose();
   }
