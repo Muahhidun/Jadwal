@@ -1,6 +1,6 @@
 part of 'home.dart';
 
-// ── Прототип «Страницы» ──────────────────────────────────────────────────────
+// ── Единственный вид «Страницы» ──────────────────────────────────────────────
 // Нижний экран — вертикальные страницы: Кибла ↑ Таймер ↓ Сегодня ↓ Постоянство.
 //
 // «Сегодня» — два отдельных блока: времена намазов и дела. Их не смешиваем в
@@ -14,8 +14,7 @@ part of 'home.dart';
 // видно и при обычном быстром свайпе. Когда элемент встаёт на место, Taptic
 // Engine даёт короткий щелчок.
 //
-// Включается в «Оформлении» (нижний экран → страницы). Классический вид не
-// меняется.
+// С 23.10.2026 используется для новых и существующих установок.
 
 String _pagesHhmm(int minutes) {
   final m = minutes % 1440;
@@ -48,8 +47,8 @@ double _enterStart(int page) => page == 1 ? 0.5 : 0.35;
 /// Моменты (в долях входа страницы), когда элементы «встают на место».
 /// По ним же звучит Taptic Engine — вибрация совпадает с движением.
 const _todayBeats = [0.40, 0.46, 0.52, 0.58, 0.64, 0.70, 0.80, 0.86, 0.92];
-// Хадис, затем три щелчка, пока месяц собирается, и кнопки.
-const _consistencyBeats = [0.36, 0.55, 0.72, 0.88, 0.94];
+// На спокойной странице календаря — один отклик для карточки и один для кнопок.
+const _consistencyBeats = [0.46, 0.84];
 
 /// Один элемент страницы в хореографии перехода.
 ///
@@ -358,7 +357,12 @@ class _PageCaption extends StatelessWidget {
 
 /// Подсказка внизу страницы: что будет дальше. Нажимается.
 class _NextHint extends StatelessWidget {
-  const _NextHint({required this.label, required this.c, required this.onTap});
+  const _NextHint({
+    super.key,
+    required this.label,
+    required this.c,
+    required this.onTap,
+  });
 
   final String label;
   final JColors c;
@@ -459,7 +463,7 @@ class _TodayPage extends StatelessWidget {
           minute: w.start,
           end: w.end,
           readable: readable,
-          onTap: readable ? () => onReader(id) : () => app.markDone(id),
+          onTap: readable ? () => onReader(id) : () => app.toggleDone(id),
         ),
       );
     }
@@ -478,7 +482,7 @@ class _TodayPage extends StatelessWidget {
           minute: minute,
           end: minute + taskRailGraceMinutes,
           readable: false,
-          onTap: () => app.markDone(id),
+          onTap: () => app.toggleDone(id),
         ),
       );
     }
@@ -542,162 +546,185 @@ class _TodayPage extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _Beat(
-              enter: enter,
-              leave: leave,
-              at: 0.0,
-              from: const Offset(-18, 0),
-              child: _PageCaption(
-                kz ? 'Намаз уақыттары' : 'Время намазов',
-                c: c,
-              ),
-            ),
-            // За границей — честно: это местный расчёт, а не таблица ДУМК.
-            if (app.city.isLocalCalc)
-              _Beat(
-                enter: enter,
-                leave: leave,
-                at: 0.02,
-                from: const Offset(-18, 0),
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 4, bottom: 8),
-                  child: Text(
-                    kz
-                        ? '${app.city.displayName(app.lang)} · жергілікті есеп (Aladhan)'
-                        : '${app.city.displayName(app.lang)} · местный расчёт (Aladhan)',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: JType.ui(12, color: c.sub),
+            Column(
+              key: app.navigationGuide.target('prayer-times'),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _Beat(
+                  enter: enter,
+                  leave: leave,
+                  at: 0.0,
+                  from: const Offset(-18, 0),
+                  child: _PageCaption(
+                    kz ? 'Намаз уақыттары' : 'Время намазов',
+                    c: c,
                   ),
                 ),
-              ),
-            _Beat(
-              enter: enter,
-              leave: leave,
-              at: 0.04,
-              from: const Offset(0, 30),
-              leaveAt: 0.04,
-              child: _SurfaceCard(
-                palette: palette,
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                child: Column(
-                  children: [
-                    for (final (i, prayer) in Prayer.values.indexed)
-                      _Beat(
-                        enter: enter,
-                        leave: leave,
-                        at: _todayBeats[i] - 0.3,
-                        // Строки прилетают попеременно слева и справа и
-                        // сходятся в один столбец.
-                        from: Offset(i.isEven ? -34 : 34, 8),
-                        leaveAt: 0.012 * i,
-                        child: _PrayerRow(
-                          name: s.prayers[i],
-                          time: t.fmt(prayer),
-                          isSunrise: prayer == Prayer.sunrise,
-                          isNext: prayer == next,
-                          isPast:
-                              t.times[prayer]! * 60 <= nowSec && prayer != next,
-                          left: prayer == next
-                              ? (kz ? '$left кейін' : 'через $left')
-                              : null,
-                          dense: dense,
-                          c: c,
-                          onTap: () => _showQuickSettings(
-                            context,
-                            prayer.name,
-                            s.prayers[i],
-                            c,
-                          ),
-                        ),
+                // За границей — честно: это местный расчёт, а не таблица ДУМК.
+                if (app.city.isLocalCalc)
+                  _Beat(
+                    enter: enter,
+                    leave: leave,
+                    at: 0.02,
+                    from: const Offset(-18, 0),
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 4, bottom: 8),
+                      child: Text(
+                        kz
+                            ? '${app.city.displayName(app.lang)} · жергілікті есеп (Aladhan)'
+                            : '${app.city.displayName(app.lang)} · местный расчёт (Aladhan)',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: JType.ui(12, color: c.sub),
                       ),
-                  ],
-                ),
-              ),
-            ),
-            SizedBox(height: dense ? 14 : 22),
-            _Beat(
-              enter: enter,
-              leave: leave,
-              at: 0.34,
-              from: const Offset(-18, 0),
-              leaveAt: 0.06,
-              child: _PageCaption(kz ? 'Бүгінгі істер' : 'Дела сегодня', c: c),
-            ),
-            if (hero != null)
-              _Beat(
-                enter: enter,
-                leave: leave,
-                at: _todayBeats[6] - 0.32,
-                span: 0.32,
-                from: const Offset(0, 44),
-                leaveAt: 0.07,
-                child: _HeroDeed(
-                  deed: hero,
-                  state: _stateOf(hero),
-                  nowMin: nowMin,
-                  dense: dense,
-                  s: s,
-                  c: c,
-                  palette: palette,
-                ),
-              ),
-            if (hero != null && shown.isNotEmpty) const SizedBox(height: 10),
-            if (shown.isNotEmpty)
-              _Beat(
-                enter: enter,
-                leave: leave,
-                at: 0.5,
-                from: const Offset(0, 30),
-                leaveAt: 0.08,
-                child: _SurfaceCard(
-                  palette: palette,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 3,
+                    ),
                   ),
-                  child: Column(
-                    children: [
-                      for (final (i, deed) in shown.indexed)
-                        _Beat(
-                          enter: enter,
-                          leave: leave,
-                          at:
-                              _todayBeats[math.min(
-                                7 + i,
-                                _todayBeats.length - 1,
-                              )] -
-                              0.3,
-                          from: Offset(i.isEven ? 30 : -30, 8),
-                          leaveAt: 0.08 + 0.012 * i,
-                          child: _DeedRow(
-                            deed: deed,
-                            state: _stateOf(deed),
-                            s: s,
-                            c: c,
-                          ),
-                        ),
-                      if (hidden > 0)
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => RemindersScreen.open(context),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 9),
-                            child: Text(
-                              kz ? 'Тағы $hidden' : 'Ещё $hidden',
-                              textAlign: TextAlign.center,
-                              style: JType.ui(
-                                13,
-                                w: FontWeight.w600,
-                                color: c.sub,
+                _Beat(
+                  enter: enter,
+                  leave: leave,
+                  at: 0.04,
+                  from: const Offset(0, 30),
+                  leaveAt: 0.04,
+                  child: _SurfaceCard(
+                    palette: palette,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 5,
+                    ),
+                    child: Column(
+                      children: [
+                        for (final (i, prayer) in Prayer.values.indexed)
+                          _Beat(
+                            enter: enter,
+                            leave: leave,
+                            at: _todayBeats[i] - 0.3,
+                            // Строки прилетают попеременно слева и справа и
+                            // сходятся в один столбец.
+                            from: Offset(i.isEven ? -34 : 34, 8),
+                            leaveAt: 0.012 * i,
+                            child: _PrayerRow(
+                              name: s.prayers[i],
+                              time: t.fmt(prayer),
+                              isSunrise: prayer == Prayer.sunrise,
+                              isNext: prayer == next,
+                              isPast:
+                                  t.times[prayer]! * 60 <= nowSec &&
+                                  prayer != next,
+                              left: prayer == next
+                                  ? (kz ? '$left кейін' : 'через $left')
+                                  : null,
+                              dense: dense,
+                              c: c,
+                              onTap: () => _showQuickSettings(
+                                context,
+                                prayer.name,
+                                s.prayers[i],
+                                c,
                               ),
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              ],
+            ),
+            SizedBox(height: dense ? 14 : 22),
+            Column(
+              key: app.navigationGuide.target('today-deeds'),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _Beat(
+                  enter: enter,
+                  leave: leave,
+                  at: 0.34,
+                  from: const Offset(-18, 0),
+                  leaveAt: 0.06,
+                  child: _PageCaption(
+                    kz ? 'Бүгінгі істер' : 'Дела сегодня',
+                    c: c,
+                  ),
+                ),
+                if (hero != null)
+                  _Beat(
+                    enter: enter,
+                    leave: leave,
+                    at: _todayBeats[6] - 0.32,
+                    span: 0.32,
+                    from: const Offset(0, 44),
+                    leaveAt: 0.07,
+                    child: _HeroDeed(
+                      deed: hero,
+                      state: _stateOf(hero),
+                      nowMin: nowMin,
+                      dense: dense,
+                      s: s,
+                      c: c,
+                      palette: palette,
+                    ),
+                  ),
+                if (hero != null && shown.isNotEmpty)
+                  const SizedBox(height: 10),
+                if (shown.isNotEmpty)
+                  _Beat(
+                    enter: enter,
+                    leave: leave,
+                    at: 0.5,
+                    from: const Offset(0, 30),
+                    leaveAt: 0.08,
+                    child: _SurfaceCard(
+                      palette: palette,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 3,
+                      ),
+                      child: Column(
+                        children: [
+                          for (final (i, deed) in shown.indexed)
+                            _Beat(
+                              enter: enter,
+                              leave: leave,
+                              at:
+                                  _todayBeats[math.min(
+                                    7 + i,
+                                    _todayBeats.length - 1,
+                                  )] -
+                                  0.3,
+                              from: Offset(i.isEven ? 30 : -30, 8),
+                              leaveAt: 0.08 + 0.012 * i,
+                              child: _DeedRow(
+                                key: ValueKey('page-deed-${deed.id}'),
+                                deed: deed,
+                                state: _stateOf(deed),
+                                s: s,
+                                c: c,
+                              ),
+                            ),
+                          if (hidden > 0)
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => RemindersScreen.open(context),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 9,
+                                ),
+                                child: Text(
+                                  kz ? 'Тағы $hidden' : 'Ещё $hidden',
+                                  textAlign: TextAlign.center,
+                                  style: JType.ui(
+                                    13,
+                                    w: FontWeight.w600,
+                                    color: c.sub,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             // Своё напоминание — прямо отсюда. Центр напоминаний открывается
             // кнопкой «Напоминания» на странице постоянства: не дублируем.
             _Beat(
@@ -710,6 +737,7 @@ class _TodayPage extends StatelessWidget {
                 child: Center(
                   child: _PagesButton(
                     icon: CupertinoIcons.plus,
+                    key: app.navigationGuide.target('page-add'),
                     label: kz ? 'Еске салу қосу' : 'Добавить напоминание',
                     c: c,
                     compact: true,
@@ -739,6 +767,7 @@ class _TodayPage extends StatelessWidget {
               at: 0.7,
               from: const Offset(0, 10),
               child: _NextHint(
+                key: app.navigationGuide.target('calendar-link'),
                 label: _sentenceCase(s.notebookTitle),
                 c: c,
                 onTap: onNext,
@@ -777,6 +806,21 @@ class _PrayerRow extends StatelessWidget {
     final color = isNext ? c.gold : (isPast ? c.sub : c.ink);
     final size = 16.0;
     final weight = isNext ? FontWeight.w700 : FontWeight.w500;
+    final remaining = left == null
+        ? null
+        : Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Text(
+              left!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: JType.ui(
+                12,
+                w: FontWeight.w600,
+                color: c.gold.withValues(alpha: 0.9),
+              ),
+            ),
+          );
     return _ScalePressed(
       onTap: onTap,
       child: Container(
@@ -796,18 +840,11 @@ class _PrayerRow extends StatelessWidget {
                 style: JType.ui(size, w: weight, color: color),
               ),
             ),
-            if (left != null)
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: Text(
-                  left!,
-                  style: JType.ui(
-                    12,
-                    w: FontWeight.w600,
-                    color: c.gold.withValues(alpha: 0.9),
-                  ),
-                ),
-              ),
+            if (remaining != null)
+              if (MediaQuery.textScalerOf(context).scale(12) > 16)
+                Flexible(child: remaining)
+              else
+                remaining,
             Text(
               time,
               style: JType.ui(
@@ -965,6 +1002,7 @@ class _HeroDeed extends StatelessWidget {
 
 class _DeedRow extends StatelessWidget {
   const _DeedRow({
+    super.key,
     required this.deed,
     required this.state,
     required this.s,
@@ -989,17 +1027,15 @@ class _DeedRow extends StatelessWidget {
         ? '${_pagesHhmm(deed.minute)}–${_pagesHhmm(deed.end)}'
         : (kz ? '${_pagesHhmm(deed.end)} дейін' : 'до ${_pagesHhmm(deed.end)}');
     return Semantics(
-      button: !done,
+      button: true,
       checked: done,
       label: deed.label,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: done
-            ? null
-            : () {
-                HapticFeedback.selectionClick();
-                deed.onTap();
-              },
+        onTap: () {
+          HapticFeedback.selectionClick();
+          deed.onTap();
+        },
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 44),
           child: Padding(
@@ -1076,43 +1112,50 @@ class _ConsistencyPage extends StatelessWidget {
         // Хадис расположен посередине свободного пространства над
         // календарём; текст и источник остаются утверждёнными владельцем.
         Expanded(
-          child: Center(
-            child: _Beat(
-              enter: enter,
-              leave: leave,
-              at: 0.0,
-              span: 0.4,
-              from: const Offset(0, -20),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      s.posterQuote,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontFamily: 'Literata',
-                        fontStyle: FontStyle.italic,
-                        fontSize: 17,
-                        height: 1.45,
-                        color: c.ink,
+          child: LayoutBuilder(
+            builder: (context, box) => Center(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: SizedBox(
+                  width: box.maxWidth,
+                  child: _Beat(
+                    enter: enter,
+                    leave: leave,
+                    at: 0.0,
+                    span: 0.4,
+                    from: const Offset(0, -20),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            s.posterQuote,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: 'Literata',
+                              fontStyle: FontStyle.italic,
+                              fontSize: 17,
+                              height: 1.45,
+                              color: c.ink,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            s.posterSrc,
+                            textAlign: TextAlign.center,
+                            style: JType.ui(11.5, color: c.sub),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      s.posterSrc,
-                      textAlign: TextAlign.center,
-                      style: JType.ui(11.5, color: c.sub),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
-        // Сначала появляется пустая карточка, затем в неё со всех сторон
-        // слетаются числа месяца и встают на места к концу свайпа.
+        // Карточка и вся сетка месяца мягко проявляются на своих местах.
         _Beat(
           enter: enter,
           leave: leave,
@@ -1120,6 +1163,7 @@ class _ConsistencyPage extends StatelessWidget {
           from: const Offset(0, 28),
           leaveAt: 0.05,
           child: _SurfaceCard(
+            key: app.navigationGuide.target('calendar'),
             palette: palette,
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
             child: Column(
@@ -1176,6 +1220,7 @@ class _ConsistencyPage extends StatelessWidget {
               Expanded(
                 child: _PagesButton(
                   icon: CupertinoIcons.gear,
+                  key: app.navigationGuide.target('page-settings'),
                   label: kz ? 'Баптаулар' : 'Настройки',
                   c: c,
                   onTap: () => _showPagesSettings(context),
@@ -1192,6 +1237,7 @@ class _ConsistencyPage extends StatelessWidget {
 
 class _PagesButton extends StatelessWidget {
   const _PagesButton({
+    super.key,
     required this.icon,
     required this.label,
     required this.c,
@@ -1249,12 +1295,20 @@ class _PagesButton extends StatelessWidget {
 }
 
 /// Единое место настроек вместо разбросанных тапов по городу и дате.
-void _showPagesSettings(BuildContext context) {
-  DauamSettingsSheet.open<void>(
+Future<void> _showPagesSettings(BuildContext context) async {
+  final guide = AppScope.of(context).navigationGuide;
+  if (guide.step == GuideStep.appearance) {
+    guide.go(GuideStep.appearanceSettings);
+  }
+  await DauamSettingsSheet.open<void>(
     context,
-    heightFactor: .62,
+    heightFactor: guide.step == GuideStep.appearanceSettings ? .88 : .62,
     builder: (_) => _PagesSettingsPage(outer: context),
   );
+  // Closing without opening Appearance leaves a clear, retryable step.
+  if (guide.step == GuideStep.appearanceSettings) {
+    guide.go(GuideStep.appearance);
+  }
 }
 
 class _PagesSettingsPage extends StatelessWidget {
@@ -1274,58 +1328,97 @@ class _PagesSettingsPage extends StatelessWidget {
       open(outer);
     }
 
-    return DauamSettingsPage(
-      root: true,
-      title: kz ? 'Баптаулар' : 'Настройки',
-      child: ListenableBuilder(
-        listenable: app,
-        builder: (context, _) => ListView(
-          padding: const EdgeInsets.only(top: 8, bottom: 24),
-          children: [
-            DauamSection(
+    Future<void> openAppearance() async {
+      final guide = app.navigationGuide;
+      final learning = guide.step == GuideStep.appearanceSettings;
+      if (learning) guide.go(GuideStep.appearancePicker);
+      Navigator.of(context, rootNavigator: true).pop();
+      await AppearancePicker.open(outer);
+      if (outer.mounted &&
+          learning &&
+          guide.step == GuideStep.appearancePicker) {
+        guide.go(GuideStep.returnDay);
+      }
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        DauamSettingsPage(
+          root: true,
+          title: kz ? 'Баптаулар' : 'Настройки',
+          child: ListenableBuilder(
+            listenable: app,
+            builder: (context, _) => ListView(
+              padding: const EdgeInsets.only(top: 8, bottom: 24),
               children: [
-                DauamSettingsRow(
-                  icon: CupertinoIcons.location,
-                  title: kz ? 'Қала' : 'Город',
-                  value: app.city.displayName(app.lang),
-                  onTap: () => openAfterClose(CityPicker.open),
+                DauamSection(
+                  children: [
+                    DauamSettingsRow(
+                      icon: CupertinoIcons.location,
+                      title: kz ? 'Қала' : 'Город',
+                      value: app.city.displayName(app.lang),
+                      onTap: () => openAfterClose(CityPicker.open),
+                    ),
+                    DauamSettingsRow(
+                      key: app.navigationGuide.target('settings-appearance'),
+                      icon: CupertinoIcons.paintbrush,
+                      title: kz ? 'Көрініс' : 'Оформление',
+                      value: homeSceneTitle(app.homeScene, kz),
+                      onTap: openAppearance,
+                    ),
+                    DauamSettingsRow(
+                      icon: CupertinoIcons.globe,
+                      title: kz ? 'Тіл' : 'Язык',
+                      value: kz ? 'Қазақша' : 'Русский',
+                      onTap: () => openAfterClose(LanguagePicker.open),
+                    ),
+                    DauamSettingsRow(
+                      icon: CupertinoIcons.speaker_2,
+                      title: kz ? 'Дыбыстар' : 'Звуки',
+                      value: notifSound(app.prayerSound).title(app.lang),
+                      onTap: () => Navigator.of(
+                        context,
+                      ).push(dauamSettingsRoute(const SoundsScreen())),
+                    ),
+                  ],
                 ),
-                DauamSettingsRow(
-                  icon: CupertinoIcons.paintbrush,
-                  title: kz ? 'Көрініс' : 'Оформление',
-                  value: homeSceneTitle(app.homeScene, kz),
-                  onTap: () => openAfterClose(AppearancePicker.open),
-                ),
-                DauamSettingsRow(
-                  icon: CupertinoIcons.globe,
-                  title: kz ? 'Тіл' : 'Язык',
-                  value: kz ? 'Қазақша' : 'Русский',
-                  onTap: () => openAfterClose(LanguagePicker.open),
-                ),
-                DauamSettingsRow(
-                  icon: CupertinoIcons.speaker_2,
-                  title: kz ? 'Дыбыстар' : 'Звуки',
-                  value: notifSound(app.prayerSound).title(app.lang),
-                  onTap: () => Navigator.of(
-                    context,
-                  ).push(dauamSettingsRoute(const SoundsScreen())),
+                DauamSection(
+                  children: [
+                    DauamSettingsRow(
+                      icon: CupertinoIcons.question_circle,
+                      title: kz
+                          ? 'Қосымша мүмкіндіктері'
+                          : 'Возможности приложения',
+                      onTap: () => openAfterClose(FeaturesGuideScreen.open),
+                    ),
+                    DauamSettingsRow(
+                      icon: CupertinoIcons.info,
+                      title: kz ? 'Қосымша туралы' : 'О приложении',
+                      onTap: () => Navigator.of(
+                        context,
+                      ).push(dauamSettingsRoute(const AboutScreen())),
+                    ),
+                  ],
                 ),
               ],
             ),
-            DauamSection(
-              children: [
-                DauamSettingsRow(
-                  icon: CupertinoIcons.info,
-                  title: kz ? 'Қосымша туралы' : 'О приложении',
-                  onTap: () => Navigator.of(
-                    context,
-                  ).push(dauamSettingsRoute(const AboutScreen())),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
-      ),
+        if (app.navigationGuide.step == GuideStep.appearanceSettings)
+          Positioned.fill(
+            child: GuidedSpotlight(
+              compact: true,
+              target: app.navigationGuide.target('settings-appearance'),
+              title: kz ? 'Көріністі ашыңыз' : 'Откройте оформление',
+              message: kz
+                  ? 'Осы жерден басты экранның көрінісін таңдайсыз.'
+                  : 'Здесь можно выбрать вид главного экрана.',
+              action: kz ? 'Ашу' : 'Открыть',
+              onAction: openAppearance,
+            ),
+          ),
+      ],
     );
   }
 }

@@ -11,9 +11,11 @@ import '../prayer/city.dart';
 import '../theme/tokens.dart';
 import '../theme/adaptive_layout.dart';
 import '../data/app_state.dart';
+import '../data/navigation_guide.dart';
 import '../i18n/strings.dart';
 import '../services/compass_capability_service.dart';
 import 'swipe_hint.dart';
+import 'guided_spotlight.dart';
 
 enum _CompassAvailability { checking, available, unavailable, noData, unknown }
 
@@ -28,6 +30,7 @@ class QiblaView extends StatefulWidget {
   final GestureDragEndCallback? onVerticalDragEnd;
   final GestureDragCancelCallback? onVerticalDragCancel;
   final Future<bool?> Function()? compassAvailabilityProbe;
+  final VoidCallback? onGuideDone;
 
   /// Насколько экран проявился при свайпе (0…1) — для хореографии в режиме
   /// «Страницы»: элементы появляются по очереди, а не всем экраном сразу.
@@ -44,6 +47,7 @@ class QiblaView extends StatefulWidget {
     this.onVerticalDragEnd,
     this.onVerticalDragCancel,
     this.compassAvailabilityProbe,
+    this.onGuideDone,
     this.reveal = 1.0,
   });
 
@@ -208,6 +212,21 @@ class _QiblaViewState extends State<QiblaView>
     _compassDataTimer?.cancel();
     _hapticStage = 0;
     setState(() => _selectedTab = 1);
+    final guide = AppScope.of(context).navigationGuide;
+    if (guide.step == GuideStep.finish) {
+      guide.go(GuideStep.qiblaMap);
+    }
+  }
+
+  void _returnHome() {
+    final app = AppScope.of(context);
+    if (const {
+      GuideStep.finish,
+      GuideStep.qiblaMap,
+    }.contains(app.navigationGuide.step)) {
+      app.closeNavigationGuide();
+    }
+    widget.onGuideDone?.call();
   }
 
   void _showCompassUnavailableMessage() {
@@ -341,6 +360,9 @@ class _QiblaViewState extends State<QiblaView>
                       ),
                     ),
                     Semantics(
+                      key: AppScope.of(
+                        context,
+                      ).navigationGuide.target('qibla-mode'),
                       button: true,
                       label: _selectedTab == 0
                           ? (kz ? 'Картаны ашу' : 'Открыть карту')
@@ -462,6 +484,9 @@ class _QiblaViewState extends State<QiblaView>
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: _selectMap,
+                        key: AppScope.of(
+                          context,
+                        ).navigationGuide.target('qibla-mode'),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           decoration: BoxDecoration(
@@ -526,6 +551,28 @@ class _QiblaViewState extends State<QiblaView>
                   ),
           ),
           if (widget.embedded &&
+              _selectedTab == 1 &&
+              widget.onGuideDone != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+              child: SizedBox(
+                key: AppScope.of(context).navigationGuide.target('qibla-home'),
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('qibla-home-button'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: const Color(0xFF203A53),
+                    minimumSize: const Size(0, 48),
+                    side: const BorderSide(color: Colors.white54),
+                  ),
+                  onPressed: _returnHome,
+                  icon: const Icon(Icons.home_outlined),
+                  label: Text(kz ? 'Басты экранға' : 'На главный экран'),
+                ),
+              ),
+            ),
+          if (widget.embedded &&
               _selectedTab == 0 &&
               widget.onVerticalDragStart != null)
             IgnorePointer(
@@ -558,7 +605,18 @@ class _QiblaViewState extends State<QiblaView>
     if (widget.embedded) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        body: SafeArea(child: content),
+        body: Stack(
+          children: [
+            SafeArea(child: content),
+            if (!AppScope.of(context).navigationGuide.moving &&
+                widget.reveal >= .999 &&
+                const {
+                  GuideStep.finish,
+                  GuideStep.qiblaMap,
+                }.contains(AppScope.of(context).navigationGuide.step))
+              Positioned.fill(child: _learning()),
+          ],
+        ),
       );
     }
     if (widget.showAppBar) {
@@ -568,6 +626,34 @@ class _QiblaViewState extends State<QiblaView>
       );
     }
     return content;
+  }
+
+  Widget _learning() {
+    final app = AppScope.of(context);
+    final map = _selectedTab == 1;
+    final kz = app.lang == 'kz';
+    return GuidedSpotlight(
+      key: const ValueKey('qibla-map-button-guide'),
+      compact: true,
+      allowBackgroundInteraction: map,
+      target: map && widget.onGuideDone != null
+          ? app.navigationGuide.target('qibla-home')
+          : app.navigationGuide.target('qibla-mode'),
+      title: kz ? 'Құбыла картасы' : 'Карта Киблы',
+      message: map
+          ? (kz
+                ? 'Картадағы сызық Қағбаға бағытты көрсетеді. Төмендегі «Басты экранға» батырмасы сізді қайтарады.'
+                : 'Линия показывает направление к Каабе. Кнопка «На главный экран» под картой вернёт вас назад.')
+          : (kz
+                ? 'Компас жұмыс істемесе немесе дәл болмаса, осы батырмамен картаны ашыңыз.'
+                : 'Если компас не работает или неточен, откройте карту этой кнопкой.'),
+      action: map
+          ? (kz ? 'Басты экранға' : 'На главный экран')
+          : (kz ? 'Дайын' : 'Готово'),
+      onAction: map ? _returnHome : app.closeNavigationGuide,
+      secondary: map ? null : (kz ? 'Картаны ашу' : 'Открыть карту'),
+      onSecondary: map ? null : _selectMap,
+    );
   }
 
   Widget _buildReturnSwipeRegion({Key? key, required Widget child}) {
@@ -637,6 +723,8 @@ class _QiblaViewState extends State<QiblaView>
       at: 0.2,
       child: Center(
         child: Column(
+          key: AppScope.of(context).navigationGuide.target('qibla-visual'),
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Icon(
@@ -856,6 +944,9 @@ class _QiblaViewState extends State<QiblaView>
               scaleFrom: 0.8,
               child: Center(
                 child: Stack(
+                  key: AppScope.of(
+                    context,
+                  ).navigationGuide.target('qibla-visual'),
                   alignment: Alignment.center,
                   children: [
                     // Внешнее кольцо с динамической подсветкой

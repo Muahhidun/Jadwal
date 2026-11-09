@@ -3,6 +3,10 @@ import '../data/adhkar.dart';
 
 /// Сервис управления голосовым чтецом арабских текстов зикров (Siri / Hands-Free).
 class ZikrSpeechService {
+  /// Синтезированное чтение временно отключено по решению владельца:
+  /// произношение требует проверки. Не включать до утверждения озвучки.
+  static const enabled = false;
+
   static const MethodChannel _channel = MethodChannel('kz.dauam/speech');
 
   static void Function(int index, int total)? _onZikrStarted;
@@ -12,6 +16,12 @@ class ZikrSpeechService {
     void Function(int index, int total)? onZikrStarted,
     void Function()? onReadingCompleted,
   }) {
+    if (!enabled) {
+      _onZikrStarted = null;
+      _onReadingCompleted = null;
+      _channel.setMethodCallHandler(null);
+      return;
+    }
     _onZikrStarted = onZikrStarted;
     _onReadingCompleted = onReadingCompleted;
 
@@ -35,6 +45,7 @@ class ZikrSpeechService {
     ZikrCollection collection, {
     double pauseSeconds = 2.5,
   }) async {
+    if (!enabled) return false;
     final arabicTexts = collection.items.map((e) => e.ar).toList();
     try {
       final res = await _channel.invokeMethod<bool>('speakZikrs', {
@@ -55,6 +66,7 @@ class ZikrSpeechService {
     required String title,
     double pauseSeconds = 0,
   }) async {
+    if (!enabled) return false;
     try {
       final res = await _channel.invokeMethod<bool>('speakZikrs', {
         'items': [zikr.ar],
@@ -68,12 +80,14 @@ class ZikrSpeechService {
   }
 
   static Future<void> pause() async {
+    if (!enabled) return;
     try {
       await _channel.invokeMethod('pause');
     } catch (_) {}
   }
 
   static Future<void> resume() async {
+    if (!enabled) return;
     try {
       await _channel.invokeMethod('resume');
     } catch (_) {}

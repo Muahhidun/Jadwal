@@ -66,9 +66,13 @@ class PlaceNameApi {
     String lang,
   ) async {
     try {
+      // Сервис вызывается и из фоновой проверки с исходным GPS. Округляем
+      // здесь, до сетевого запроса, а не полагаемся на каждого вызывающего.
+      final approximateLat = lat.toStringAsFixed(2);
+      final approximateLng = lng.toStringAsFixed(2);
       final url = Uri.parse(
         'https://nominatim.openstreetmap.org/reverse'
-        '?lat=$lat&lon=$lng&format=jsonv2&zoom=10'
+        '?lat=$approximateLat&lon=$approximateLng&format=jsonv2&zoom=10'
         '&accept-language=${lang == 'kz' ? 'kk,ru' : 'ru'}',
       );
       final resp = await http

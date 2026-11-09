@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/app_state.dart';
+import '../data/navigation_guide.dart';
 import '../notifications/notifications.dart';
 import '../prayer/schedule_service.dart';
 import '../services/alarm_service.dart';
 import '../theme/tokens.dart';
 import 'kahf_reader.dart';
+import 'contextual_hint.dart';
 import 'settings_shell.dart';
 
 const _prayerIds = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
@@ -110,31 +112,50 @@ class RemindersScreen extends StatelessWidget {
     BuildContext context, {
     String? initialConfigId,
     bool isCustom = false,
-  }) => DauamSettingsSheet.open<void>(
-    context,
-    heightFactor: initialConfigId == null ? .93 : .72,
-    builder: (sheetContext) {
-      if (initialConfigId != null) {
-        return ReminderDetailScreen(
-          configId: initialConfigId,
-          isCustom: isCustom,
-          root: true,
-        );
-      }
-      final app = AppScope.of(sheetContext);
-      return app.remindersGuideSeen
-          ? const RemindersScreen()
-          : const ReminderGuideScreen(root: true);
-    },
-  );
+  }) async {
+    final guide = AppScope.of(context).navigationGuide;
+    await DauamSettingsSheet.open<void>(
+      context,
+      heightFactor: initialConfigId == null ? .93 : .72,
+      builder: (sheetContext) {
+        if (initialConfigId != null) {
+          return ReminderDetailScreen(
+            configId: initialConfigId,
+            isCustom: isCustom,
+            root: true,
+          );
+        }
+        return const RemindersScreen();
+      },
+    );
+    if (context.mounted && guide.step == GuideStep.remindersAdd) {
+      guide.showCalendar();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final kz = app.lang == 'kz';
+    Future<void> openEditor() async {
+      if (app.navigationGuide.step == GuideStep.remindersAdd) {
+        app.navigationGuide.go(GuideStep.prayer);
+      }
+      await Navigator.of(
+        context,
+      ).push(dauamSettingsRoute(const ReminderEditorScreen()));
+      if (!context.mounted) return;
+      if (app.navigationGuide.inForm) {
+        app.navigationGuide.editorClosed();
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+
     return DauamSettingsPage(
       root: true,
       title: kz ? 'Еске салулар' : 'Напоминания',
+      learningEditor: false,
+      learningAction: openEditor,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -149,11 +170,20 @@ class RemindersScreen extends StatelessWidget {
       ),
       bottom: SizedBox(
         width: double.infinity,
-        child: DauamPrimaryButton(
-          label: kz ? 'Еске салу қосу' : 'Добавить напоминание',
-          onTap: () => Navigator.of(
-            context,
-          ).push(dauamSettingsRoute(const ReminderEditorScreen())),
+        child: ContextualHint(
+          id: 'reminder-add',
+          enabled: app.remindersGuideSeen,
+          title: kz ? 'Өз ісіңізді қосыңыз' : 'Добавьте своё дело',
+          message: kz
+              ? 'Еске салуды намаз уақытына байланыстырыңыз немесе нақты сағатты таңдаңыз. Мысалы, намаздан 10 минут бұрын.'
+              : 'Привяжите напоминание ко времени молитвы или выберите точное время. Например, за 10 минут до намаза.',
+          child: DauamPrimaryButton(
+            label: kz ? 'Еске салу қосу' : 'Добавить напоминание',
+            key: app.navigationGuide.active
+                ? app.navigationGuide.target('reminders-add')
+                : null,
+            onTap: openEditor,
+          ),
         ),
       ),
       child: ListenableBuilder(
@@ -1017,11 +1047,15 @@ class ReminderEditorScreen extends StatefulWidget {
   final bool root;
 
   /// Лист «Новое напоминание» напрямую, без центра напоминаний.
-  static Future<void> open(BuildContext context) =>
-      DauamSettingsSheet.open<void>(
-        context,
-        builder: (_) => const ReminderEditorScreen(root: true),
-      );
+  static Future<void> open(BuildContext context) async {
+    final guide = AppScope.of(context).navigationGuide;
+    guide.pauseForEditor();
+    await DauamSettingsSheet.open<void>(
+      context,
+      builder: (_) => const ReminderEditorScreen(root: true),
+    );
+    guide.editorClosed();
+  }
 
   @override
   State<ReminderEditorScreen> createState() => _ReminderEditorScreenState();
@@ -1029,7 +1063,32 @@ class ReminderEditorScreen extends StatefulWidget {
 
 class _ReminderEditorScreenState extends State<ReminderEditorScreen> {
   final _title = TextEditingController();
+  bool _learningScheduled = false;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_learningScheduled) return;
+    _learningScheduled = true;
+    final app = AppScope.of(context);
+    if (!app.reminderEditorGuideSeen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        app.beginReminderGuide();
+      });
+    }
+  }
+
   String _anchor = 'prayer';
+  void _chooseAnchor(String anchor) {
+    setState(() => _anchor = anchor);
+    final guide = AppScope.of(context).navigationGuide;
+    if (guide.step == GuideStep.prayer && anchor == 'prayer') {
+      guide.go(GuideStep.clock);
+    } else if (guide.step == GuideStep.clock && anchor == 'clock') {
+      guide.go(GuideStep.formDone);
+    }
+  }
+
   int _prayer = 0;
   int _offset = -15;
   int _fixedHour = 9;
@@ -1135,109 +1194,132 @@ class _ReminderEditorScreenState extends State<ReminderEditorScreen> {
     final c = dauamSettingsPalette(context).colors;
     final accent = dauamSettingsAccent(context);
     final prayers = _prayers(kz);
-    return DauamSettingsPage(
-      root: widget.root,
-      title: kz ? 'Жаңа еске салу' : 'Новое напоминание',
-      trailing: DauamRoundButton(
-        icon: CupertinoIcons.question,
-        semanticLabel: kz ? 'Түсіндірме' : 'Подсказка',
-        onTap: () => _showReminderHelp(context, _ReminderHelpTopic.custom),
-      ),
-      bottom: DauamPrimaryButton(
-        label: kz ? 'Еске салуды қосу' : 'Добавить напоминание',
-        enabled: _title.text.trim().isNotEmpty,
-        onTap: _add,
-      ),
-      child: ListView(
-        padding: const EdgeInsets.only(top: 8, bottom: 24),
-        children: [
-          DauamSection(
-            label: kz ? 'АТАУЫ' : 'НАЗВАНИЕ',
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 4,
-                ),
-                child: TextField(
-                  controller: _title,
-                  autofocus: true,
-                  onChanged: (_) => setState(() {}),
-                  cursorColor: accent,
-                  style: JType.ui(16, color: c.ink),
-                  decoration: InputDecoration(
-                    hintText: kz ? 'Мысалы: Дұға' : 'Например: Дуа',
-                    hintStyle: JType.ui(15, color: c.faint),
-                    border: InputBorder.none,
+    return PopScope<void>(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) app.navigationGuide.editorClosed();
+      },
+      child: DauamSettingsPage(
+        root: widget.root,
+        title: kz ? 'Жаңа еске салу' : 'Новое напоминание',
+        learningEditor: true,
+        learningAction: () => _chooseAnchor(
+          app.navigationGuide.step == GuideStep.prayer ? 'prayer' : 'clock',
+        ),
+        trailing: DauamRoundButton(
+          icon: CupertinoIcons.question,
+          semanticLabel: kz ? 'Түсіндірме' : 'Подсказка',
+          onTap: () {
+            FocusScope.of(context).unfocus();
+            app.beginReminderGuide();
+          },
+        ),
+        bottom: DauamPrimaryButton(
+          label: kz ? 'Еске салуды қосу' : 'Добавить напоминание',
+          enabled: _title.text.trim().isNotEmpty,
+          onTap: _add,
+        ),
+        child: ListView(
+          padding: const EdgeInsets.only(top: 8, bottom: 24),
+          children: [
+            DauamSection(
+              label: kz ? 'АТАУЫ' : 'НАЗВАНИЕ',
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  child: TextField(
+                    controller: _title,
+                    autofocus:
+                        app.reminderEditorGuideSeen &&
+                        !app.navigationGuide.inForm,
+                    onChanged: (_) => setState(() {}),
+                    cursorColor: accent,
+                    style: JType.ui(16, color: c.ink),
+                    decoration: InputDecoration(
+                      hintText: kz ? 'Мысалы: Дұға' : 'Например: Дуа',
+                      hintStyle: JType.ui(15, color: c.faint),
+                      border: InputBorder.none,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          DauamSection(
-            label: kz ? 'НЕГІЗІ' : 'ОСНОВА НАПОМИНАНИЯ',
-            children: [
-              DauamChoiceRow(
-                title: kz ? 'Намаз уақытына байлау' : 'От времени намаза',
-                subtitle: kz
-                    ? 'Қала мен маусым ауысқанда бірге өзгереді'
-                    : 'Базовый режим Dauam — меняется вместе с городом и сезоном',
-                selected: _anchor == 'prayer',
-                onTap: () => setState(() => _anchor = 'prayer'),
-              ),
-              DauamChoiceRow(
-                title: kz ? 'Белгіленген уақытта' : 'В указанное время',
-                subtitle: kz
-                    ? 'Намаз уақытына байланбайды'
-                    : 'Обычное напоминание, не связанное с намазом',
-                selected: _anchor == 'clock',
-                onTap: () => setState(() => _anchor = 'clock'),
-              ),
-            ],
-          ),
-          if (_anchor == 'clock') const _FixedTimeWarning(),
-          DauamSection(
-            label: kz ? 'КЕСТЕ' : 'РАСПИСАНИЕ',
-            children: [
-              if (_anchor == 'prayer') ...[
-                DauamSettingsRow(
-                  title: kz ? 'Намазға байлау' : 'Привязка к событию',
-                  value: prayers[_prayer],
-                  onTap: _selectPrayer,
+              ],
+            ),
+            DauamSection(
+              label: kz ? 'НЕГІЗІ' : 'ОСНОВА НАПОМИНАНИЯ',
+              children: [
+                DauamChoiceRow(
+                  title: kz ? 'Намаз уақытына байлау' : 'От времени намаза',
+                  key: app.navigationGuide.inForm
+                      ? app.navigationGuide.target('form-prayer')
+                      : null,
+                  subtitle: kz
+                      ? 'Қала мен маусым ауысқанда бірге өзгереді'
+                      : 'Базовый режим Dauam — меняется вместе с городом и сезоном',
+                  selected: _anchor == 'prayer',
+                  onTap: () => _chooseAnchor('prayer'),
                 ),
-                DauamSettingsRow(
-                  title: kz ? 'Қашан еске салу' : 'Когда напомнить',
-                  value: _offsetLabel(kz, _offset),
-                  onTap: _selectOffset,
+                DauamChoiceRow(
+                  title: kz ? 'Белгіленген уақытта' : 'В указанное время',
+                  key: app.navigationGuide.inForm
+                      ? app.navigationGuide.target('form-clock')
+                      : null,
+                  subtitle: kz
+                      ? 'Намаз уақытына байланбайды'
+                      : 'Обычное напоминание, не связанное с намазом',
+                  selected: _anchor == 'clock',
+                  onTap: () => _chooseAnchor('clock'),
                 ),
-              ] else
+              ],
+            ),
+            if (_anchor == 'clock') const _FixedTimeWarning(),
+            DauamSection(
+              label: kz ? 'КЕСТЕ' : 'РАСПИСАНИЕ',
+              key: app.navigationGuide.inForm
+                  ? app.navigationGuide.target('form-schedule')
+                  : null,
+              children: [
+                if (_anchor == 'prayer') ...[
+                  DauamSettingsRow(
+                    title: kz ? 'Намазға байлау' : 'Привязка к событию',
+                    value: prayers[_prayer],
+                    onTap: _selectPrayer,
+                  ),
+                  DauamSettingsRow(
+                    title: kz ? 'Қашан еске салу' : 'Когда напомнить',
+                    value: _offsetLabel(kz, _offset),
+                    onTap: _selectOffset,
+                  ),
+                ] else
+                  DauamSettingsRow(
+                    title: kz ? 'Уақыт' : 'Время',
+                    value: _clockLabel(_fixedHour, _fixedMinute),
+                    onTap: _selectClock,
+                  ),
                 DauamSettingsRow(
-                  title: kz ? 'Уақыт' : 'Время',
-                  value: _clockLabel(_fixedHour, _fixedMinute),
-                  onTap: _selectClock,
+                  title: kz ? 'Қайталау' : 'Повторение',
+                  value: _repeatLabel(kz, _repeat),
+                  onTap: _selectRepeat,
                 ),
-              DauamSettingsRow(
-                title: kz ? 'Қайталау' : 'Повторение',
-                value: _repeatLabel(kz, _repeat),
-                onTap: _selectRepeat,
-              ),
-              if (_repeat == 'weekly')
-                DauamSettingsRow(
-                  title: kz ? 'Апта күндері' : 'Дни недели',
-                  value: _weekdaysLabel(kz, _weekdays),
-                  onTap: _selectWeekdays,
-                ),
-              if (const {'once', 'monthly', 'yearly'}.contains(_repeat))
-                DauamSettingsRow(
-                  title: _repeat == 'monthly'
-                      ? (kz ? 'Ай күні' : 'День месяца')
-                      : (kz ? 'Күні' : 'Дата'),
-                  value: _scheduleDateLabel(kz, _scheduleDate, _repeat),
-                  onTap: _selectScheduleDate,
-                ),
-            ],
-          ),
-        ],
+                if (_repeat == 'weekly')
+                  DauamSettingsRow(
+                    title: kz ? 'Апта күндері' : 'Дни недели',
+                    value: _weekdaysLabel(kz, _weekdays),
+                    onTap: _selectWeekdays,
+                  ),
+                if (const {'once', 'monthly', 'yearly'}.contains(_repeat))
+                  DauamSettingsRow(
+                    title: _repeat == 'monthly'
+                        ? (kz ? 'Ай күні' : 'День месяца')
+                        : (kz ? 'Күні' : 'Дата'),
+                    value: _scheduleDateLabel(kz, _scheduleDate, _repeat),
+                    onTap: _selectScheduleDate,
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

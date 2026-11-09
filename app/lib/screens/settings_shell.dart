@@ -10,6 +10,7 @@ import '../prayer/schedule_service.dart';
 import '../theme/ornament.dart';
 import '../theme/tokens.dart';
 import 'scene_background.dart';
+import 'guided_spotlight.dart';
 
 DaySurfacePalette dauamSettingsPalette(BuildContext context) {
   final scoped = context
@@ -187,6 +188,8 @@ class DauamSettingsPage extends StatelessWidget {
     this.root = false,
     this.trailing,
     this.bottom,
+    this.learningEditor,
+    this.learningAction,
   });
 
   final String title;
@@ -194,6 +197,8 @@ class DauamSettingsPage extends StatelessWidget {
   final bool root;
   final Widget? trailing;
   final Widget? bottom;
+  final bool? learningEditor;
+  final VoidCallback? learningAction;
 
   @override
   Widget build(BuildContext context) {
@@ -206,67 +211,86 @@ class DauamSettingsPage extends StatelessWidget {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         resizeToAvoidBottomInset: true,
-        body: SafeArea(
-          top: false,
-          child: Column(
-            children: [
-              SizedBox(
-                height: 88,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 25, 14, 7),
-                  child: Row(
-                    children: [
-                      DauamRoundButton(
-                        icon: root
-                            ? CupertinoIcons.xmark
-                            : CupertinoIcons.chevron_back,
-                        semanticLabel: root ? 'Закрыть' : 'Назад',
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          if (root) {
-                            Navigator.of(context, rootNavigator: true).pop();
-                          } else {
-                            Navigator.of(context).pop();
-                          }
-                        },
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: JType.ui(
-                            23,
-                            w: FontWeight.w700,
-                            color: c.ink,
-                            ls: -.35,
+        body: Stack(
+          children: [
+            SafeArea(
+              top: false,
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: 88,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 25, 14, 7),
+                      child: Row(
+                        children: [
+                          DauamRoundButton(
+                            icon: root
+                                ? CupertinoIcons.xmark
+                                : CupertinoIcons.chevron_back,
+                            semanticLabel: root ? 'Закрыть' : 'Назад',
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              if (root) {
+                                Navigator.of(
+                                  context,
+                                  rootNavigator: true,
+                                ).pop();
+                              } else {
+                                Navigator.of(context).pop();
+                              }
+                            },
                           ),
-                        ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: JType.ui(
+                                23,
+                                w: FontWeight.w700,
+                                color: c.ink,
+                                ls: -.35,
+                              ),
+                            ),
+                          ),
+                          if (trailing != null) ...[
+                            const SizedBox(width: 10),
+                            trailing!,
+                          ],
+                        ],
                       ),
-                      if (trailing != null) ...[
-                        const SizedBox(width: 10),
-                        trailing!,
-                      ],
-                    ],
+                    ),
                   ),
+                  Expanded(
+                    child: _StaggerScope(
+                      counter: _StaggerCounter(),
+                      child: child,
+                    ),
+                  ),
+                  if (bottom != null)
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        18,
+                        8,
+                        18,
+                        keyboard > 0 ? 8 : 12,
+                      ),
+                      child: bottom!,
+                    ),
+                ],
+              ),
+            ),
+            if (learningEditor != null)
+              Positioned.fill(
+                child: ReminderLearningOverlay(
+                  editor: learningEditor!,
+                  onTargetAction: learningAction,
+                  onClose: () =>
+                      Navigator.of(context, rootNavigator: root).pop(),
                 ),
               ),
-              Expanded(
-                child: _StaggerScope(counter: _StaggerCounter(), child: child),
-              ),
-              if (bottom != null)
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    18,
-                    8,
-                    18,
-                    keyboard > 0 ? 8 : 12,
-                  ),
-                  child: bottom!,
-                ),
-            ],
-          ),
+          ],
         ),
       ),
     );

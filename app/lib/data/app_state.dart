@@ -3,20 +3,72 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../prayer/city.dart';
 import '../theme/home_scene.dart';
+import 'navigation_guide.dart';
 
 /// Глобальное состояние: язык, тема, город, онбординг, дневные отметки.
 /// Хранится локально (shared_preferences) — без сервера и аккаунтов.
 class AppState extends ChangeNotifier {
-  AppState._(this._prefs);
+  AppState._(this._prefs) {
+    navigationGuide.addListener(notifyListeners);
+  }
+
+  final navigationGuide = NavigationGuide();
+  bool get navigationGuidePending =>
+      _prefs.getBool('navigationGuidePendingV1') ?? false;
+  void requestNavigationGuide() =>
+      _set(() => _prefs.setBool('navigationGuidePendingV1', true));
+  void beginNavigationGuide({required bool usePages}) {
+    _prefs.setBool('navigationGuidePendingV1', false);
+    _prefs.setBool('navigationGuideSeenV1', true);
+    navigationGuide.begin(usePages: usePages);
+  }
+
+  void closeNavigationGuide() {
+    if (!navigationGuide.inForm) {
+      _prefs.setBool('navigationGuidePendingV1', false);
+      _prefs.setBool('navigationGuideSeenV1', true);
+    }
+    navigationGuide.go(GuideStep.idle);
+  }
+
+  bool get reminderEditorGuideSeen =>
+      _prefs.getBool('reminderEditorGuideSeenV1') ?? false;
+  void beginReminderGuide() {
+    _prefs.setBool('reminderEditorGuideSeenV1', true);
+    navigationGuide.beginReminder();
+  }
+
+  @override
+  void dispose() {
+    navigationGuide.removeListener(notifyListeners);
+    navigationGuide.dispose();
+    super.dispose();
+  }
 
   static Future<AppState> load() async {
     final state = AppState._(await SharedPreferences.getInstance());
+    if (state._prefs.getString('dayLayout') != 'pages') {
+      await state._prefs.setString('dayLayout', 'pages');
+    }
+    state._preparePagesDiscovery();
     state._migrateZikrReminderDelay();
     state._rememberFirstUse();
     return state;
   }
 
   final SharedPreferences _prefs;
+
+  /// Предложение нового вида относится только к обновлению существующей
+  /// установки. На чистой установке обычный онбординг не перекрываем.
+  void _preparePagesDiscovery() {
+    const key = 'pagesDiscoveryV1Seen';
+    if (_prefs.containsKey(key)) return;
+    final existingInstall =
+        onboardingDone && _prefs.containsKey('firstUseDate');
+    if (!existingInstall || dayLayout == 'pages') {
+      _prefs.setBool(key, true);
+    }
+  }
 
   /// Запоминаем первый день один раз. У тех, кто уже пользовался
   /// приложением, берём самую раннюю дату с отметками.
@@ -66,11 +118,28 @@ class AppState extends ChangeNotifier {
   /// по которому рассчитываются времена молитв.
   HomeScene get homeScene =>
       HomeScene.fromStorage(_prefs.getString('homeScene'));
+  bool get featureTourSeen => _prefs.getBool('featureTourSeenV1') ?? false;
+  bool get shouldShowFeatureTour =>
+      onboardingDone &&
+      !featureTourSeen &&
+      (_prefs.getBool('featureTourPendingV1') ?? false);
+  void startFeatureTour() =>
+      _set(() => _prefs.setBool('featureTourPendingV1', true));
+  void markFeatureTourSeen() => _set(() {
+    _prefs.setBool('featureTourSeenV1', true);
+    _prefs.setBool('featureTourPendingV1', false);
+  });
+
   bool get onboardingDone => _prefs.getBool('onboardingDone') ?? false;
 
-  /// Вид нижнего экрана: 'classic' — карточки, 'pages' — вертикальные
-  /// страницы Намазы → Дела → Постоянство (прототип).
-  String get dayLayout => _prefs.getString('dayLayout') ?? 'classic';
+  /// One interface for new and existing installs. The legacy preference is
+  /// normalized without changing reminders, history, city, or appearance.
+  String get dayLayout => 'pages';
+
+  bool get shouldShowPagesDiscovery =>
+      onboardingDone &&
+      dayLayout != 'pages' &&
+      !(_prefs.getBool('pagesDiscoveryV1Seen') ?? false);
 
   /// Первый день пользования. Дни до него тетрадь не рисует пустыми
   /// кольцами: новичок не должен видеть «пропуски» до установки.
@@ -88,6 +157,12 @@ class AppState extends ChangeNotifier {
   /// короткого первого запуска приложения и только при первом входе в раздел.
   bool get remindersGuideSeen =>
       _prefs.getBool('remindersGuideSeenV2') ?? false;
+
+  bool contextHintSeen(String id) =>
+      _prefs.getBool('contextHint:v1:$id') ?? false;
+
+  void markContextHintSeen(String id) =>
+      _set(() => _prefs.setBool('contextHint:v1:$id', true));
 
   /// Показывать дату по григорианскому календарю вместо хиджры (тап по дате).
   bool get dateGregorian => _prefs.getBool('dateGregorian') ?? false;
@@ -321,7 +396,9 @@ class AppState extends ChangeNotifier {
     _prefs.setBool('remindersGuideSeenV2', v);
   });
   set dateGregorian(bool v) => _set(() => _prefs.setBool('dateGregorian', v));
-  set dayLayout(String v) => _set(() => _prefs.setString('dayLayout', v));
+  set dayLayout(String v) => _set(() => _prefs.setString('dayLayout', 'pages'));
+  set pagesDiscoverySeen(bool v) =>
+      _set(() => _prefs.setBool('pagesDiscoveryV1Seen', v));
 
   /// Звук уведомлений о времени намаза и о делах (id из kNotifSounds).
   String get prayerSound => _prefs.getString('sound:prayer') ?? 'default';
@@ -392,6 +469,20 @@ class AppState extends ChangeNotifier {
       list.add(task);
       _prefs.setStringList('done:$_todayKey', list);
     }
+  });
+
+  /// Ручная галочка задачи обратима. Повторные уведомления по-прежнему
+  /// используют идемпотентный markDone, а не переключают выполнение.
+  void toggleDone(String task) => _set(() {
+    final list = List<String>.of(
+      _prefs.getStringList('done:$_todayKey') ?? const <String>[],
+    );
+    if (list.contains(task)) {
+      list.removeWhere((id) => id == task);
+    } else {
+      list.add(task);
+    }
+    _prefs.setStringList('done:$_todayKey', list);
   });
 
   ThemeMode get themeMode => switch (theme) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../data/adhkar.dart';
+import '../data/adhkar_presentation.dart';
 import '../data/app_state.dart';
 import '../i18n/strings.dart';
 import '../prayer/schedule.dart';
@@ -9,6 +10,7 @@ import '../theme/tokens.dart';
 import '../theme/adaptive_layout.dart';
 import '../theme/system_bars.dart';
 import 'celebration.dart';
+import 'contextual_hint.dart';
 import '../services/live_activity_service.dart';
 import '../services/zikr_speech_service.dart';
 import 'reader_palette.dart';
@@ -98,7 +100,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
           }
         });
         _syncZikrLiveActivity();
-        if (widget.autoStartSpeech && col != null && col.items.isNotEmpty) {
+        if (ZikrSpeechService.enabled &&
+            widget.autoStartSpeech &&
+            col != null &&
+            col.items.isNotEmpty) {
           _playCurrent(col);
         }
       }
@@ -106,6 +111,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 
   Future<void> _playCurrent(ZikrCollection col) async {
+    if (!ZikrSpeechService.enabled) return;
     final request = ++_playbackRequest;
     await ZikrSpeechService.stop();
     if (!mounted || request != _playbackRequest || session == null) return;
@@ -191,6 +197,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
     ZikrSpeechService.stop();
     LiveActivityService.stopActivity();
     final app = AppScope.of(context);
+    // Повторное чтение не создаёт новое выполнение или празднование.
+    if (app.isDone(widget.collectionId)) {
+      Navigator.of(context).pop();
+      return;
+    }
     app.markDone(widget.collectionId);
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
@@ -317,35 +328,45 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              GestureDetector(
-                                key: const ValueKey('reader-palette-button'),
-                                onTap: () => _showPalettePicker(app, palette),
-                                behavior: HitTestBehavior.opaque,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(6),
-                                  child: Icon(
-                                    Icons.palette_outlined,
-                                    size: expanded ? 27 : 22,
-                                    color: palette.source,
+                              ContextualHint(
+                                id: 'reader-palette',
+                                title: app.lang == 'kz'
+                                    ? 'Оқуға ыңғайлы көрініс'
+                                    : 'Удобный вид для чтения',
+                                message: app.lang == 'kz'
+                                    ? 'Осы батырмадан қағаз, ақ немесе қара фонды таңдаңыз. Транскрипция мен аударманы олардың тақырыптарын басып жасыруға болады.'
+                                    : 'Здесь можно выбрать бумажный, белый или тёмный фон. Транскрипцию и перевод можно свернуть нажатием на их заголовки.',
+                                child: GestureDetector(
+                                  key: const ValueKey('reader-palette-button'),
+                                  onTap: () => _showPalettePicker(app, palette),
+                                  behavior: HitTestBehavior.opaque,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(6),
+                                    child: Icon(
+                                      Icons.palette_outlined,
+                                      size: expanded ? 27 : 22,
+                                      color: palette.source,
+                                    ),
                                   ),
                                 ),
                               ),
-                              GestureDetector(
-                                key: const ValueKey('reader-speech-toggle'),
-                                onTap: _toggleSpeech,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(6),
-                                  child: Icon(
-                                    isSpeaking
-                                        ? Icons.volume_up_rounded
-                                        : Icons.volume_off_rounded,
-                                    size: expanded ? 27 : 22,
-                                    color: isSpeaking
-                                        ? palette.accent
-                                        : palette.source,
+                              if (ZikrSpeechService.enabled)
+                                GestureDetector(
+                                  key: const ValueKey('reader-speech-toggle'),
+                                  onTap: _toggleSpeech,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(6),
+                                    child: Icon(
+                                      isSpeaking
+                                          ? Icons.volume_up_rounded
+                                          : Icons.volume_off_rounded,
+                                      size: expanded ? 27 : 22,
+                                      color: isSpeaking
+                                          ? palette.accent
+                                          : palette.source,
+                                    ),
                                   ),
                                 ),
-                              ),
                             ],
                           ),
                         ),
@@ -663,7 +684,10 @@ class _ZikrBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final translation = z.translation(lang);
+    final originalTranslation = z.translation(lang);
+    final translation = originalTranslation == null
+        ? null
+        : readerTranslation(originalTranslation);
     final faz = z.faz(lang);
     final expanded = isExpandedLayout(context);
     return Column(
@@ -685,7 +709,7 @@ class _ZikrBody extends StatelessWidget {
             open: app.showTranslit,
             onToggle: () => app.showTranslit = !app.showTranslit,
             child: Text(
-              z.translit!,
+              readerTranscription(z.translit!),
               textAlign: TextAlign.center,
               style: JType.reading(
                 expanded ? 20 : readerTransliterationFontSize,
@@ -727,7 +751,7 @@ class _ZikrBody extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  z.source,
+                  readerSource(z.source),
                   style: JType.ui(
                     expanded ? 14.5 : 11.5,
                     color: palette.source,
@@ -741,7 +765,7 @@ class _ZikrBody extends StatelessWidget {
             padding: const EdgeInsets.only(top: 10),
             child: Center(
               child: Text(
-                z.source,
+                readerSource(z.source),
                 style: JType.ui(expanded ? 14.5 : 11.5, color: palette.source),
               ),
             ),

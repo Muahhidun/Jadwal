@@ -61,16 +61,25 @@ void main() {
       matchesGoldenFile('goldens/lower_screen_393x852.png'),
     );
 
+    (tester.state(find.byType(HomeScreen)) as dynamic).swipeProgress = 2.0;
+    await _pumpFrames(tester, 8);
     expect(find.text('Напоминания'), findsOneWidget);
-    expect(find.text('Вид'), findsOneWidget);
-    expect(find.text('Язык'), findsOneWidget);
-    await tester.tap(find.text('Вид'));
+    expect(find.text('Вид'), findsNothing);
+    await tester.tap(find.byKey(app.navigationGuide.target('page-settings')));
+    await _pumpFrames(tester, 8);
+    await tester.tap(find.text('Оформление'));
     await tester.pump();
     // Let the raster scene preview finish decoding outside the fake clock.
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 120)),
     );
     await _pumpFrames(tester, 10);
+    await tester.pump(const Duration(milliseconds: 400));
+    await _pumpFrames(tester, 8);
+    expect(find.text('Выберите свой вид'), findsOneWidget);
+    await tester.tap(find.text('Понятно'));
+    await _pumpFrames(tester, 8);
+    expect(app.contextHintSeen('appearance'), isTrue);
     expect(find.text('Мекка'), findsOneWidget);
     expect(find.text('Степь'), findsOneWidget);
     expect(find.text('Минимализм'), findsNothing);
@@ -81,6 +90,8 @@ void main() {
     );
 
     await tester.tap(find.byIcon(CupertinoIcons.xmark));
+    await _pumpFrames(tester, 8);
+    await tester.tap(find.byKey(app.navigationGuide.target('page-settings')));
     await _pumpFrames(tester, 8);
     await tester.tap(find.text('Язык'));
     await _pumpFrames(tester, 8);

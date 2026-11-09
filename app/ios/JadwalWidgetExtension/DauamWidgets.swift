@@ -2,155 +2,12 @@ import Foundation
 import SwiftUI
 import WidgetKit
 
+// The same Foundation-only model is shared with Watch and native regression tests.
+private typealias DauamSnapshot = DauamWatchSnapshot
+private typealias DauamPrayerPoint = DauamWatchPrayer
+
 private enum DauamWidgetStore {
-  static let appGroup = "group.kz.dauam.shared"
-  static let snapshotKey = "widget_snapshot_v1"
-
-  static func load() -> DauamSnapshot {
-    guard
-      let defaults = UserDefaults(suiteName: appGroup),
-      let json = defaults.string(forKey: snapshotKey),
-      let data = json.data(using: .utf8),
-      let snapshot = try? JSONDecoder().decode(DauamSnapshot.self, from: data)
-    else {
-      return .placeholder
-    }
-    return snapshot
-  }
-}
-
-private struct DauamPrayerPoint: Codable, Hashable {
-  let id: String
-  let title: String
-  let time: String
-  let timestamp: Double
-  let isTomorrow: Bool
-
-  var date: Date { Date(timeIntervalSince1970: timestamp) }
-
-  var symbol: String {
-    switch id {
-    case "fajr": return "moon.stars.fill"
-    case "sunrise": return "sunrise.fill"
-    case "dhuhr": return "sun.max.fill"
-    case "asr": return "sun.haze.fill"
-    case "maghrib": return "sunset.fill"
-    case "isha": return "moon.fill"
-    default: return "clock.fill"
-    }
-  }
-}
-
-private struct DauamTask: Codable, Hashable {
-  let id: String
-  let title: String
-  let done: Bool
-}
-
-private struct DauamSnapshot: Codable, Hashable {
-  let schemaVersion: Int
-  let generatedAt: Double
-  let language: String
-  let city: String
-  let dateLabel: String
-  let prayers: [DauamPrayerPoint]
-  let tasks: [DauamTask]
-  let taskDone: Int
-  let taskTotal: Int
-
-  static let placeholder = DauamSnapshot(
-    schemaVersion: 1,
-    generatedAt: Date.now.timeIntervalSince1970,
-    language: "ru",
-    city: "Экибастуз",
-    dateLabel: "Пятница · 10 сафар",
-    prayers: [
-      .init(id: "fajr", title: "Фаджр", time: "03:45", timestamp: Date.now.addingTimeInterval(2_700).timeIntervalSince1970, isTomorrow: false),
-      .init(id: "sunrise", title: "Восход", time: "05:15", timestamp: Date.now.addingTimeInterval(8_160).timeIntervalSince1970, isTomorrow: false),
-      .init(id: "dhuhr", title: "Зухр", time: "12:55", timestamp: Date.now.addingTimeInterval(27_480).timeIntervalSince1970, isTomorrow: false),
-      .init(id: "asr", title: "Аср", time: "17:34", timestamp: Date.now.addingTimeInterval(41_640).timeIntervalSince1970, isTomorrow: false),
-      .init(id: "maghrib", title: "Магриб", time: "20:50", timestamp: Date.now.addingTimeInterval(53_520).timeIntervalSince1970, isTomorrow: false),
-      .init(id: "isha", title: "Иша", time: "22:30", timestamp: Date.now.addingTimeInterval(58_620).timeIntervalSince1970, isTomorrow: false),
-    ],
-    tasks: [
-      .init(id: "morning", title: "Утренние зикры", done: true),
-      .init(id: "evening", title: "Вечерние зикры", done: false),
-    ],
-    taskDone: 1,
-    taskTotal: 2
-  )
-
-  var isPlaceholder: Bool {
-    prayers.allSatisfy { $0.timestamp <= generatedAt + 60 }
-  }
-
-  /// Ближайшая временная точка расписания. Восход не является намазом,
-  /// но для виджета остаётся полноценным следующим событием после Фаджра.
-  func nextEvent(after date: Date) -> DauamPrayerPoint? {
-    prayers
-      .filter { $0.date > date }
-      .min { $0.date < $1.date }
-  }
-
-  func justCalledPrayer(at date: Date, graceMinutes: Double = 10) -> DauamPrayerPoint? {
-    let valid = prayers.filter { $0.id != "sunrise" }
-    guard let last = valid.filter({ $0.date <= date }).max(by: { $0.date < $1.date }) else {
-      return nil
-    }
-    let elapsed = date.timeIntervalSince(last.date)
-    return (elapsed >= 0 && elapsed < graceMinutes * 60) ? last : nil
-  }
-
-  func prayers(on date: Date) -> [DauamPrayerPoint] {
-    prayers.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
-  }
-
-  func prayer(id: String, on date: Date) -> DauamPrayerPoint? {
-    prayers(on: date).first { $0.id == id }
-  }
-
-  var isKazakh: Bool { language == "kz" }
-
-  func until(_ prayer: DauamPrayerPoint, uppercase: Bool = false) -> String {
-    let target: String
-    if isKazakh {
-      target = switch prayer.id {
-      case "fajr": "Таңға"
-      case "sunrise": "Күн шығуына"
-      case "dhuhr": "Бесінге"
-      case "asr": "Екінтіге"
-      case "maghrib": "Ақшамға"
-      case "isha": "Құптанға"
-      default: prayer.title
-      }
-    } else {
-      target = switch prayer.id {
-      case "fajr": "Фаджра"
-      case "sunrise": "восхода"
-      case "dhuhr": "Зухра"
-      case "asr": "Асра"
-      case "maghrib": "Магриба"
-      case "isha": "Иша"
-      default: prayer.title
-      }
-    }
-    let value = isKazakh ? "\(target) дейін" : "До \(target)"
-    return uppercase ? value.uppercased() : value
-  }
-
-  var openDauam: String {
-    isKazakh ? "Dauam қолданбасын ашыңыз" : "Откройте Dauam"
-  }
-
-  var todayTasksTitle: String {
-    isKazakh ? "Бүгінгі істер" : "Дела сегодня"
-  }
-
-  var completedSummary: String {
-    isKazakh
-      ? "\(taskDone) / \(taskTotal) орындалды"
-      : "\(taskDone) из \(taskTotal) выполнено"
-  }
+  static func load() -> DauamSnapshot { DauamWatchSnapshotStore.load() }
 }
 
 private struct DauamEntry: TimelineEntry {
@@ -170,7 +27,7 @@ private struct DauamProvider: TimelineProvider {
     completion(
       DauamEntry(
         date: .now,
-        snapshot: context.isPreview ? .placeholder : DauamWidgetStore.load()
+        snapshot: context.isPreview ? .placeholder : DauamWidgetStore.load().projected(at: .now)
       )
     )
   }
@@ -181,29 +38,9 @@ private struct DauamProvider: TimelineProvider {
   ) {
     let now = Date.now
     let snapshot = DauamWidgetStore.load()
-    var dates = [now]
+    let dates = snapshot.timelineDates(from: now)
 
-    // В момент наступления любой точки расписания (включая восход) контент
-    // должен перейти к следующему событию.
-    // Сам countdown между этими точками обновляет системный Text(.timer).
-    let horizon = now.addingTimeInterval(36 * 3_600)
-    for prayer in snapshot.prayers {
-      let eventStart = prayer.date.addingTimeInterval(1)
-      if eventStart > now && eventStart < horizon {
-        dates.append(eventStart)
-      }
-
-      // Конец десятиминутного окна планируется независимо от его начала.
-      // Если WidgetKit запросил новый timeline уже после азана, начало осталось
-      // в прошлом, но будущая граница всё равно обязана попасть в timeline.
-      let graceEnd = prayer.date.addingTimeInterval(601)
-      if prayer.id != "sunrise" && graceEnd > now && graceEnd < horizon {
-        dates.append(graceEnd)
-      }
-    }
-    dates = Array(Set(dates)).sorted()
-
-    let entries = dates.map { DauamEntry(date: $0, snapshot: snapshot) }
+    let entries = dates.map { DauamEntry(date: $0, snapshot: snapshot.projected(at: $0)) }
     let refresh = min(
       dates.last?.addingTimeInterval(60) ?? now.addingTimeInterval(6 * 3_600),
       now.addingTimeInterval(12 * 3_600)
@@ -312,6 +149,23 @@ private struct DauamMark: View {
       .font(.system(size: 15, weight: .bold, design: .serif))
       .foregroundStyle(palette.accent)
       .accessibilityLabel("Dauam")
+  }
+}
+
+private struct DauamMissingDataContent: View {
+  let snapshot: DauamSnapshot
+  let palette: DauamPalette
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      DauamMark(palette: palette)
+      Spacer(minLength: 0)
+      Label(snapshot.openDauam, systemImage: "iphone")
+        .font(.system(size: 15, weight: .semibold, design: .rounded))
+        .foregroundStyle(palette.text)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+    }
   }
 }
 
@@ -558,22 +412,28 @@ private struct DauamLargePrayerView: View {
       .background(palette.text.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
 
       HStack(spacing: 12) {
-        DauamProgressRing(
-          done: entry.snapshot.taskDone,
-          total: entry.snapshot.taskTotal,
-          palette: palette,
-          size: 42
-        )
-        VStack(alignment: .leading, spacing: 3) {
-          Text(entry.snapshot.todayTasksTitle.uppercased())
-            .font(.system(size: 9, weight: .bold, design: .rounded))
-            .tracking(1)
-            .foregroundStyle(palette.secondary)
-          Text(entry.snapshot.completedSummary)
+        if entry.snapshot.hasCurrentTasks(at: entry.date) {
+          DauamProgressRing(
+            done: entry.snapshot.taskDone,
+            total: entry.snapshot.taskTotal,
+            palette: palette,
+            size: 42
+          )
+          VStack(alignment: .leading, spacing: 3) {
+            Text(entry.snapshot.todayTasksTitle.uppercased())
+              .font(.system(size: 9, weight: .bold, design: .rounded))
+              .tracking(1)
+              .foregroundStyle(palette.secondary)
+            Text(entry.snapshot.completedSummary)
+              .font(.system(size: 12, weight: .semibold, design: .rounded))
+              .foregroundStyle(palette.text)
+          }
+          Spacer()
+        } else {
+          Label(entry.snapshot.openDauam, systemImage: "iphone")
             .font(.system(size: 12, weight: .semibold, design: .rounded))
             .foregroundStyle(palette.text)
         }
-        Spacer()
       }
     }
     .padding(16)
@@ -620,7 +480,9 @@ private struct DauamTasksView: View {
   var body: some View {
     let palette = DauamPalette.resolve(snapshot: entry.snapshot, at: entry.date)
     Group {
-      if family == .systemSmall {
+      if !entry.snapshot.hasCurrentTasks(at: entry.date) {
+        DauamMissingDataContent(snapshot: entry.snapshot, palette: palette)
+      } else if family == .systemSmall {
         VStack(alignment: .leading, spacing: 10) {
           HStack {
             DauamMark(palette: palette)
@@ -725,12 +587,13 @@ private struct DauamAccessoryView: View {
         ZStack {
           AccessoryWidgetBackground()
           VStack(spacing: 1) {
-            Image(systemName: currentPrayer?.symbol ?? "moon.stars.fill")
+            Image(systemName: currentPrayer?.symbol ?? "iphone")
               .font(.system(size: 13, weight: .bold))
             Text(currentPrayer?.time ?? "—")
               .font(.system(size: 11, weight: .bold, design: .rounded).monospacedDigit())
               .minimumScaleFactor(0.7)
           }
+          .accessibilityLabel(currentPrayer.map { "\($0.title) \($0.time)" } ?? entry.snapshot.openDauam)
         }
 
       default:
@@ -795,7 +658,7 @@ private struct DauamAccessoryView: View {
               Text("Dauam")
                 .font(.system(size: 15, weight: .bold, design: .rounded))
                 .lineLimit(1)
-              Text(entry.snapshot.city)
+              Text(entry.snapshot.openDauam)
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .lineLimit(1)
             }
@@ -862,7 +725,7 @@ private struct DauamAccessoryFullTimerView: View {
           .foregroundStyle(.secondary)
         }
       } else {
-        Text("Dauam")
+        Text(entry.snapshot.openDauam)
           .font(.system(size: 16, weight: .bold, design: .rounded))
       }
     }
@@ -893,14 +756,16 @@ private struct DauamAccessoryWorshipView: View {
           }
 
           HStack(spacing: 5) {
-            Image(systemName: "checkmark.circle.fill")
+            Image(systemName: entry.snapshot.hasCurrentTasks(at: entry.date) ? "checkmark.circle.fill" : "iphone")
               .font(.system(size: 11, weight: .semibold))
-            Text(entry.snapshot.todayTasksTitle)
+            Text(entry.snapshot.hasCurrentTasks(at: entry.date) ? entry.snapshot.todayTasksTitle : entry.snapshot.openDauam)
               .font(.system(size: 11, weight: .semibold, design: .rounded))
               .lineLimit(1)
             Spacer(minLength: 2)
-            Text("\(entry.snapshot.taskDone)/\(entry.snapshot.taskTotal)")
+            if entry.snapshot.hasCurrentTasks(at: entry.date) {
+              Text("\(entry.snapshot.taskDone)/\(entry.snapshot.taskTotal)")
               .font(.system(size: 11, weight: .bold, design: .rounded).monospacedDigit())
+            }
           }
           .padding(.horizontal, 6)
           .padding(.vertical, 3)
@@ -910,7 +775,7 @@ private struct DauamAccessoryWorshipView: View {
           )
         }
       } else {
-        Text("Dauam")
+        Text(entry.snapshot.openDauam)
           .font(.system(size: 16, weight: .bold, design: .rounded))
       }
     }
@@ -926,13 +791,21 @@ private struct DauamPrayerEntryView: View {
 
   var body: some View {
     let palette = DauamPalette.resolve(snapshot: entry.snapshot, at: entry.date)
-    switch family {
-    case .systemMedium:
-      DauamMediumPrayerView(entry: entry, palette: palette)
-    case .systemLarge:
-      DauamLargePrayerView(entry: entry, palette: palette)
-    default:
-      DauamSmallPrayerView(entry: entry, palette: palette)
+    if entry.snapshot.nextEvent(after: entry.date) == nil &&
+        entry.snapshot.justCalledPrayer(at: entry.date) == nil {
+      DauamMissingDataContent(snapshot: entry.snapshot, palette: palette)
+        .padding(14)
+        .dauamWidgetBackground(palette)
+        .widgetURL(URL(string: "dauam://home"))
+    } else {
+      switch family {
+      case .systemMedium:
+        DauamMediumPrayerView(entry: entry, palette: palette)
+      case .systemLarge:
+        DauamLargePrayerView(entry: entry, palette: palette)
+      default:
+        DauamSmallPrayerView(entry: entry, palette: palette)
+      }
     }
   }
 }

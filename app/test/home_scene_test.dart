@@ -57,6 +57,23 @@ void main() {
     }
   });
 
+  test('кадры смешиваются без постоянной ночной подложки', () {
+    expect(photoPhaseWeights(0), (day: 0.0, warm: 0.0, night: 1.0));
+    expect(photoPhaseWeights(1), (day: 1.0, warm: 0.0, night: 0.0));
+    for (var i = 0; i <= 100; i++) {
+      final light = i / 100;
+      final weights = photoPhaseWeights(light);
+      expect(weights.day + weights.warm + weights.night, closeTo(1, 1e-12));
+      if (light >= 0.28) expect(weights.night, 0);
+      if (i > 0) {
+        final previous = photoPhaseWeights((i - 1) / 100);
+        expect((weights.day - previous.day).abs(), lessThan(0.07));
+        expect((weights.warm - previous.warm).abs(), lessThan(0.07));
+        expect((weights.night - previous.night).abs(), lessThan(0.07));
+      }
+    }
+  });
+
   testWidgets('все оформления главного экрана рисуются', (tester) async {
     tester.view.physicalSize = const Size(393, 852);
     tester.view.devicePixelRatio = 1;
@@ -103,6 +120,129 @@ void main() {
         find.byType(SceneBackground),
         matchesGoldenFile('goldens/home_scene_${scene.name}_393x852.png'),
       );
+    }
+  });
+
+  testWidgets('Мекка утром и вечером без ночной кромки', (tester) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    for (final (label, seconds) in [
+      ('morning', 8 * 3600 + 39 * 60),
+      ('evening', 18 * 3600),
+    ]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Stack(
+              children: [
+                SceneBackground(
+                  progress: 0,
+                  screenHeight: 852,
+                  times: times,
+                  nowSec: seconds,
+                  city: kDefaultCity,
+                  variant: HomeScene.mecca,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 900)),
+      );
+      await tester.pump(const Duration(milliseconds: 1600));
+      await expectLater(
+        find.byType(SceneBackground),
+        matchesGoldenFile('goldens/home_scene_mecca_$label.png'),
+      );
+    }
+  });
+
+  testWidgets('Мекка не обрывается на начале медленного свайпа', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    for (final (name, progress) in [('tiny', 0.01), ('partial', 0.10)]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Stack(
+              children: [
+                SceneBackground(
+                  progress: progress,
+                  screenHeight: 852,
+                  times: times,
+                  nowSec: 23 * 3600,
+                  city: kDefaultCity,
+                  variant: HomeScene.mecca,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 900)),
+      );
+      await tester.pump(const Duration(milliseconds: 1600));
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byType(SceneBackground),
+        matchesGoldenFile('goldens/home_scene_mecca_swipe_$name.png'),
+      );
+    }
+  });
+
+  testWidgets('остальные фото-темы не обрываются при медленном свайпе', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    for (final scene in [
+      HomeScene.medina,
+      HomeScene.astana,
+      HomeScene.steppe,
+    ]) {
+      for (final (name, progress) in [('tiny', 0.01), ('partial', 0.10)]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Stack(
+                children: [
+                  SceneBackground(
+                    progress: progress,
+                    screenHeight: 852,
+                    times: times,
+                    nowSec: 12 * 3600,
+                    city: kDefaultCity,
+                    variant: scene,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 900)),
+        );
+        await tester.pump(const Duration(milliseconds: 1600));
+        expect(tester.takeException(), isNull);
+        await expectLater(
+          find.byType(SceneBackground),
+          matchesGoldenFile('goldens/home_scene_${scene.name}_swipe_$name.png'),
+        );
+      }
     }
   });
 }

@@ -8,7 +8,8 @@ tmp/
 outputs/
 app/test/failures/
 
-# Native build products. Xcode recreates these from the project sources.
+# Native build products. Xcode and Gradle recreate these from the sources.
 app/ios/build/
+app/android/build/
 **/xcuserdata/
 *.xcuserstate

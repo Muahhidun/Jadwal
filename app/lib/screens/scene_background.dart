@@ -287,6 +287,19 @@ _Sky _skyAt(DayTimes t, int nowMin) {
   );
 }
 
+/// Нормированные доли кадров: ночь → сумерки → день. Ночной кадр полностью
+/// исчезает до восхода, а не остаётся непрозрачной подложкой под дневным.
+({double day, double warm, double night}) photoPhaseWeights(double daylight) {
+  double smoothStep(double edge0, double edge1) {
+    final x = ((daylight - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    return x * x * (3 - 2 * x);
+  }
+
+  final day = smoothStep(0.32, 0.70);
+  final warm = smoothStep(0.04, 0.28) * (1 - day);
+  return (day: day, warm: warm, night: (1 - day - warm).clamp(0.0, 1.0));
+}
+
 /// Цвета текста/акцента для главного экрана — подстраиваются под яркость неба.
 class SkyFg {
   final Color text, faint, accent;
@@ -809,15 +822,16 @@ class _ScenePainter extends CustomPainter {
     final nightImage = photoImages['night'] ?? day;
     final warm = photoImages[morning ? 'sunrise' : 'sunset'];
 
-    // Низ кадра совмещён с краем главного экрана, ширина — чуть больше
-    // экрана, чтобы края кадра не попадали на широкие телефоны.
+    // Все фото-темы продолжаются под краем главного экрана. При коротком
+    // медленном свайпе пользователь видит этот запас, а не ровный обрез фото.
     final dstWidth = width * variant.photoZoom;
     final dstHeight = dstWidth * day.height / day.width;
+    final photoBleed = horizon * 0.045;
     final dest = Rect.fromLTWH(
       (width - dstWidth) / 2,
       horizon - dstHeight,
       dstWidth,
-      dstHeight,
+      dstHeight + photoBleed,
     );
     Rect src(ui.Image image) =>
         Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
@@ -828,51 +842,37 @@ class _ScenePainter extends CustomPainter {
     }
 
     // Те же пороги, что у Мекки: смена света идёт вместе с небом.
-    final dayBlend = smoothStep(0.32, 0.70, sky.day);
-    final warmBlend = smoothStep(0.04, 0.28, sky.day) * (1 - dayBlend);
-    final paint = Paint()
-      ..isAntiAlias = true
-      ..filterQuality = FilterQuality.high;
+    final weights = photoPhaseWeights(sky.day);
 
     void drawFrame(ui.Image image, Paint framePaint) =>
         canvas.drawImageRect(image, src(image), dest, framePaint);
 
     void drawFrames() {
-      if (dayBlend >= 0.999) {
-        // Днём не подкладываем ночной силуэт под дневной кадр.
-        drawFrame(day, paint);
-      } else {
-        drawFrame(nightImage, paint);
-        if (warmBlend > 0.001) {
-          if (warm != null) {
-            drawFrame(
-              warm,
-              Paint()
-                ..filterQuality = FilterQuality.high
-                ..color = Colors.white.withValues(alpha: warmBlend),
-            );
-          } else {
-            drawFrame(
-              day,
-              Paint()
-                ..filterQuality = FilterQuality.high
-                ..colorFilter = ColorFilter.mode(
-                  (morning ? const Color(0xFFFFD2B0) : const Color(0xFFFFB592))
-                      .withValues(alpha: warmBlend),
-                  BlendMode.modulate,
-                ),
-            );
-          }
+      // Суммируем premultiplied RGBA внутри отдельного прозрачного слоя.
+      // Последовательный srcOver оставлял ночной силуэт (и зелёную подсветку)
+      // под полупрозрачными утренним/дневным кадрами, создавая тёмную обводку.
+      void blendFrame(ui.Image image, double weight, {Color? tint}) {
+        if (weight <= 0) return;
+        final framePaint = Paint()
+          ..isAntiAlias = true
+          ..filterQuality = FilterQuality.high
+          ..blendMode = BlendMode.plus
+          ..color = Colors.white.withValues(alpha: weight);
+        if (tint != null) {
+          framePaint.colorFilter = ColorFilter.mode(tint, BlendMode.modulate);
         }
-        if (dayBlend > 0.001) {
-          drawFrame(
-            day,
-            Paint()
-              ..filterQuality = FilterQuality.high
-              ..color = Colors.white.withValues(alpha: dayBlend),
-          );
-        }
+        drawFrame(image, framePaint);
       }
+
+      blendFrame(nightImage, weights.night);
+      blendFrame(
+        warm ?? day,
+        weights.warm,
+        tint: warm == null
+            ? (morning ? const Color(0xFFFFD2B0) : const Color(0xFFFFB592))
+            : null,
+      );
+      blendFrame(day, weights.day);
     }
 
     final photoOpacity = 1 - smoothStep(0.45, 0.75, progress);
@@ -881,10 +881,31 @@ class _ScenePainter extends CustomPainter {
       Paint()..color = Colors.white.withValues(alpha: photoOpacity),
     );
     drawFrames();
+    // На главном экране (до horizon) изображение остаётся непрозрачным.
+    // Уже за его краем последние пиксели плавно уходят в общий фон сцены.
+    final fadeStart = dstHeight / dest.height;
+    canvas.drawRect(
+      dest,
+      Paint()
+        ..blendMode = BlendMode.dstIn
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: const [
+            Colors.white,
+            Colors.white,
+            Colors.transparent,
+            Colors.transparent,
+          ],
+          // Последние несколько пикселей прозрачны полностью: у границы
+          // saveLayer иначе остаётся тёмная субпиксельная черта.
+          stops: [0.0, fadeStart, 1 - 5 / dest.height, 1.0],
+        ).createShader(dest),
+    );
     // Не создаём отдельную полосу ПОД пейзажем: она давала тёмный, затем
     // светлый градиент на полусвайпе. Сама земля растворяется в общем фоне
     // на большей части высоты изображения.
-    final dissolve = smoothStep(0.02, 0.40, progress);
+    final dissolve = smoothStep(0.0, 0.40, progress);
     final edgeDissolve = smoothStep(0.0, 0.18, progress);
     if (dissolve > 0) {
       canvas.drawRect(
@@ -906,13 +927,13 @@ class _ScenePainter extends CustomPainter {
       );
     }
     canvas.restore();
-    if (edgeDissolve > 0.99 && photoOpacity > 0.001) {
-      // У saveLayer бывает субпиксельный тёмный texel по нижнему краю.
-      // Возвращаем точные пиксели единого фона без отдельного затемнения.
+    if (photoOpacity > 0.001) {
+      // Skia оставляет один светлый texel по краю offscreen-слоя даже после
+      // dstIn. Здесь фото уже полностью прозрачно; восстановим точный фон.
       final palette = daySurfacePalette(times, nowSec);
       final sceneRect = Rect.fromLTRB(0, 0, width, horizon * 2);
       canvas.drawRect(
-        Rect.fromLTRB(0, horizon - 1, width, horizon + 1),
+        Rect.fromLTRB(0, dest.bottom - 1, width, dest.bottom + 1),
         Paint()
           ..shader = LinearGradient(
             begin: Alignment.topCenter,

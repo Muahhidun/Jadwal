@@ -17,11 +17,14 @@ class ScheduleService extends ChangeNotifier {
   final SharedPreferences _prefs;
   final DateTime Function() _now;
 
-  Map<String, List<int>>? _year;
-  String _loadedKey = '';
-  int _loadedYear = -1;
+  final _years = <String, Map<String, List<int>>>{};
+  final _loads = <String, Future<void>>{};
   String source = '';
-  bool _loading = false;
+  int _revision = 0;
+
+  /// Меняется после получения расписания: главный экран перепланирует
+  /// уведомления, даже если город и настройки пользователя остались прежними.
+  int get revision => _revision;
 
   /// Ключ кеша по точным координатам-строкам.
   static String cityKey(City city) => '${city.latStr},${city.lngStr}';
@@ -36,10 +39,8 @@ class ScheduleService extends ChangeNotifier {
   DayTimes? timesFor(City city, DateTime date) {
     final ck = cityKey(city);
     _ensure(city, date.year);
-    final y = _year;
-    if (y == null || _loadedKey != ck || _loadedYear != date.year) {
-      return calculateDayTimes(city, date);
-    }
+    final y = _years[_prefsKey(ck, date.year)];
+    if (y == null) return calculateDayTimes(city, date);
     final t = y[_dateKey(date)];
     if (t == null) return calculateDayTimes(city, date);
     return DayTimes(
@@ -49,16 +50,27 @@ class ScheduleService extends ChangeNotifier {
   }
 
   /// Принудительно загрузить данные для города на указанный год.
-  Future<void> ensureLoaded(City city, int year) async {
+  Future<void> ensureLoaded(City city, int year) => _ensure(city, year);
+
+  Future<void> _ensure(City city, int year) {
     final ck = cityKey(city);
-    if (_loadedKey == ck && _loadedYear == year) return;
-    await _ensure(city, year);
+    final key = _prefsKey(ck, year);
+    if (_years.containsKey(key)) return Future<void>.value();
+    // UI, обычные уведомления и будильники ждут один запрос. Другой город
+    // или год имеют собственный запрос и не теряются за общим флагом loading.
+    return _loads.putIfAbsent(
+      key,
+      () => _load(city, year).whenComplete(() {
+        _loads.remove(key);
+      }),
+    );
   }
 
-  Future<void> _ensure(City city, int year) async {
+  Future<void> _load(City city, int year) async {
+    // timesFor вызывается при построении UI. Даже ответ из кеша публикуем
+    // после этого синхронного кадра, когда запрос уже занесён в _loads.
+    await Future<void>.value();
     final ck = cityKey(city);
-    if (_loading || (_loadedKey == ck && _loadedYear == year)) return;
-    _loading = true;
     try {
       final local = city.isLocalCalc;
       final cached = _prefs.getString(_prefsKey(ck, year));
@@ -76,17 +88,16 @@ class ScheduleService extends ChangeNotifier {
       _apply(ck, year, encoded, local ? 'Aladhan' : 'ДУМК');
     } catch (_) {
       source = 'астрономический расчёт';
-    } finally {
-      _loading = false;
     }
   }
 
   void _apply(String ck, int year, String encoded, String src) {
     final raw = jsonDecode(encoded) as Map<String, dynamic>;
-    _year = raw.map((k, v) => MapEntry(k, (v as List).cast<int>()));
-    _loadedKey = ck;
-    _loadedYear = year;
+    _years[_prefsKey(ck, year)] = raw.map(
+      (k, v) => MapEntry(k, (v as List).cast<int>()),
+    );
     source = src;
+    _revision++;
     notifyListeners();
   }
 
@@ -98,10 +109,9 @@ class ScheduleService extends ChangeNotifier {
     Map<String, List<int>> data, {
     String src = 'test',
   }) {
-    _year = data;
-    _loadedKey = cityKey(city);
-    _loadedYear = year;
+    _years[_prefsKey(cityKey(city), year)] = data;
     source = src;
+    _revision++;
   }
 }
 

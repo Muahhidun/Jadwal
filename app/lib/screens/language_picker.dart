@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../data/app_state.dart';
 import '../theme/home_scene.dart';
 import '../theme/tokens.dart';
+import 'contextual_hint.dart';
 import 'settings_shell.dart';
 
 class LanguagePicker extends StatelessWidget {
@@ -91,41 +92,27 @@ class AppearancePicker extends StatelessWidget {
               children: [
                 for (final scene in HomeScene.values)
                   if (scene != HomeScene.minimal)
-                    _SceneChoiceRow(
-                      scene: scene,
-                      selected: app.homeScene == scene,
-                      title: _sceneTitle(scene, kz),
-                      subtitle: _sceneSubtitle(scene, kz),
-                      onTap: () {
-                        app.homeScene = scene;
-                        HapticFeedback.mediumImpact();
-                      },
+                    ContextualHint(
+                      key: ValueKey('scene-hint-${scene.storageValue}'),
+                      id: 'appearance',
+                      enabled: scene == HomeScene.mecca,
+                      title: kz
+                          ? 'Көріністі өзіңіз таңдаңыз'
+                          : 'Выберите свой вид',
+                      message: kz
+                          ? 'Мекке, Мәдина, Астана немесе дала көрінісін таңдаңыз. Намаз уақыттары өзгермейді.'
+                          : 'Выберите Мекку, Медину, Астану или степь. Времена молитв останутся прежними.',
+                      child: _SceneChoiceRow(
+                        scene: scene,
+                        selected: app.homeScene == scene,
+                        title: _sceneTitle(scene, kz),
+                        subtitle: _sceneSubtitle(scene, kz),
+                        onTap: () {
+                          app.homeScene = scene;
+                          HapticFeedback.mediumImpact();
+                        },
+                      ),
                     ),
-              ],
-            ),
-            DauamSection(
-              label: kz ? 'Төменгі экран' : 'Нижний экран',
-              footer: kz
-                  ? '«Беттер» — сынақ нұсқасы: намаздар, істер және тұрақтылық жеке беттерде, төмен сырғытып ауысасыз.'
-                  : '«Страницы» — пробный вариант: намазы, дела и постоянство на отдельных экранах, листаются свайпом вниз.',
-              children: [
-                DauamChoiceRow(
-                  title: kz ? 'Классикалық' : 'Классический',
-                  selected: app.dayLayout != 'pages',
-                  onTap: () {
-                    app.dayLayout = 'classic';
-                    HapticFeedback.mediumImpact();
-                  },
-                ),
-                DauamChoiceRow(
-                  title: kz ? 'Беттер' : 'Страницы',
-                  subtitle: kz ? 'Прототип' : 'Прототип',
-                  selected: app.dayLayout == 'pages',
-                  onTap: () {
-                    app.dayLayout = 'pages';
-                    HapticFeedback.mediumImpact();
-                  },
-                ),
               ],
             ),
           ],

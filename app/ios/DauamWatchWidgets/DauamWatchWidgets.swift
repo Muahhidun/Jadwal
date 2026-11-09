@@ -18,7 +18,7 @@ private struct DauamWatchProvider: TimelineProvider {
     completion(
       DauamWatchEntry(
         date: .now,
-        snapshot: context.isPreview ? .placeholder : DauamWatchSnapshotStore.load()
+        snapshot: context.isPreview ? .placeholder : DauamWatchSnapshotStore.load().projected(at: .now)
       )
     )
   }
@@ -29,24 +29,8 @@ private struct DauamWatchProvider: TimelineProvider {
   ) {
     let now = Date.now
     let snapshot = DauamWatchSnapshotStore.load()
-    var dates = [now]
-    let horizon = now.addingTimeInterval(36 * 3_600)
-    for prayer in snapshot.prayers {
-      let eventStart = prayer.date.addingTimeInterval(1)
-      if eventStart > now && eventStart < horizon {
-        dates.append(eventStart)
-      }
-
-      // Часы могут перестроить timeline уже внутри послезанного окна.
-      // Поэтому граница завершения не должна зависеть от того, осталось ли
-      // само время молитвы в будущем.
-      let graceEnd = prayer.date.addingTimeInterval(601)
-      if prayer.id != "sunrise" && graceEnd > now && graceEnd < horizon {
-        dates.append(graceEnd)
-      }
-    }
-    dates = Array(Set(dates)).sorted()
-    let entries = dates.map { DauamWatchEntry(date: $0, snapshot: snapshot) }
+    let dates = snapshot.timelineDates(from: now)
+    let entries = dates.map { DauamWatchEntry(date: $0, snapshot: snapshot.projected(at: $0)) }
     let refresh = min(
       dates.last?.addingTimeInterval(60) ?? now.addingTimeInterval(6 * 3_600),
       now.addingTimeInterval(12 * 3_600)
@@ -69,16 +53,17 @@ private struct DauamWatchPrayerComplicationView: View {
         ZStack {
           AccessoryWidgetBackground()
           VStack(spacing: 1) {
-            Image(systemName: currentPrayer?.symbol ?? "moon.stars.fill")
+            Image(systemName: currentPrayer?.symbol ?? "iphone")
               .font(.system(size: 14, weight: .semibold))
             Text(currentPrayer?.time ?? "—")
               .font(.system(size: 11, weight: .bold, design: .rounded).monospacedDigit())
               .minimumScaleFactor(0.72)
           }
+          .accessibilityLabel(currentPrayer.map { "\($0.title) \($0.time)" } ?? entry.snapshot.openPhoneTitle)
         }
 
       case .accessoryCorner:
-        Image(systemName: currentPrayer?.symbol ?? "moon.stars.fill")
+        Image(systemName: currentPrayer?.symbol ?? "iphone")
           .font(.system(size: 22, weight: .semibold))
           .widgetLabel {
             if let currentPrayer {
@@ -240,7 +225,19 @@ private struct DauamWatchTasksComplicationView: View {
 
   var body: some View {
     Group {
-      if family == .accessoryInline {
+      if !entry.snapshot.hasCurrentTasks(at: entry.date) {
+        if family == .accessoryInline {
+          Label(entry.snapshot.openPhoneTitle, systemImage: "iphone")
+        } else {
+          ZStack {
+            AccessoryWidgetBackground()
+            Image(systemName: "iphone")
+              .font(.system(size: 20, weight: .semibold))
+          }
+          .containerBackground(for: .widget) { Color.clear }
+          .accessibilityLabel(entry.snapshot.openPhoneTitle)
+        }
+      } else if family == .accessoryInline {
         Label(
           "\(entry.snapshot.tasksTitle): \(entry.snapshot.taskDone)/\(entry.snapshot.taskTotal)",
           systemImage: "checkmark.circle"

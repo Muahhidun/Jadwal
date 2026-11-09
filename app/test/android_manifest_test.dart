@@ -41,6 +41,21 @@ void main() {
     expect(manifest, contains('.AlarmRescheduleReceiver'));
   });
 
+  test('background notification actions have a registered private receiver', () {
+    final manifest = File(
+      'android/app/src/main/AndroidManifest.xml',
+    ).readAsStringSync();
+    final receiver = RegExp(
+      r'<receiver\b[^>]*android:name="com\.dexterous\.flutterlocalnotifications\.ActionBroadcastReceiver"[^>]*>',
+    ).firstMatch(manifest);
+    expect(
+      receiver,
+      isNotNull,
+      reason: 'Done/Snooze dispatch explicit broadcasts to this component',
+    );
+    expect(receiver!.group(0), contains('android:exported="false"'));
+  });
+
   test(
     'native Android alarm owns a lock-screen activity and ringing service',
     () {

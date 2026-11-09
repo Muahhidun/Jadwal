@@ -52,6 +52,57 @@ struct DauamWatchSnapshot: Codable, Hashable {
 
   var isKazakh: Bool { language == "kz" }
 
+  static func empty(language: String = "ru") -> DauamWatchSnapshot {
+    .init(schemaVersion: 0, generatedAt: 0, language: language, city: "",
+          dateLabel: "", prayers: [], tasks: [], taskDone: 0, taskTotal: 0,
+          lat: nil, lng: nil)
+  }
+
+  var isSupported: Bool {
+    (1...2).contains(schemaVersion) && generatedAt.isFinite && generatedAt > 0 &&
+      prayers.allSatisfy { $0.timestamp.isFinite && $0.timestamp > 0 }
+  }
+
+  func hasCurrentTasks(at date: Date) -> Bool {
+    isSupported && Calendar.current.isDate(
+      date, inSameDayAs: Date(timeIntervalSince1970: generatedAt)
+    )
+  }
+
+  /// Расписание живёт 14 дней, но дела/галочки относятся только к дню снимка.
+  /// Не переносим пятничные дела и выполнение на следующий день и не
+  /// рассчитываем несуществующие отметки без синхронизации с приложением.
+  func projected(at date: Date) -> DauamWatchSnapshot {
+    guard isSupported else { return .empty(language: language) }
+    if hasCurrentTasks(at: date) { return self }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: isKazakh ? "kk_KZ" : "ru_RU")
+    formatter.dateFormat = "d MMMM"
+    return .init(
+      schemaVersion: schemaVersion, generatedAt: generatedAt, language: language,
+      city: city, dateLabel: formatter.string(from: date), prayers: prayers,
+      tasks: [], taskDone: 0, taskTotal: 0, lat: lat, lng: lng
+    )
+  }
+
+  func timelineDates(from now: Date) -> [Date] {
+    let horizon = now.addingTimeInterval(36 * 3_600)
+    var dates = [now]
+    for prayer in prayers {
+      let start = prayer.date.addingTimeInterval(1)
+      if start > now && start < horizon { dates.append(start) }
+      let end = prayer.date.addingTimeInterval(601)
+      if prayer.id != "sunrise" && end > now && end < horizon { dates.append(end) }
+    }
+    let calendar = Calendar.current
+    var midnight = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))
+    while let boundary = midnight, boundary < horizon {
+      dates.append(boundary)
+      midnight = calendar.date(byAdding: .day, value: 1, to: boundary)
+    }
+    return Array(Set(dates)).sorted()
+  }
+
   func prayers(on date: Date) -> [DauamWatchPrayer] {
     prayers.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
   }
@@ -123,6 +174,13 @@ struct DauamWatchSnapshot: Codable, Hashable {
     isKazakh ? "Dauam қолданбасын iPhone-да ашыңыз" : "Откройте Dauam на iPhone"
   }
 
+  // Общие подписи iPhone-виджетов и Watch: один контракт снимка.
+  var openDauam: String { isKazakh ? "Dauam қолданбасын ашыңыз" : "Откройте Dauam" }
+  var todayTasksTitle: String { tasksTitle }
+  var completedSummary: String {
+    isKazakh ? "\(taskDone) / \(taskTotal) орындалды" : "\(taskDone) из \(taskTotal) выполнено"
+  }
+
   static let placeholder: DauamWatchSnapshot = {
     let calendar = Calendar.current
     let now = Date.now
@@ -186,30 +244,48 @@ struct DauamWatchSnapshot: Codable, Hashable {
 }
 
 enum DauamWatchSnapshotStore {
-  static func load() -> DauamWatchSnapshot {
+  static func load(
+    defaults: UserDefaults? = UserDefaults(suiteName: DauamWatchConstants.appGroup)
+  ) -> DauamWatchSnapshot {
     guard
-      let defaults = UserDefaults(suiteName: DauamWatchConstants.appGroup),
+      let defaults,
       let json = defaults.string(forKey: DauamWatchConstants.snapshotKey),
       let data = json.data(using: .utf8),
-      let snapshot = try? JSONDecoder().decode(DauamWatchSnapshot.self, from: data)
+      let snapshot = try? JSONDecoder().decode(DauamWatchSnapshot.self, from: data),
+      snapshot.isSupported
     else {
-      return .placeholder
+      return .empty()
     }
     return snapshot
   }
 
   @discardableResult
-  static func save(json: String) -> Bool {
+  static func save(
+    json: String,
+    defaults: UserDefaults? = UserDefaults(suiteName: DauamWatchConstants.appGroup)
+  ) -> Bool {
     guard
       let data = json.data(using: .utf8),
-      (try? JSONDecoder().decode(DauamWatchSnapshot.self, from: data)) != nil,
-      let defaults = UserDefaults(suiteName: DauamWatchConstants.appGroup)
+      let snapshot = try? JSONDecoder().decode(DauamWatchSnapshot.self, from: data),
+      snapshot.isSupported,
+      let defaults
     else {
       return false
     }
     defaults.set(json, forKey: DauamWatchConstants.snapshotKey)
     defaults.synchronize()
     return true
+  }
+}
+
+enum DauamWatchQiblaPresentation {
+  static func arrowAngle(bearing: Double?, heading: Double?, available: Bool) -> Double? {
+    guard available, let bearing, let heading,
+          bearing.isFinite, heading.isFinite, heading >= 0, heading < 360 else {
+      return nil
+    }
+    return ((bearing - heading).truncatingRemainder(dividingBy: 360) + 360)
+      .truncatingRemainder(dividingBy: 360)
   }
 }
 

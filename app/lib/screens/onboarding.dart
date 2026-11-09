@@ -7,9 +7,8 @@ import '../prayer/city.dart';
 import '../prayer/geo.dart';
 import '../theme/tokens.dart';
 import '../theme/system_bars.dart';
-import 'home.dart';
 
-/// Онбординг, 5 шагов (README §1): язык → город → уведомления → тема → постер.
+/// Первый запуск: язык → город → уведомления → постер.
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -19,8 +18,30 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   int step = 0;
+  bool _citySelected = false;
+  bool _requestingNotifications = false;
 
-  void next() => setState(() => step++);
+  // Старая карточка остаётся в AnimatedSwitcher до конца анимации, а ответ
+  // GPS/системного диалога может прийти ещё позже. Каждый шаг завершается
+  // только один раз, пока он действительно открыт.
+  void _next(int expectedStep) {
+    if (!mounted || step != expectedStep) return;
+    setState(() => step++);
+  }
+
+  Future<void> _allowNotifications() async {
+    if (step != 2 || _requestingNotifications) return;
+    _requestingNotifications = true;
+    try {
+      await gNotifier?.requestPermission();
+    } catch (_) {
+      // При недоступном системном запросе приложение остаётся пригодным
+      // для использования, как при выборе «Позже».
+    } finally {
+      _requestingNotifications = false;
+      _next(2);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,35 +53,36 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       0 => _LangStep(
         c: c,
         onPick: (lang) {
+          if (step != 0) return;
           app.lang = lang;
-          next();
+          _next(0);
         },
       ),
       1 => _CityStep(
         s: s,
         c: c,
         onPick: (city) {
+          if (step != 1 || _citySelected) return;
+          _citySelected = true;
           app.setCity(city);
-          Future.delayed(const Duration(milliseconds: 250), next);
+          Future.delayed(const Duration(milliseconds: 250), () => _next(1));
         },
       ),
       2 => _NotifStep(
         s: s,
         c: c,
-        onAllow: () async {
-          await gNotifier?.requestPermission();
-          next();
-        },
-        onNext: next,
+        onAllow: _allowNotifications,
+        onNext: () => _next(2),
       ),
       _ => _PosterStep(
         s: s,
         c: c,
         onStart: () {
+          if (app.onboardingDone) return;
+          // MaterialApp.home реагирует на onboardingDone. Подготовим подсказки
+          // до единственного перехода, не создавая второй HomeScreen route.
+          app.requestNavigationGuide();
           app.onboardingDone = true;
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const HomeScreen()),
-          );
         },
       ),
     };
@@ -79,7 +101,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 350),
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 350),
             transitionBuilder: (child, anim) => FadeTransition(
               opacity: anim,
               child: SlideTransition(
@@ -175,6 +199,7 @@ class _CityStepState extends State<_CityStep> {
   }
 
   Future<void> _detect() async {
+    if (!mounted || _detecting) return;
     setState(() {
       _detecting = true;
       _error = null;

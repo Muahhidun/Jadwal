@@ -155,12 +155,15 @@ Future<void> applyNotificationAction(
     try {
       for (final pending in await plugin.pendingNotificationRequests()) {
         final other = NotificationPayload.parse(pending.payload);
-        if (other.task == payload.task && other.date == payload.date) {
+        if (other.task == payload.task && other.date == day) {
           await plugin.cancel(id: pending.id);
         }
       }
     } catch (_) {}
-    await _dropSnoozes(prefs, (s) => s.payload.task == payload.task);
+    await _dropSnoozes(
+      prefs,
+      (s) => s.payload.task == payload.task && s.payload.date == day,
+    );
     return;
   }
 
@@ -334,40 +337,64 @@ NotificationDetails notificationDetailsFor({
   );
 }
 
+const _reminderIds = [
+  'morning',
+  'evening',
+  'kahf',
+  'dua',
+  'fajr',
+  'sunrise',
+  'dhuhr',
+  'asr',
+  'maghrib',
+  'isha',
+];
+
+List<ReminderConfig> _notificationConfigs(AppState app) => [
+  for (final id in _reminderIds) app.getReminderConfig(id, app.lang),
+  ...app.customReminders,
+];
+
+/// Все данные, влияющие на очередь. Смена даты, уточнение расписания и
+/// выполнение личного дела должны обновлять её так же, как встроенные дела.
+String notificationStateSignature(AppState app, ScheduleService schedule) {
+  final done = app.doneOn(schedule.now()).toList()..sort();
+  return jsonEncode([
+    AppState.dayKey(schedule.now()),
+    ScheduleService.cityKey(app.city),
+    app.lang,
+    schedule.revision,
+    _notificationConfigs(app).map((rc) => rc.toJson()).toList(),
+    done,
+    app.prayerSound,
+    app.taskSound,
+    [
+      for (final id in _builtInPrayerIds)
+        [id, app.alarmEnabled(id), app.alarmOffsetMinutes(id)],
+    ],
+    app.heavySleeperEnabled,
+  ]);
+}
+
 /// Перепланировать очередь из текущего состояния приложения.
 Future<void> syncNotifications(AppState app, ScheduleService schedule) async {
   final now = schedule.now();
-  // Асинхронно ожидаем загрузку данных ДУМК из кэша/сети, чтобы время не расходилось с Sajda.kz!
-  await schedule.ensureLoaded(app.city, now.year);
-  if (now.month == 12 && now.day >= 18) {
-    await schedule.ensureLoaded(app.city, now.year + 1);
+  final city = app.city;
+  await schedule.ensureLoaded(city, now.year);
+  final lastYear = DateTime(now.year, now.month, now.day + 13).year;
+  if (lastYear != now.year) await schedule.ensureLoaded(city, lastYear);
+  // Пока шёл запрос, пользователь мог выбрать другой город. Дождёмся уже
+  // его данных, прежде чем ставить обычные уведомления и будильники.
+  if (ScheduleService.cityKey(city) != ScheduleService.cityKey(app.city) ||
+      AppState.dayKey(now) != AppState.dayKey(schedule.now())) {
+    return syncNotifications(app, schedule);
   }
-
-  final ids = [
-    'morning',
-    'evening',
-    'kahf',
-    'dua',
-    'fajr',
-    'sunrise',
-    'dhuhr',
-    'asr',
-    'maghrib',
-    'isha',
-  ];
-  final configs = [
-    for (final id in ids) app.getReminderConfig(id, app.lang),
-    ...app.customReminders,
-  ];
 
   await gNotifier?.reschedule(
     lang: app.lang,
-    city: app.city,
-    configs: configs,
-    doneToday: {
-      for (final id in TaskId.values)
-        if (app.isDone(id.name)) id,
-    },
+    city: city,
+    configs: _notificationConfigs(app),
+    doneToday: app.doneOn(now).toSet(),
     prayerSound: app.prayerSound,
     taskSound: app.taskSound,
   );
@@ -411,6 +438,7 @@ class NotificationService {
 
   final ScheduleService _schedule;
   final _plugin = FlutterLocalNotificationsPlugin();
+  Future<void> _rescheduleTail = Future<void>.value();
 
   /// Запас под лимит iOS в 64.
   static const _cap = 58;
@@ -534,12 +562,46 @@ class NotificationService {
     required String lang,
     required City city,
     required List<ReminderConfig> configs,
-    required Set<TaskId> doneToday,
+    required Set<String> doneToday,
     String prayerSound = 'default',
     String taskSound = 'default',
+  }) {
+    final reminders = List<ReminderConfig>.of(configs);
+    final completed = Set<String>.of(doneToday);
+    final completionDay = _dayKey(_schedule.now());
+    final operation = _rescheduleTail.then(
+      (_) => _reschedule(
+        lang: lang,
+        city: city,
+        configs: reminders,
+        doneToday: completed,
+        completionDay: completionDay,
+        prayerSound: prayerSound,
+        taskSound: taskSound,
+      ),
+    );
+    // cancelAll + постановка событий — одна операция. Параллельные вызовы
+    // не должны стирать друг другу очередь; ошибка не блокирует следующий.
+    _rescheduleTail = operation.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return operation;
+  }
+
+  Future<void> _reschedule({
+    required String lang,
+    required City city,
+    required List<ReminderConfig> configs,
+    required Set<String> doneToday,
+    required String completionDay,
+    required String prayerSound,
+    required String taskSound,
   }) async {
     await _plugin.cancelAll();
     final now = _schedule.now();
+    final todayKey = _dayKey(now);
+    final completed = todayKey == completionDay ? doneToday : const <String>{};
     int count = 0;
     final details = notificationDetailsFor(
       soundId: prayerSound,
@@ -556,8 +618,14 @@ class NotificationService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final snoozes = _readSnoozes(prefs)
-        ..removeWhere((s) => !s.at.isAfter(DateTime.now()));
+        ..removeWhere(
+          (s) =>
+              !s.at.isAfter(DateTime.now()) ||
+              (s.payload.date == todayKey &&
+                  completed.contains(s.payload.task)),
+        );
       for (final snooze in snoozes) {
+        if (count >= _cap) break;
         await _scheduleSnooze(
           _plugin,
           snooze.id,
@@ -585,14 +653,15 @@ class NotificationService {
     )) {
       if (count >= _cap) break;
       for (final date in _sparseCandidateDates(rc, now)) {
-        final t = _schedule.timesFor(city, date);
+        final task = notificationTaskFor(rc.id);
+        if (_dayKey(date) == todayKey && completed.contains(task)) continue;
+        final t = rc.isPrayerLinked ? _schedule.timesFor(city, date) : null;
         if (rc.isPrayerLinked && t == null) continue;
         final scheduledTime = reminderScheduledTime(rc, date, t);
         if (!scheduledTime.isAfter(now)) continue;
         final txt = _getNotificationText(lang, rc);
-        final task = notificationTaskFor(rc.id);
         await _schedule0(
-          900000 + _slotFor(rc.id, configs),
+          count,
           scheduledTime,
           txt,
           _payload(rc.id, task, date, txt),
@@ -618,28 +687,18 @@ class NotificationService {
         }
 
         // Проверяем, выполнено ли сегодня
-        if (isToday) {
-          if (rc.id == 'morning' && doneToday.contains(TaskId.morning)) {
-            continue;
-          }
-          if (rc.id == 'evening' && doneToday.contains(TaskId.evening)) {
-            continue;
-          }
-          if (rc.id == 'kahf' && doneToday.contains(TaskId.kahf)) continue;
-          if (rc.id == 'dua' && doneToday.contains(TaskId.dua)) continue;
-        }
+        final task = notificationTaskFor(rc.id);
+        if (isToday && completed.contains(task)) continue;
 
         if (rc.isPrayerLinked && t == null) continue;
         final scheduledTime = reminderScheduledTime(rc, date, t);
-        final slot = _slotFor(rc.id, configs);
-        final task = notificationTaskFor(rc.id);
         final rcDetails = task.isEmpty ? details : taskDetails;
 
         // Первичное напоминание (в момент наступления события)
         if (scheduledTime.isAfter(now) && count < _cap) {
           final txt = _getNotificationText(lang, rc);
           await _schedule0(
-            _id(d, slot),
+            count,
             scheduledTime,
             txt,
             _payload(rc.id, task, date, txt),
@@ -663,7 +722,7 @@ class NotificationService {
                 opening: false,
               );
               await _schedule0(
-                _id(d, slot + 20),
+                count,
                 remindAt,
                 rTxt,
                 _payload(rc.id, task, date, rTxt),
@@ -718,34 +777,6 @@ class NotificationService {
           yield candidate;
         }
       }
-    }
-  }
-
-  int _slotFor(String id, List<ReminderConfig> configs) {
-    switch (id) {
-      case 'morning':
-        return 0;
-      case 'evening':
-        return 1;
-      case 'kahf':
-        return 2;
-      case 'dua':
-        return 3;
-      case 'fajr':
-        return 4;
-      case 'sunrise':
-        return 5;
-      case 'dhuhr':
-        return 6;
-      case 'asr':
-        return 7;
-      case 'maghrib':
-        return 8;
-      case 'isha':
-        return 9;
-      default:
-        final idx = configs.indexWhere((c) => c.id == id);
-        return 10 + (idx >= 0 ? idx : 0);
     }
   }
 
@@ -804,8 +835,6 @@ class NotificationService {
 
   DateTime _at(DateTime date, int minutes) =>
       DateTime(date.year, date.month, date.day).add(Duration(minutes: minutes));
-
-  int _id(int day, int slot) => day * 100 + slot;
 
   _NotifText _windowText(String lang, TaskId id, {required bool opening}) {
     final kz = lang == 'kz';
