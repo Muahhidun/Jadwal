@@ -45,8 +45,21 @@ void main() {
     await frames(tester, 30);
     expect(find.byType(ReminderDetailScreen), findsOneWidget);
 
-    await tester.ensureVisible(find.text('Удалить напоминание'));
-    await tester.tap(find.text('Удалить напоминание'));
+    final del = find.descendant(
+      of: find.byType(ReminderDetailScreen),
+      matching: find.text('Удалить напоминание'),
+    );
+    await tester.scrollUntilVisible(
+      del,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(ReminderDetailScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.tap(del);
     await frames(tester, 30);
     expect(app.customReminders, isEmpty);
     expect((await AppState.load()).customReminders, isEmpty);

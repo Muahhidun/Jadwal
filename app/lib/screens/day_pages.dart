@@ -405,10 +405,12 @@ enum _DeedState { upcoming, open, done, passed }
 void _editCustomDeed(BuildContext context, String deedId) {
   if (!deedId.startsWith('custom:')) return;
   HapticFeedback.selectionClick();
-  Navigator.of(context).push(
-    dauamSettingsRoute(
-      ReminderDetailScreen(configId: deedId.substring(7), isCustom: true),
-    ),
+  // Та же нижняя панель, что и у центра напоминаний: полноэкранный экран
+  // уезжал шапкой под вырез.
+  RemindersScreen.open(
+    context,
+    initialConfigId: deedId.substring(7),
+    isCustom: true,
   );
 }
 
