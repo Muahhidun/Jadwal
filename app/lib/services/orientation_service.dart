@@ -18,9 +18,12 @@ class AppOrientation {
   }
 
   /// Основной режим приложения.
-  static Future<void> lockPortrait() => SystemChrome.setPreferredOrientations(
-    isPhone ? const [DeviceOrientation.portraitUp] : DeviceOrientation.values,
-  );
+  static Future<void> lockPortrait() {
+    _forceSerial++; // отменяет отложенное «разрешить всё» после поворота
+    return SystemChrome.setPreferredOrientations(
+      isPhone ? const [DeviceOrientation.portraitUp] : DeviceOrientation.values,
+    );
+  }
 
   /// Читалка: поворот телефона сам переводит текст в горизонталь.
   static Future<void> allowReading() => SystemChrome.setPreferredOrientations(
@@ -33,14 +36,22 @@ class AppOrientation {
         : DeviceOrientation.values,
   );
 
-  /// Кнопка в углу читалки: принудительно горизонталь или вертикаль.
-  static Future<void> force({required bool landscape}) =>
-      SystemChrome.setPreferredOrientations(
-        landscape
-            ? const [
-                DeviceOrientation.landscapeLeft,
-                DeviceOrientation.landscapeRight,
-              ]
-            : const [DeviceOrientation.portraitUp],
-      );
+  static int _forceSerial = 0;
+
+  /// Кнопка в углу читалки: повернуть экран. Принудительный режим держится
+  /// лишь до самого поворота, затем снова разрешаем все ориентации читалки —
+  /// иначе автоповорот телефона переставал бы работать.
+  static Future<void> force({required bool landscape}) async {
+    final serial = ++_forceSerial;
+    await SystemChrome.setPreferredOrientations(
+      landscape
+          ? const [
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ]
+          : const [DeviceOrientation.portraitUp],
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (serial == _forceSerial) await allowReading();
+  }
 }

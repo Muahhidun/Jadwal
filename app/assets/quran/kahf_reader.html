@@ -431,6 +431,7 @@
 
     function applyAppearance() {
       document.body.className = currentTheme;
+      applyOrientation();
       if (!pageData.length) return;
       Promise.all(pageData.map((entry) => loadFont(entry.page)))
         .then(() => render())
@@ -479,6 +480,7 @@
       const localeChanged = nextLocale !== currentLocale;
       currentLocale = nextLocale;
       document.body.className = currentTheme;
+      applyOrientation();
       if (localeChanged && pageData.length) {
         const index = currentPageIndex();
         render();
