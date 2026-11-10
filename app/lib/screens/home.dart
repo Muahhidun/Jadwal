@@ -594,8 +594,11 @@ class _HomeScreenState extends State<HomeScreen>
                                   -h * (1 + p) * (_maxPage > 1 ? 0.15 : 1.0),
                                 ),
                                 child: Opacity(
+                                  // В режиме страниц слой гаснет на последней
+                                  // трети возврата: иначе кнопка «На главный
+                                  // экран» ещё долю секунды висела на главной.
                                   opacity: _maxPage > 1
-                                      ? 1.0
+                                      ? (-p * 3).clamp(0.0, 1.0)
                                       : (-p * 1.4).clamp(0.0, 1.0),
                                   child: QiblaView(
                                     reveal: _maxPage > 1

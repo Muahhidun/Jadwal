@@ -19,7 +19,6 @@ class AppOrientation {
 
   /// Основной режим приложения.
   static Future<void> lockPortrait() {
-    _forceSerial++; // отменяет отложенное «разрешить всё» после поворота
     return SystemChrome.setPreferredOrientations(
       isPhone ? const [DeviceOrientation.portraitUp] : DeviceOrientation.values,
     );
@@ -35,25 +34,4 @@ class AppOrientation {
           ]
         : DeviceOrientation.values,
   );
-
-  static int _forceSerial = 0;
-
-  /// Кнопка в углу читалки. Горизонталь держится, пока читалка открыта или
-  /// пока её не вернут в вертикаль: так кнопка работает и при заблокированном
-  /// автоповороте iPhone. Возврат в вертикаль снова разрешает автоповорот.
-  static Future<void> force({required bool landscape}) async {
-    final serial = ++_forceSerial;
-    if (landscape) {
-      await SystemChrome.setPreferredOrientations(const [
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
-      return;
-    }
-    await SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-    ]);
-    await Future<void>.delayed(const Duration(milliseconds: 800));
-    if (serial == _forceSerial) await allowReading();
-  }
 }

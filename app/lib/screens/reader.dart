@@ -14,7 +14,6 @@ import 'contextual_hint.dart';
 import '../services/live_activity_service.dart';
 import '../services/zikr_speech_service.dart';
 import 'reader_palette.dart';
-import 'reader_rotate_button.dart';
 import '../services/orientation_service.dart';
 import 'zikr_reader_session.dart';
 
@@ -469,12 +468,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                   ),
                                 ),
                               ],
-                            ),
-                            // Правый нижний угол: перевернуть текст набок.
-                            // Поверх строки, чтобы не сдвигать центр «Пропустить».
-                            ReaderRotateButton(
-                              palette: palette,
-                              kz: app.lang == 'kz',
                             ),
                           ],
                         ),

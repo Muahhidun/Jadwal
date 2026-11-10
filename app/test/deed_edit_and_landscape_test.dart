@@ -93,10 +93,7 @@ void main() {
         ),
       );
       await frames(tester);
-      expect(
-        find.byKey(const ValueKey('reader-rotate-button')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('reader-rotate-button')), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     });

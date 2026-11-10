@@ -10,7 +10,6 @@ import '../theme/system_bars.dart';
 import '../theme/tokens.dart';
 import 'celebration.dart';
 import 'reader_palette.dart';
-import 'reader_rotate_button.dart';
 import '../services/orientation_service.dart';
 
 PageRoute<void> kahfReaderRoute() => PageRouteBuilder<void>(
@@ -333,22 +332,6 @@ class _KahfReaderScreenState extends State<KahfReaderScreen>
                   fit: StackFit.expand,
                   children: [
                     WebViewWidget(controller: _controller),
-                    Positioned(
-                      right: 14,
-                      bottom: 34,
-                      child: IgnorePointer(
-                        ignoring: !_chromeVisible,
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 180),
-                          opacity: _chromeVisible ? 1 : 0,
-                          child: ReaderRotateButton(
-                            palette: palette,
-                            kz: kz,
-                            size: 34,
-                          ),
-                        ),
-                      ),
-                    ),
                     if (!_pageReady)
                       ColoredBox(
                         color: palette.bg,
