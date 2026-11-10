@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,8 +24,11 @@ Future<void> settle(WidgetTester t) async {
 
 Future<void> shot(WidgetTester t, String name) async {
   await settle(t);
-  await expectLater(find.byType(JadwalApp), matchesGoldenFile('raw2/$name.png'));
+  await expectLater(find.byType(JadwalApp), matchesGoldenFile('$dir/$name.png'));
 }
+
+final lang = Platform.environment['STORE_LANG'] ?? 'ru';
+final dir = lang == 'ru' ? 'raw2' : 'raw2$lang';
 
 const times = [390, 490, 735, 845, 965, 1060];
 
@@ -38,7 +43,7 @@ Future<dynamic> open(WidgetTester t, DateTime now, String scene) async {
     'featureTourPendingV1': true,
     'contextHint:v1:reader-palette': true,
     'contextHint:v1:appearance': true,
-    'lang': 'ru',
+    'lang': lang,
     'dayLayout': 'pages',
     'homeScene': scene,
     'done:${AppState.dayKey(now)}': now.hour >= 12 ? ['morning'] : <String>[],
@@ -50,18 +55,18 @@ Future<dynamic> open(WidgetTester t, DateTime now, String scene) async {
   SharedPreferences.setMockInitialValues(prefs);
   final app = await AppState.load();
   app.addReminder(
-    const ReminderConfig(
+    ReminderConfig(
       id: 'mosque',
-      title: 'Пятничный намаз в мечети',
+      title: lang == 'kz' ? 'Мешітте жұма намазы' : 'Пятничный намаз в мечети',
       prayer: 2,
       offsetMin: -30,
       anchor: 'prayer',
     ),
   );
   app.addReminder(
-    const ReminderConfig(
+    ReminderConfig(
       id: 'quran',
-      title: 'Читать Коран 10 минут',
+      title: lang == 'kz' ? 'Құран оқу, 10 минут' : 'Читать Коран 10 минут',
       prayer: 0,
       offsetMin: 0,
       anchor: 'clock',
