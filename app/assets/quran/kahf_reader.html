@@ -107,6 +107,30 @@
       gap: 0;
     }
     .word { flex: 0 0 auto; }
+    /* Горизонталь: страница не сжимается в 15 строк по высоте. Строки
+       остаются крупными (4–5 на экране), а страница листается вверх. */
+    body.landscape .page-slot {
+      align-items: flex-start;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-align: start;
+      scrollbar-width: none;
+    }
+    body.landscape .page-slot::-webkit-scrollbar { display: none; }
+    body.landscape .page {
+      height: auto;
+      grid-template-rows: none;
+      grid-auto-rows: auto;
+      overflow: visible;
+      padding: 8px 14px 6px;
+    }
+    body.landscape .mushaf-line {
+      line-height: 1.5;
+      padding: 2px 0;
+    }
+    body.landscape .kahf-intro { grid-row: auto; }
+    body.landscape .page-number { padding: 8px 0 4px; }
     .mushaf-line.chapter-name {
       font-family: UthmanicHafs, serif;
       font-size: clamp(19px, min(5.5vw, 3.7vh), 29px);
@@ -282,11 +306,21 @@
       line.appendChild(span);
     }
 
+    function applyOrientation() {
+      document.body.classList.toggle(
+        'landscape',
+        window.innerWidth > window.innerHeight,
+      );
+    }
+
     function fitPage(page) {
       const lines = [...page.querySelectorAll('.mushaf-line:not(.chapter-name):not(.basmala)')];
       if (!lines.length) return;
+      const landscape = document.body.classList.contains('landscape');
       let low = 18;
-      let high = Math.min(34, window.innerWidth * .082);
+      let high = landscape
+        ? Math.min(60, window.innerWidth * .066)
+        : Math.min(34, window.innerWidth * .082);
       for (let step = 0; step < 9; step += 1) {
         const size = (low + high) / 2;
         for (const line of lines) line.style.fontSize = `${size}px`;
@@ -368,6 +402,7 @@
         renderedPages.push(page);
       }
       requestAnimationFrame(() => {
+        applyOrientation();
         renderedPages.forEach(fitPage);
         notifyPage();
         post('contentReady');
@@ -508,7 +543,10 @@
     }, { passive: true });
 
     window.addEventListener('resize', () => {
-      requestAnimationFrame(() => renderedPages.forEach(fitPage));
+      requestAnimationFrame(() => {
+        applyOrientation();
+        renderedPages.forEach(fitPage);
+      });
     });
 
     loadMushaf();

@@ -2951,24 +2951,20 @@ class _DayTimesList extends StatelessWidget {
                       ),
                       SizedBox(
                         width: expanded ? 108 : (compact ? 82 : 92),
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 220),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
-                          child: isCurrent
-                              ? Text(
-                                  countdown,
-                                  key: ValueKey(countdown),
-                                  textAlign: TextAlign.center,
-                                  style: JType.ui(
-                                    expanded ? 14.5 : (compact ? 11.5 : 12.5),
-                                    w: FontWeight.w600,
-                                    color: c.gold.withValues(alpha: .92),
-                                    ls: -.2,
-                                  ),
-                                )
-                              : const SizedBox.shrink(),
-                        ),
+                        // Без анимации: отсчёт меняется каждую секунду, и затухание
+                        // выглядело как постоянная перезагрузка строки.
+                        child: isCurrent
+                            ? Text(
+                                countdown,
+                                textAlign: TextAlign.center,
+                                style: JType.ui(
+                                  expanded ? 14.5 : (compact ? 11.5 : 12.5),
+                                  w: FontWeight.w600,
+                                  color: c.gold.withValues(alpha: .92),
+                                  ls: -.2,
+                                ),
+                              )
+                            : const SizedBox.shrink(),
                       ),
                       SizedBox(
                         width: expanded ? 82 : (compact ? 67 : 74),
@@ -3419,6 +3415,10 @@ void _showDayDetailsSheet(
     if (date.weekday == DateTime.friday) ('kahf', s.kahfTitle),
     ('evening', s.eveningTitle),
     if (date.weekday == DateTime.friday) ('dua', s.duaTitle),
+    // Личные дела, которые приходятся на этот день.
+    for (final reminder in app.customReminders)
+      if (app.reminderOccursOn(reminder, date))
+        ('custom:${reminder.id}', reminder.title),
   ];
 
   showModalBottomSheet<void>(
@@ -3427,7 +3427,7 @@ void _showDayDetailsSheet(
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (context) => FractionallySizedBox(
-      heightFactor: 0.48,
+      heightFactor: 0.56,
       child: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
         child: Container(
@@ -3456,45 +3456,54 @@ void _showDayDetailsSheet(
                   ),
                 ),
                 const SizedBox(height: 16),
-                for (final task in tasks)
-                  Container(
-                    constraints: const BoxConstraints(minHeight: 48),
-                    child: Row(
-                      children: [
+                Expanded(
+                  child: ListView(
+                    padding: EdgeInsets.zero,
+                    children: [
+                      for (final task in tasks)
                         Container(
-                          width: 26,
-                          height: 26,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: done.contains(task.$1)
-                                ? c.green
-                                : Colors.transparent,
-                            border: done.contains(task.$1)
-                                ? null
-                                : Border.all(color: c.hair),
+                          constraints: const BoxConstraints(minHeight: 48),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 26,
+                                height: 26,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: done.contains(task.$1)
+                                      ? c.green
+                                      : Colors.transparent,
+                                  border: done.contains(task.$1)
+                                      ? null
+                                      : Border.all(color: c.hair),
+                                ),
+                                child: done.contains(task.$1)
+                                    ? const Icon(
+                                        CupertinoIcons.check_mark,
+                                        size: 15,
+                                        color: Colors.white,
+                                      )
+                                    : null,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  task.$2,
+                                  style: JType.ui(
+                                    15,
+                                    w: FontWeight.w500,
+                                    color: done.contains(task.$1)
+                                        ? c.sub
+                                        : c.ink,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          child: done.contains(task.$1)
-                              ? const Icon(
-                                  CupertinoIcons.check_mark,
-                                  size: 15,
-                                  color: Colors.white,
-                                )
-                              : null,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            task.$2,
-                            style: JType.ui(
-                              15,
-                              w: FontWeight.w500,
-                              color: done.contains(task.$1) ? c.sub : c.ink,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                    ],
                   ),
+                ),
               ],
             ),
           ),
